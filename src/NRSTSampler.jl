@@ -25,15 +25,6 @@ function NRSTSampler(V,Vref,randref,betas,nexpl)
     NRSTSampler(np,x,MVector(0,1),Ref(V(x)),nexpl)
 end
 
-# # test
-# ns=NRSTSampler(
-#     x->(0.5sum(abs2,x .- [1.,1.])), # likelihood: N((1,1), I)
-#     x->(0.125sum(abs2,x)), # reference: N(0, 4I)
-#     () -> 2randn(2), # reference: N(0, 4I)
-#     collect(range(0,1,length=9)),
-#     50
-# );
-
 # communication step
 function comm_step!(ns::NRSTSampler)
     @unpack np,x,ip,curV = ns
