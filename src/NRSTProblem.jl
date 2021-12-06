@@ -6,35 +6,36 @@
 # useful for having vectors of mixed types (as long as <=4 types)
 # see https://stackoverflow.com/a/58539098/5443023
 # also https://docs.julialang.org/en/v1/manual/types/#citeref-1
-const Sampler = Union{IIDSampler, MHSampler}
+const ContinuousSampler = Union{IIDSampler, MHSampler}
 
 ###############################################################################
 # struct defining an NRST inference problem 
 ###############################################################################
 
-struct NRSTProblem{F,G,H,K<:AbstractFloat,A<:AbstractVector{K}}
+struct NRSTProblem{F,G,H,K<:AbstractFloat,A<:AbstractVector{K},B<:AbstractVector{<:ExplorationKernel}}
     V::F # energy Function
     Vref::G # energy of reference distribution
     randref::H # produces independent sample from reference distribution
     betas::A # vector of tempering parameters (length N)
     c::A # vector of parameters for the pseudoprior
-    explorers::Vector{Sampler} # vector length N of exploration kernels (note use of concrete eltype)
+    explorers::B # vector length N of exploration kernels (note use of concrete eltype)
 end
 
-# initialize vector of exploration kernels
-function init_explorers!(A,V,Vref,randref,betas,xinit)
+# initialize vector of exploration kernels: continous case
+function init_explorers(V,Vref,randref,betas,xinit::AbstractVector{<:AbstractFloat})
+    A = Vector{ContinuousSampler}(undef, length(betas))
     A[1] = IIDSampler(Vref,randref)
     for i in 2:length(betas)
         beta = betas[i] # better to extract the beta, o.w. the closure grabs the whole vector
         A[i] = MHSampler(x->(Vref(x) + beta*V(x)),xinit)
     end
+    return A
 end
 
 # simple outer constructor
 function NRSTProblem(V,Vref,randref,betas,xinit)
     c = similar(betas)
-    explorers = Vector{Sampler}(undef, length(betas))
-    init_explorers!(explorers,V,Vref,randref,betas,xinit)
+    explorers = init_explorers(V,Vref,randref,betas,xinit) 
     NRSTProblem(V,Vref,randref,betas,c,explorers)
 end
 

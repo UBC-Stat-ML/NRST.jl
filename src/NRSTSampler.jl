@@ -1,28 +1,26 @@
-###############################################################################
-# TODO:
-# - implement second stage tuning, and keep track of mean and median of V
-###############################################################################
-
-
-
-###############################################################################
-# struct defining an NRST sampler 
-###############################################################################
-
 struct NRSTSampler{I<:Int,K<:AbstractFloat,A<:AbstractVector{K}}
     np::NRSTProblem # encapsulates problem specifics
-    x::A # current state of target variable
-    ip::MVector{2,I} # current state of the Index Process (i,eps). uses statically sized (but mutable) vector
+    x::A # current state of target variable. no need to keep it in sync all the time with explorers. they are updated at exploration step
+    ip::MVector{2,I} # current state of the Index Process (i,eps). uses statically sized but mutable vector
     curV::Base.RefValue{K} # current energy V(x) (stored as ref to make it mutable)
     nexpl::I # number of exploration steps
 end
 
-# simple outer constructor
+# constructor that also builds an NRSTProblem, does initial tuning
 function NRSTSampler(V,Vref,randref,betas,nexpl)
     x=randref()
-    np=NRSTProblem(V,Vref,randref,betas,x) # tune expl kernels
+    np=NRSTProblem(V,Vref,randref,betas,x)
     initial_tuning!(np,10*nexpl) # tune explorations kernels and get initial c estimate
     NRSTSampler(np,x,MVector(0,1),Ref(V(x)),nexpl)
+end
+
+# constructor using a given NRSTProblem, no inital tuning carried out
+# note: NRSTSampler.np will point to the same object, so values are shared
+# Therefore, care must be taken when tuning in parallel settings to avoid race
+# conditions.
+function NRSTSampler(np::NRSTProblem,nexpl)
+    x=np.randref()
+    NRSTSampler(np,x,MVector(0,1),Ref(np.V(x)),nexpl)
 end
 
 # communication step
@@ -55,9 +53,10 @@ end
 # exploration step
 function expl_step!(ns::NRSTSampler)
     @unpack np,x,ip,curV,nexpl = ns
-    @unpack explorers = np
+    @unpack V,explorers = np
     set_state!(explorers[ip[1]+1],x) # (1-based indexing)
     copyto!(x,explore!(explorers[ip[1]+1],nexpl)) # explore and update state
+    curV[] = V(x) # compute energy at new point
 end
 
 # # test

@@ -1,5 +1,4 @@
 using NRST
-using Plots
 
 # create sampler
 ns=NRST.NRSTSampler(
@@ -10,7 +9,12 @@ ns=NRST.NRSTSampler(
     50
 );
 
-# plot index process
-xtrace,iptrace = NRST.run!(ns,100)
-plot(iptrace[1,:],label="",seriestype = :steppost)
+# create another sampler using the same NRSTProblem
+ns2 = NRST.NRSTSampler(ns.np,ns.nexpl)
 
+# note that ns.np and ns2.np now point to the same object
+ns.np.betas
+ns2.np.betas
+ns.np.betas[1] = -1.2
+ns2.np.betas[5] = 5.2
+ns.np.betas[5]
