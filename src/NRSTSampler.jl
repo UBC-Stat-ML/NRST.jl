@@ -44,7 +44,7 @@ end
 # initial_tuning!(np,5000)
 # plot(np.betas, np.c)
 
-# constructor that also builds an NRSTProblem, does initial tuning
+# constructor that also builds an NRSTProblem and does initial tuning
 function NRSTSampler(V,Vref,randref,betas,nexpl)
     x = randref()
     np = NRSTProblem(V,Vref,randref,betas,similar(betas))
@@ -54,7 +54,7 @@ function NRSTSampler(V,Vref,randref,betas,nexpl)
     NRSTSampler(np,explorers,x,MVector(0,1),Ref(V(x)),nexpl)
 end
 
-# constructor using a given NRSTSampler (usually already initially-tuned)
+# copy-constructor, using a given NRSTSampler (usually already initially-tuned)
 # note: "np" is fully shared, only "explorers" is deepcopied.
 # so don't change np in threads!
 function NRSTSampler(ns::NRSTSampler)
@@ -63,24 +63,36 @@ function NRSTSampler(ns::NRSTSampler)
     NRSTSampler(ns.np,explorers_copy,x,MVector(0,1),Ref(ns.np.V(x)),ns.nexpl)
 end
 
-
 ###############################################################################
 # sampling methods
 ###############################################################################
 
+# reset state by sampling from the renewal measure
+function reset!(ns::NRSTSampler)
+    newx = ns.np.randref()
+    copyto!(ns.x,newx)
+    ns.ip[1] = 0
+    ns.ip[2] = 1
+    ns.curV[] = ns.np.V(newx)
+end
+
 # communication step
 function comm_step!(ns::NRSTSampler)
-    @unpack np,x,ip,curV = ns
+    @unpack np,ip,curV = ns
     @unpack betas,c = np
-    iprop = sum(ip) # propose i+eps
-    if iprop < 0 # bounce below
-        ip[1]=0;ip[2]=1; return false
-    elseif iprop >= length(betas) # bounce above (note base-1 indexing)
-        ip[1]=length(betas)-1;ip[2]=-1; return false
+    iprop = sum(ip)               # propose i + eps
+    if iprop < 0                  # bounce below
+        ip[1] = 0
+        ip[2] = 1
+        return false
+    elseif iprop >= length(betas) # bounce above
+        ip[1] = length(betas) - 1
+        ip[2] = -1
+        return false
     else
         i = ip[1] # current index
         # note: U(0,1) =: U < p <=> log(U) < log(p) <=> Exp(1) > -log(p) =: neglaccpr
-        neglaccpr = (betas[iprop+1]-betas[i+1])*curV[] - (c[iprop+1]-c[i+1]) # Julia uses 1-based indexing
+        neglaccpr = (betas[iprop+1] - betas[i+1]) * curV[] - (c[iprop+1] - c[i+1])
         acc = (neglaccpr < rand(Exponential())) # accept?
         if acc
             ip[1] = iprop # move
@@ -97,11 +109,11 @@ end
 
 # exploration step
 function expl_step!(ns::NRSTSampler)
-    @unpack np,x,ip,curV,nexpl = ns
-    @unpack V,explorers = np
-    set_state!(explorers[ip[1]+1],x) # (1-based indexing)
-    copyto!(x,explore!(explorers[ip[1]+1],nexpl)) # explore and update state
-    curV[] = V(x) # compute energy at new point
+    @unpack np,explorers,ip,curV,nexpl = ns
+    @unpack V = np
+    set_state!(explorers[ip[1]+1], ns.x)               # pass current state to explorer
+    copyto!(ns.x, explore!(explorers[ip[1]+1], nexpl)) # explore and update state
+    curV[] = V(ns.x)                                   # compute energy at new point
 end
 
 # # test
@@ -116,18 +128,19 @@ function step!(ns::NRSTSampler)
     expl_step!(ns)
 end
 
-function run!(ns::NRSTSampler, nsteps::Int)
-    # nsteps=10000
-    xtrace = similar(ns.x,length(ns.x),nsteps)
-    iptrace = Matrix{Int}(undef,2,nsteps)
-    xtrace[:,1] = ns.x
-    iptrace[:,1] = ns.ip
-    for n in 2:nsteps
+# run a tour: run the sampler until we reach the atom ip=(0,-1)
+function tour!(ns::NRSTSampler{I,K,A,B}) where {I,K,A,B}
+    reset!(ns)
+    xtrace = A[]
+    iptrace = Vector{I}[]
+    while !(ns.ip[1] == 0 && ns.ip[2] == -1)
+        push!(xtrace, copy(ns.x)) # needs copy o.w. pushes a ref to ns.x
+        push!(iptrace, ns.ip)     # this one doesn't need copy...
         step!(ns)
-        xtrace[:,n] = ns.x
-        iptrace[:,n] = ns.ip
     end
-    return xtrace,iptrace
+    push!(xtrace, copy(ns.x))
+    push!(iptrace, ns.ip)
+    return xtrace, iptrace
 end
 
 # # test

@@ -95,7 +95,7 @@ end
 # println(mhs.curU[])
 # mhs.x
 
-# for MHSampler, explore == run for nsteps
+# for MHSampler, explore == run for nsteps, return last state visited
 function explore!(mhs::MHSampler, nsteps::Int)
     for n in 1:nsteps
         step!(mhs)

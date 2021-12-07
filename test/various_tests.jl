@@ -17,7 +17,11 @@ ns=NRST.NRSTSampler(
     collect(range(0,1,length=9)),
     50
 );
+xtrace, iptrace = NRST.tour!(ns)
 
+
+A = typeof(ns.x)[]
+push!(A,ns.x)
 # explorers are independent
 ns2 = NRST.NRSTSampler(ns)
 ns2.explorers[2].x[1]=1.3
