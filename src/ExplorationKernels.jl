@@ -1,5 +1,3 @@
-# using UnPack,BenchmarkTools,Distributions,StatsPlots,Printf
-
 # abstract type for Exploration kernels
 # must have fields
 #   U: energy function of distribution targeted by the kernel
@@ -36,6 +34,12 @@ tune!(iids::IIDSampler,V;nsteps=50) = mean([V(iids.rand()) for _ in 1:nsteps])
 
 ###############################################################################
 # Metropolis-Hastings sampler with isotropic proposal
+# TODO: the proposal (and its tuning) is the only thing not reusable for other
+# targets! We must
+# - make MHSampler parametrized on type of x::T, where T can be in principle anything 
+# - put x::T and xprop::T
+# - replace sigma with something more generic like "params" 
+# - implement different propose! that dispatch on different types of x's
 ###############################################################################
 
 struct MHSampler{F,K<:AbstractFloat,A<:AbstractVector{K}} <: ExplorationKernel
@@ -140,3 +144,26 @@ end
 # tune!(mhs,x->(0.5sum(abs2,x)),verbose=true,nsteps=5000)
 # mhs.sigma[] = 4.0 # sigma too high
 # @code_warntype tune!(mhs,x->(0.5sum(abs2,x)))
+
+###############################################################################
+# construction of vectors of exploration kernels
+# these are usually mixed, with 1st element an IIDSampler and the rest an MCMC
+# sampler
+###############################################################################
+
+# union of concrete types
+# useful for having vectors of mixed types (as long as <=4 types)
+# see https://stackoverflow.com/a/58539098/5443023
+# also https://docs.julialang.org/en/v1/manual/types/#citeref-1
+const ContinuousSampler = Union{IIDSampler, MHSampler}
+
+# create a vector of exploration kernels: continous case
+function init_explorers(V,Vref,randref,betas,xinit::AbstractVector{<:AbstractFloat})
+    A = Vector{ContinuousSampler}(undef, length(betas))
+    A[1] = IIDSampler(Vref,randref)
+    for i in 2:length(betas)
+        beta = betas[i] # better to extract the beta, o.w. the closure grabs the whole vector
+        A[i] = MHSampler(x->(Vref(x) + beta*V(x)),xinit)
+    end
+    return A
+end
