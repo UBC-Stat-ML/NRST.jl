@@ -17,8 +17,7 @@ ns=NRST.NRSTSampler(
     collect(range(0,1,length=9)),
     50
 );
-xtrace, iptrace = NRST.tour!(ns)
-
+xtrace, iptrace = NRST.parallel_run!(ns)
 
 A = typeof(ns.x)[]
 push!(A,ns.x)
