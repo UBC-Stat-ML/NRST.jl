@@ -68,12 +68,11 @@ end
 ###############################################################################
 
 # reset state by sampling from the renewal measure
-function reset!(ns::NRSTSampler)
-    newx = ns.np.randref()
-    copyto!(ns.x,newx)
+function renew!(ns::NRSTSampler)
+    copyto!(ns.x,ns.np.randref())
     ns.ip[1] = 0
     ns.ip[2] = 1
-    ns.curV[] = ns.np.V(newx)
+    ns.curV[] = ns.np.V(ns.x)
 end
 
 # communication step
@@ -129,8 +128,10 @@ function step!(ns::NRSTSampler)
 end
 
 # run a tour: run the sampler until we reach the atom ip=(0,-1)
+# note: by finishing at the atom (0,-1) and restarting using the renewal measure,
+# repeatedly calling this function is equivalent to standard sequential sampling 
 function tour!(ns::NRSTSampler{I,K,A,B}) where {I,K,A,B}
-    reset!(ns)
+    renew!(ns)
     xtrace = A[]
     iptrace = Vector{I}[]
     while !(ns.ip[1] == 0 && ns.ip[2] == -1)
