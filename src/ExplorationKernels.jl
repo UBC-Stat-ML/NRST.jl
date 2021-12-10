@@ -130,7 +130,7 @@ end
 function tune!(mhs::MHSampler,V; nsteps=500, target_acc=0.234, eps=0.03, max_rounds=8, verbose=false)
     err = eps
     r = 0
-    verbose && @printf("Tuning initiated at sigma=%.1f", mhs.sigma[])
+    verbose && @printf("Tuning initiated at sigma=%.1f\n", mhs.sigma[])
     while err >= eps && r < max_rounds
         r += 1
         nacc = run!(mhs, nsteps)                        # run and get number of acc proposals

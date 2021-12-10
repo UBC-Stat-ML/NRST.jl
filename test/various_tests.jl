@@ -1,5 +1,5 @@
 using NRST
-
+# using StatsPlots
 
 # test
 # likelihood: N((1,1), I), reference: N(0, 4I)
@@ -15,21 +15,10 @@ ns=NRST.NRSTSampler(
     x->(0.125sum(abs2,x)), # reference: N(0, 4I)
     () -> 2randn(2), # reference: N(0, 4I)
     collect(range(0,1,length=9)),
-    50
+    50,
+    false
 );
-xtrace, iptrace = NRST.parallel_run!(ns,ntours=200);
-
-A = typeof(ns.x)[]
-push!(A,ns.x)
-# explorers are independent
-ns2 = NRST.NRSTSampler(ns)
-ns2.explorers[2].x[1]=1.3
-ns.explorers[2].x
-
-# but ns.np and ns2.np point to the same object
-ns.np.betas
-ns2.np.betas
-ns.np.betas[1] = -1.2
-ns2.np.betas
-ns2.np.betas[5] = 5.2
-ns.np.betas[5]
+# plot(ns.np.c)
+# xtrace, iptrace = NRST.tour!(ns);
+trace = NRST.parallel_run!(ns,ntours=4);
+trace[4]

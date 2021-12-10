@@ -1,6 +1,6 @@
 module NRST
 
-using UnPack,Distributions,Printf,Loess,StaticArrays
+using UnPack,Distributions,Printf,Statistics,StaticArrays
 
 include("utils.jl");
 include("ExplorationKernels.jl");
