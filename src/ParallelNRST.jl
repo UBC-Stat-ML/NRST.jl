@@ -29,12 +29,12 @@ function parallel_run!(
         put!(idle_nrst, (i, nrst)) # mark nrst as idle
     end
 
-    return analyze_trace(length(ns.np.betas),trace)
+    return analyze_tours(length(ns.np.betas),trace)
 end
 
 # compute tour_stats: for each state i: E[#visits(i)], E[#visits(i)^2], TE[i] = E[#visits(i)]^2/E[#visits(i)^2]
 # output: (tour_stats, merged x trace, merged ip trace)
-function analyze_trace(
+function analyze_tours(
     N::Int,
     trace::Vector{Tuple{Vector{T}, Vector{MVector{2,I}}}}
     ) where {T,I}

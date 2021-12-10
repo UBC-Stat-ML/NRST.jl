@@ -146,3 +146,25 @@ end
 # # test
 # xtrace,iptrace = run!(ns,100)
 # plot(iptrace[1,:],label="",seriestype = :steppost)
+
+###############################################################################
+# second-stage tuning (i.e., after initial_tuning)
+# uses the output of analyze_tours
+###############################################################################
+
+function tune_c_from_trace!(
+    ns::NRSTSampler{T,I,K,B},
+    xtrace::Vector{T},
+    iptrace::Matrix{I}
+    ) where {T,I,K,B}
+    @unpack np = ns
+    @unpack c, betas, V, use_mean = np
+    aggfun = use_mean ? mean : median
+    Varray = [K[] for _ in 1:length(c)]
+    # collect all the V(x_n) for each ip[1] in (0...N) 
+    for (n,ip) in enumerate(eachcol(iptrace))
+        push!(Varray[ip[1] + 1], V(xtrace[n]))
+    end
+    aggV = map(aggfun, Varray) # aggregate across different levels 
+    trpz_apprx!(c,betas,aggV)  # use trapezoidal approx to estimate int_0^beta db aggV(b)
+end

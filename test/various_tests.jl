@@ -22,5 +22,6 @@ ns=NRST.NRSTSampler(
 # xtrace, iptrace = NRST.tour!(ns);
 trace = NRST.parallel_run!(ns,ntours=100*Threads.nthreads());
 trace[:tour_stats]
-trace[:x]
-trace[:ip]
+ns.np.c
+NRST.tune_c_from_trace!(ns,trace[:x],trace[:ip])
+ns.np.c
