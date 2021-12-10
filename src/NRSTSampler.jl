@@ -110,9 +110,10 @@ end
 function expl_step!(ns::NRSTSampler)
     @unpack np,explorers,ip,curV,nexpl = ns
     @unpack V = np
-    set_state!(explorers[ip[1]+1], ns.x)               # pass current state to explorer
-    copyto!(ns.x, explore!(explorers[ip[1]+1], nexpl)) # explore and update state
-    curV[] = V(ns.x)                                   # compute energy at new point
+    set_state!(explorers[ip[1]+1], ns.x) # pass current state to explorer
+    explore!(explorers[ip[1]+1], nexpl)  # run explore for nexpl steps
+    copyto!(ns.x, explorers[ip[1]+1].x)  # update nrst's state with the explorer's
+    curV[] = V(ns.x)                     # compute energy at new point
 end
 
 # # test
