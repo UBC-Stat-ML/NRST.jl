@@ -20,5 +20,7 @@ ns=NRST.NRSTSampler(
 );
 # plot(ns.np.c)
 # xtrace, iptrace = NRST.tour!(ns);
-trace = NRST.parallel_run!(ns,ntours=4);
-trace[4]
+trace = NRST.parallel_run!(ns,ntours=100*Threads.nthreads());
+trace[:tour_stats]
+trace[:x]
+trace[:ip]
