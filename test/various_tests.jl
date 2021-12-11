@@ -23,5 +23,8 @@ ns=NRST.NRSTSampler(
 trace = NRST.parallel_run!(ns,ntours=100*Threads.nthreads());
 trace[:tour_stats]
 ns.np.c
-NRST.tune_c_from_trace!(ns,trace[:x],trace[:ip])
+Varray = NRST.tune_c_from_trace!(ns,trace[:x],trace[:ip])
 ns.np.c
+
+# TODO: define tune! as multiple rounds of tune_c_from_trace! with increasing ntours
+# TODO: estimate log(Z) from Varray at the last round of tuning

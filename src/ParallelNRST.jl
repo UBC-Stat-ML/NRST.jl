@@ -44,6 +44,7 @@ function analyze_tours(
     xtracefull = T[]             
     iptracefull = zeros(I,2,0)   # can use a matrix here
     ntours = 0
+
     for (xtrace, iptrace) in trace
         ntours += 1
 
@@ -59,11 +60,13 @@ function analyze_tours(
         append!(xtracefull, xtrace)
         iptracefull = hcat(iptracefull, reduce(hcat,iptrace))
     end
+
     # compute means from accumulated sums
     vs_mean    = vs_sum    ./ ntours
     vs_sq_mean = vs_sq_sum ./ ntours
     tour_stats = [
         vs_mean vs_sq_mean ((vs_mean .* vs_mean) ./ vs_sq_mean)
     ]
+    
     return (tour_stats = tour_stats, x = xtracefull, ip = iptracefull)
 end

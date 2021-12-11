@@ -161,10 +161,11 @@ function tune_c_from_trace!(
     @unpack c, betas, V, use_mean = np
     aggfun = use_mean ? mean : median
     Varray = [K[] for _ in 1:length(c)]
-    # collect all the V(x_n) for each ip[1] in (0...N) 
+    # collect all the V(x_n) for each level in (0...N) 
     for (n,ip) in enumerate(eachcol(iptrace))
         push!(Varray[ip[1] + 1], V(xtrace[n]))
     end
-    aggV = map(aggfun, Varray) # aggregate across different levels 
-    trpz_apprx!(c,betas,aggV)  # use trapezoidal approx to estimate int_0^beta db aggV(b)
+    aggV = map(aggfun, Varray)  # aggregate across different levels 
+    trpz_apprx!(c, betas, aggV) # use trapezoidal approx to estimate int_0^beta db aggV(b)
+    return Varray
 end
