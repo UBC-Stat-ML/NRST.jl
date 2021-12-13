@@ -19,15 +19,7 @@ ns=NRST.NRSTSampler(
 );
 
 results = NRST.parallel_run!(ns,ntours=4000);
-results[2][4]
-# using Plots
-# _, iptrace = NRST.tour!(ns);
-# plot(reduce(hcat,iptrace)[1,:])
+results[2][:nsteps]
 
-# plot(results[:trace][:ip][1,:])
-# chan = NRST.tune!(ns,nrounds=6)
-# for _ in 1:length(chan)
-#     i,nrst = take!(idle_nrst)
-#     p
-#     put!(idle_nrst, (i, nrst))
-# end
+using Plots
+plot(results[2][4][:,1])

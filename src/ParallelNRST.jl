@@ -54,7 +54,7 @@ function parallel_run!(
 end
 
 # compute tour_stats: for each state i: E[#visits(i)], E[#visits(i)^2], TE[i] = E[#visits(i)]^2/E[#visits(i)^2]
-# output: (tour_stats, seconds per tour, merged x trace, merged ip trace)
+# output: (tour_stats, steps per tour, seconds per tour, merged xtrace, merged iptrace)
 function postprocess_tours(
     N::Int,
     trace::Vector{Tuple{K, Vector{T}, Vector{MVector{2,I}}}}
@@ -63,6 +63,7 @@ function postprocess_tours(
     vs_sum = zeros(I,N)        # stores sum of vs and visits^2
     vs_sq_sum = zeros(I,N)     # stores sum of vs^2
     vs = Vector{I}(undef,N)    # number of visits for current tour
+    nstepstrace = Int[]
     timetrace = K[]
     xtracefull = T[]             
     iptracefull = zeros(I,2,0) # can use a matrix here
@@ -73,13 +74,16 @@ function postprocess_tours(
         
         # compute number of visits to states in this tour and update accumulators
         fill!(vs, zero(I))
+        len = 0
         for ip in iptrace
+            len += 1
             vs[ip[1] + 1] += 1 # 1-based indexing
         end
         vs_sum    .+= vs
         vs_sq_sum .+= (vs .* vs)
 
         # append to traces
+        push!(nstepstrace, len)
         push!(timetrace, seconds)
         append!(xtracefull, xtrace)
         iptracefull = hcat(iptracefull, reduce(hcat, iptrace))
@@ -92,5 +96,8 @@ function postprocess_tours(
         vs_mean vs_sq_mean ((vs_mean .* vs_mean) ./ vs_sq_mean)
     ]
 
-    return (tour_stats = tour_stats, time = timetrace, x = xtracefull, ip = collect(iptracefull'))
+    return (
+        tour_stats = tour_stats, nsteps = nstepstrace, time = timetrace,
+        x = xtracefull, ip = collect(iptracefull')
+    )
 end
