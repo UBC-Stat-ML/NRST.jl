@@ -1,5 +1,4 @@
 using NRST
-# using StatsPlots
 
 # test
 # likelihood: N((1,1), I), reference: N(0, 4I)
@@ -18,13 +17,17 @@ ns=NRST.NRSTSampler(
     50,
     false
 );
-# plot(ns.np.c)
-# xtrace, iptrace = NRST.tour!(ns);
-trace = NRST.parallel_run!(ns,ntours=100*Threads.nthreads());
-trace[:tour_stats]
-ns.np.c
-Varray = NRST.tune_c_from_trace!(ns,trace[:x],trace[:ip])
-ns.np.c
 
-# TODO: define tune! as multiple rounds of tune_c_from_trace! with increasing ntours
-# TODO: estimate log(Z) from Varray at the last round of tuning
+results = NRST.parallel_run!(ns,ntours=4000);
+results[2][4]
+# using Plots
+# _, iptrace = NRST.tour!(ns);
+# plot(reduce(hcat,iptrace)[1,:])
+
+# plot(results[:trace][:ip][1,:])
+# chan = NRST.tune!(ns,nrounds=6)
+# for _ in 1:length(chan)
+#     i,nrst = take!(idle_nrst)
+#     p
+#     put!(idle_nrst, (i, nrst))
+# end

@@ -3,6 +3,7 @@
 # defined in https://github.com/theogf/ThermodynamicIntegration.jl/blob/main/src/turing.jl
 # here I'll just write a disection of the code for eventually adapting it and
 # hopefully improving it
+# NOTE: we also need sampling from the prior!
 # also this is perhaps a better way
 # https://github.com/TuringLang/DynamicPPL.jl/issues/112#issuecomment-627474180
 # helper functions implemented starting here

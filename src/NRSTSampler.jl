@@ -149,10 +149,10 @@ end
 
 ###############################################################################
 # second-stage tuning (i.e., after initial_tuning)
-# uses the output of analyze_tours
+# uses the output of postprocess_tours
 ###############################################################################
 
-function tune_c_from_trace!(
+function tune_c!(
     ns::NRSTSampler{T,I,K,B},
     xtrace::Vector{T},
     iptrace::Matrix{I}
@@ -165,7 +165,36 @@ function tune_c_from_trace!(
     for (n,ip) in enumerate(eachcol(iptrace))
         push!(Varray[ip[1] + 1], V(xtrace[n]))
     end
-    aggV = map(aggfun, Varray)  # aggregate across different levels 
+    # compute aggregate of V, set to 0 if no samples at given level
+    aggV = similar(c)
+    for (i, vs) in enumerate(Varray)
+        aggV[i] = length(vs) > 0 ? aggfun(vs) : zero(K)
+    end
     trpz_apprx!(c, betas, aggV) # use trapezoidal approx to estimate int_0^beta db aggV(b)
-    return Varray
+    return Varray               # can be used to estimate Z(beta) when aggfun != mean
+end
+
+
+# run in parallel multiple rounds with an exponentially increasing number of tours
+# return estimate of partition function
+function tune!(
+    ns::NRSTSampler{T,I,K,B};
+    nrounds::Int = 8,
+    nthrds::Int = Threads.nthreads(), # number of threads available to run tours
+    verbose::Bool = false
+    ) where {T,I,K,B}
+    # do an initial round to construct a channel
+    ntours = 8
+    channel, trace = parallel_run!(ns, ntours = ntours*nthrds, nthrds = nthrds)
+    Varray = tune_c!(ns, trace[:x], trace[:ip])
+    # TODO: change c for all ns in channel
+    for nr in 2:nrounds
+        ntours *= 2
+        println("Tuning round $nr with $ntours tours per thread")
+        trace   = parallel_run!(channel, ntours = ntours*nthrds)
+        Varray  = tune_c!(ns, trace[:x], trace[:ip])
+        # TODO: change c for all ns in channel
+    end
+    # close(channel)
+    return channel
 end
