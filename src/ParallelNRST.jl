@@ -50,54 +50,37 @@ function parallel_run!(
     i, nrst = take!(idle_nrst) # cumbersome way of finding what N is...
     N = length(nrst.np.betas)
     put!(idle_nrst, (i, nrst))
-    return postprocess_tours(N, trace)
+    return postprocess_tours(ntours, N, trace)
 end
 
-# compute tour_stats: for each state i: E[#visits(i)], E[#visits(i)^2], TE[i] = E[#visits(i)]^2/E[#visits(i)^2]
-# output: (tour_stats, steps per tour, seconds per tour, merged xtrace, merged iptrace)
+# process the raw trace
 function postprocess_tours(
+    ntours::Int,
     N::Int,
     trace::Vector{Tuple{K, Vector{T}, Vector{MVector{2,I}}}}
     ) where {K,T,I}
 
-    vs_sum = zeros(I,N)        # stores sum of vs and visits^2
-    vs_sq_sum = zeros(I,N)     # stores sum of vs^2
-    vs = Vector{I}(undef,N)    # number of visits for current tour
-    nstepstrace = Int[]
-    timetrace = K[]
-    xtracefull = T[]             
-    iptracefull = zeros(I,2,0) # can use a matrix here
-    ntours = 0
-
+    xarray = [T[] for _ in 1:N]       # sequentially collect the value of x at each of the levels
+    nsteps = Vector{I}(undef, ntours) # number of steps in every tour
+    times  = Vector{K}(undef, ntours) # time spent in every tour
+    visits = zeros(I, ntours, N)      # number of visits to each level on each tour
+    iptracefull = zeros(I, 2 ,0)      # collect the whole index process in one big matrix (for the obligatory plot)
+    tour = 0
     for (seconds, xtrace, iptrace) in trace
-        ntours += 1
-        
-        # compute number of visits to states in this tour and update accumulators
-        fill!(vs, zero(I))
+        tour += 1
         len = 0
-        for ip in iptrace
+        for (n, ip) in enumerate(iptrace)
             len += 1
-            vs[ip[1] + 1] += 1 # 1-based indexing
+            visits[tour, ip[1] + 1] += 1
+            push!(xarray[ip[1] + 1], xtrace[n])
         end
-        vs_sum    .+= vs
-        vs_sq_sum .+= (vs .* vs)
-
-        # append to traces
-        push!(nstepstrace, len)
-        push!(timetrace, seconds)
-        append!(xtracefull, xtrace)
-        iptracefull = hcat(iptracefull, reduce(hcat, iptrace))
+        nsteps[tour] = len
+        times[tour]  = seconds
+        iptracefull  = hcat(iptracefull, reduce(hcat, iptrace))
     end
-
-    # compute means from accumulated sums
-    vs_mean    = vs_sum    ./ ntours
-    vs_sq_mean = vs_sq_sum ./ ntours
-    tour_stats = [
-        vs_mean vs_sq_mean ((vs_mean .* vs_mean) ./ vs_sq_mean)
-    ]
-
+    @assert tour == ntours
     return (
-        tour_stats = tour_stats, nsteps = nstepstrace, time = timetrace,
-        x = xtracefull, ip = collect(iptracefull')
+        nsteps = nsteps, times = times, xarray = xarray, visits = visits,
+        ip = collect(iptracefull')
     )
 end

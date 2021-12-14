@@ -17,9 +17,10 @@ ns=NRST.NRSTSampler(
     50,
     false
 );
-
+results = NRST.tour!(ns);
+results[1][2]
 results = NRST.parallel_run!(ns,ntours=4000);
-results[2][:nsteps]
+sum(results[2][:visits] .> 0)
 
 using Plots
-plot(results[2][4][:,1])
+plot(results[2][:ip][:,1])
