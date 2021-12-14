@@ -16,7 +16,7 @@ abstract type ExplorationKernel end
 # see e.g. https://github.com/SciML/SciMLBase.jl/blob/0c3ff86218c23a73389700b2f8eb057d7b95630b/src/problems/ode_problems.jl#L19
 # in other words, this is not "trying to do O.O. stuff in Julia"
 struct IIDSampler{F,G,T} <: ExplorationKernel
-    U::F    # energy function
+    U::F    # energy function (not really used for anything in iid sampling)
     rand::G # produce one iid sample
     x::T    # last sample taken
 end

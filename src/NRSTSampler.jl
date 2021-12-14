@@ -26,12 +26,12 @@ end
 ###############################################################################
 
 # tune all explorers' parameters in parallel, then adjust c
-function initial_tuning!(explorers,np::NRSTProblem,nsteps::Int)
+function initial_tuning!(explorers, np::NRSTProblem, nsteps::Int)
     @unpack c, betas, V = np
     aggfun = np.use_mean ? mean : median
     aggV = similar(c)
     Threads.@threads for i in eachindex(aggV)
-        aggV[i] = aggfun(tune!(explorers[i],V,nsteps=nsteps))
+        aggV[i] = aggfun(tune!(explorers[i], V, nsteps = nsteps))
     end
     # copyto!(aggV,predict(loess(betas, aggV),betas)) # use LOESS smoothing to remove kinks. note: predict is not type stable!
     trpz_apprx!(c,betas,aggV)                         # use trapezoidal approx to estimate int_0^beta db aggV(b)
@@ -43,13 +43,13 @@ end
 # plot(np.betas, np.c)
 
 # constructor that also builds an NRSTProblem and does initial tuning
-function NRSTSampler(V,Vref,randref,betas,nexpl,use_mean)
+function NRSTSampler(V, Vref, randref, betas, nexpl, use_mean)
     x = randref()
     np = NRSTProblem(V, Vref, randref, betas, similar(betas), use_mean)
     explorers = init_explorers(V, Vref, randref, betas, x)
     # tune explorations kernels and get initial c estimate 
-    initial_tuning!(explorers,np,10*nexpl)
-    NRSTSampler(np,explorers,x,MVector(0,1),Ref(V(x)),nexpl)
+    initial_tuning!(explorers, np, 10*nexpl)
+    NRSTSampler(np, explorers, x, MVector(0,1), Ref(V(x)), nexpl)
 end
 
 # copy-constructor, using a given NRSTSampler (usually already initially-tuned)
@@ -58,7 +58,7 @@ end
 function NRSTSampler(ns::NRSTSampler)
     x = ns.np.randref()
     explorers_copy = deepcopy(ns.explorers) # need full recursive copy, otherwise state is shared
-    NRSTSampler(ns.np,explorers_copy,x,MVector(0,1),Ref(ns.np.V(x)),ns.nexpl)
+    NRSTSampler(ns.np, explorers_copy, x, MVector(0,1), Ref(ns.np.V(x)), ns.nexpl)
 end
 
 ###############################################################################
@@ -88,7 +88,8 @@ function comm_step!(ns::NRSTSampler)
         return false
     else
         i = ip[1] # current index
-        # note: U(0,1) =: U < p <=> log(U) < log(p) <=> Exp(1) > -log(p) =: neglaccpr
+        # note: U(0,1) =: U < p <=> log(U) < log(p) 
+        # <=> Exp(1) > -log(p) =: neglaccpr
         neglaccpr = (betas[iprop+1] - betas[i+1]) * curV[] - (c[iprop+1] - c[i+1])
         acc = (neglaccpr < rand(Exponential())) # accept?
         if acc
@@ -109,7 +110,7 @@ function expl_step!(ns::NRSTSampler)
     @unpack np,explorers,ip,curV,nexpl = ns
     @unpack V = np
     set_state!(explorers[ip[1]+1], ns.x) # pass current state to explorer
-    explore!(explorers[ip[1]+1], nexpl)  # run explore for nexpl steps
+    explore!(explorers[ip[1]+1], nexpl)  # explore for nexpl steps
     copyto!(ns.x, explorers[ip[1]+1].x)  # update nrst's state with the explorer's
     curV[] = V(ns.x)                     # compute energy at new point
 end
@@ -165,7 +166,6 @@ function tune_c!(
     end
     trpz_apprx!(c, betas, aggV) # use trapezoidal approx to estimate int_0^beta db aggV(b)
 end
-
 
 # run in parallel multiple rounds with an exponentially increasing number of tours
 # return estimate of partition function
