@@ -1,5 +1,5 @@
 using NRST
-
+16*2^8
 # test
 # likelihood: N((1,1), I), reference: N(0, 4I)
 # => -log-target = K + 1/2[(x-1)^T(x-1) + 1/4x^Tx]
@@ -25,18 +25,23 @@ ns=NRST.NRSTSampler(
     x->(0.5sum(abs2,x .- [1.,1.])), # likelihood: N((1,1), I)
     x->(0.125sum(abs2,x)), # reference: N(0, 4I)
     () -> 2randn(2), # reference: N(0, 4I)
-    collect(range(0,1,length=40)),
+    collect(range(0,1,length=9)),
     50,
-    true
+    false
 );
+ns.np.c
+chan = NRST.tune!(ns,verbose=true)
+
+
+
 
 # PROBLEM: tuning with mean is hard when there's a peak of E^{b}[V] around some b
 # TODO: get analytic log(Z(b)) for problem above and tune c directly using that!
 using StatsBase, StatsPlots
-results = NRST.parallel_run!(ns,ntours=4000);
-plot(vec(sum(results[2][:visits], dims=1)))
+results = NRST.parallel_run!(chan,ntours=4000);
+plot(vec(sum(results[:visits], dims=1)))
 aggV = similar(ns.np.c)
-for (i, xs) in enumerate(results[2][:xarray])
+for (i, xs) in enumerate(results[:xarray])
     aggV[i] = mean(winsor(ns.np.V.(xs), prop=0.05))
 end
 plot(aggV)
