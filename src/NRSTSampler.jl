@@ -154,24 +154,16 @@ end
 
 function tune_c!(
     ns::NRSTSampler{T,I,K,B},
-    xtrace::Vector{T},
-    iptrace::Matrix{I}
+    xarray::Vector{Vector{T}},
     ) where {T,I,K,B}
     @unpack np = ns
     @unpack c, betas, V, use_mean = np
     aggfun = use_mean ? mean : median
-    Varray = [K[] for _ in 1:length(c)]
-    # collect all the V(x_n) for each level in (0...N) 
-    for (n,ip) in enumerate(eachcol(iptrace))
-        push!(Varray[ip[1] + 1], V(xtrace[n]))
-    end
-    # compute aggregate of V, set to 0 if no samples at given level
     aggV = similar(c)
-    for (i, vs) in enumerate(Varray)
-        aggV[i] = length(vs) > 0 ? aggfun(vs) : zero(K)
+    for (i, xs) in enumerate(xarray)
+        aggV[i] = length(xs) > 0 ? aggfun(V.(xs)) : zero(K)
     end
     trpz_apprx!(c, betas, aggV) # use trapezoidal approx to estimate int_0^beta db aggV(b)
-    return Varray               # can be used to estimate Z(beta) when aggfun != mean
 end
 
 
