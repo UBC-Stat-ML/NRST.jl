@@ -17,20 +17,9 @@ function get_samplers_vector(
     return samplers
 end
 
-# utility that creates the samplers vector for you and then uses it to run
+# run in parallel using a vector of identical copies of NRST samplers
 function parallel_run!(
-    ns::NRSTSampler;        
-    ntours::Int,                      # run a total of ntours
-    nthrds::Int = Threads.nthreads(), # number of threads available to run tours
-    verbose::Bool = false
-)
-    samplers = get_samplers_vector(ns, nthrds = nthrds)
-    trace = parallel_run!(samplers, ntours=ntours, verbose=verbose)
-    return (samplers = samplers, trace = trace)
-end
-
-function parallel_run!(
-    samplers::Vector{NRSTSampler{T,I,K,B}}; # contains (deep)copies of an NRSTSampler object 
+    samplers::Vector{NRSTSampler{T,I,K,B}}; # contains nthrds (deep)copies of an NRSTSampler object 
     ntours::Int,                            # run a total of ntours tours
     verbose::Bool = false
 ) where {T,I,K,B}
@@ -56,6 +45,18 @@ function parallel_run!(
     return postprocess_tours(ntours, N, trace)
 end
 
+# utility that creates the samplers vector for you and then returns it along results
+function parallel_run!(
+    ns::NRSTSampler;        
+    ntours::Int,                      # run a total of ntours
+    nthrds::Int = Threads.nthreads(), # number of threads available to run tours
+    verbose::Bool = false
+)
+    samplers = get_samplers_vector(ns, nthrds = nthrds)
+    results = parallel_run!(samplers, ntours=ntours, verbose=verbose)
+    return (samplers = samplers, results = results)
+end
+
 # process the raw trace
 function postprocess_tours(
     ntours::Int,
@@ -67,7 +68,7 @@ function postprocess_tours(
     nsteps = Vector{I}(undef, ntours) # number of steps in every tour
     times  = Vector{K}(undef, ntours) # time spent in every tour
     visits = zeros(I, ntours, N)      # number of visits to each level on each tour
-    iptracefull = zeros(I, 2 ,0)      # collect the whole index process in one big matrix (for the obligatory plot)
+    iptracefull = zeros(I, 2 ,0)      # collect the whole index process in one big matrix (for the obligatory index process plot)
     tour = 0
     for (seconds, xtrace, iptrace) in trace
         tour += 1

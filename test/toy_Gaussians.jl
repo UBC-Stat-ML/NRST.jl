@@ -18,7 +18,7 @@ using StatsPlots
 using Distributions
 using LinearAlgebra
 
-const d    = 2 # contour plots will fail for d != 2 
+const d    = 2 # contour plots only for d==2 
 const s0   = 2.
 const m    = 4.
 const s0sq = s0*s0
@@ -31,6 +31,7 @@ function F(b)
     -0.5*d*( log(2*pi*ssq) - b*m*m*(1-b*ssq) )
 end
 
+# build an NRST sampler, tune exploration kernels, and do initial tuning of c
 ns=NRST.NRSTSampler(
     x->(0.5sum(abs2,x.-fill(m,d))), # likelihood: N(m1, I)
     x->(0.5sum(abs2,x)/s0sq),       # reference: N(0, s0^2I)
@@ -40,12 +41,30 @@ ns=NRST.NRSTSampler(
     true                            # tune c using mean energy
 );
 
-# set c(b) = F(b) = analytic expression for free energy
+# build vector of identical copies of ns for safe parallel computations
+samplers = NRST.get_samplers_vector(ns, nthrds = Threads.nthreads());
+
+###############################################################################
+# compare self-tuning to truth
+###############################################################################
+
+true_c = F.(ns.np.betas) .- F(ns.np.betas[1]) # adjust to convention c(0)=0
+NRST.tune!(samplers, verbose=true)
+maximum(abs.(samplers[1].np.c[2:end] .- true_c[2:end]) ./ true_c[2:end]) < 0.1
+
+###############################################################################
+# check if using exact tuning gives uniform distribution
+# I.e., set c(b) = F(b)
+###############################################################################
+
 copyto!(ns.np.c, F.(ns.np.betas))
-samplers, results = NRST.parallel_run!(ns, ntours=4096);
+results = NRST.parallel_run!(samplers, ntours=512*Threads.nthreads());
 variation(sum(results[:visits], dims=1)) < 0.05
 
+###############################################################################
 # plot contours of pdf of N(mu_b, s_b^2 I) versus scatter of samples
+###############################################################################
+
 function draw_contour!(p,b,xrange)
     dist = MultivariateNormal(mu(b), sbsq(b)*I(d))
     f(x1,x2) = pdf(dist,[x1,x2])
@@ -58,30 +77,54 @@ function draw_points!(p,i;x...)
     scatter!(p, M[:,1], M[:,2];x...)
 end
 
-# plot!
-xmax = 4*s0
-xrange = -xmax:0.1:xmax
-xlim = extrema(xrange)
-minloglev = logpdf(MultivariateNormal(mu(0.), sbsq(0.)*I(d)), 3*s0*ones(2))
-maxloglev = logpdf(MultivariateNormal(mu(1.), sbsq(1.)*I(d)), mu(1.))
-lvls = exp.(range(minloglev,maxloglev,length=10))
-plotvec = Vector(undef,length(ns.np.betas))
-for (i,b) in enumerate(ns.np.betas)
-    p = plot()
-    draw_contour!(p,b,xrange)
-    draw_points!(
-        p,i;xlim=xlim,ylim=xlim,
-        markeralpha=0.3,markerstrokewidth=0,
-        legend_position=:bottomleft,label="b=$(round(b,digits=2))"
-    )
-    plotvec[i] = p
+if d == 2
+    # plot!
+    xmax = 4*s0
+    xrange = -xmax:0.1:xmax
+    xlim = extrema(xrange)
+    minloglev = logpdf(MultivariateNormal(mu(0.), sbsq(0.)*I(d)), 3*s0*ones(2))
+    maxloglev = logpdf(MultivariateNormal(mu(1.), sbsq(1.)*I(d)), mu(1.))
+    lvls = exp.(range(minloglev,maxloglev,length=10))
+    anim = @animate for (i,b) in enumerate(ns.np.betas)
+        p = plot()
+        draw_contour!(p,b,xrange)
+        draw_points!(
+            p,i;xlim=xlim,ylim=xlim,
+            markeralpha=0.3,markerstrokewidth=0,
+            legend_position=:bottomleft,label="β=$(round(b,digits=2))"
+        )
+        plot(p)
+    end
+    gif(anim, fps = 2)
 end
-plot(plotvec..., size=(1600,800))
 
+# if d == 2
+    # # plot!
+    # xmax = 4*s0
+    # xrange = -xmax:0.1:xmax
+    # xlim = extrema(xrange)
+    # minloglev = logpdf(MultivariateNormal(mu(0.), sbsq(0.)*I(d)), 3*s0*ones(2))
+    # maxloglev = logpdf(MultivariateNormal(mu(1.), sbsq(1.)*I(d)), mu(1.))
+    # lvls = exp.(range(minloglev,maxloglev,length=10))
+    # plotvec = Vector(undef,length(ns.np.betas))
+    # for (i,b) in enumerate(ns.np.betas)
+    #     p = plot()
+    #     draw_contour!(p,b,xrange)
+    #     draw_points!(
+    #         p,i;xlim=xlim,ylim=xlim,
+    #         markeralpha=0.3,markerstrokewidth=0,
+    #         legend_position=:bottomleft,label="b=$(round(b,digits=2))"
+    #     )
+    #     plotvec[i] = p
+    # end
+    # plot(plotvec..., size=(1600,800))
+# end
+
+###############################################################################
 # check E^{b}[V] is accurately estimated
 # compare F' to 
-# - multith touring with NRST  : ×
-# - singleth touring with NRST : ✓
+# - multithr touring with NRST : ✓
+# - singlethr touring with NRST: ✓
 # - serial sampling with NRST  : ✓
 # - IID sampling from truth    : ✓
 # - serial exploration kernels : ✓
@@ -145,7 +188,6 @@ for k in 1:ntours
     append!(xtracefull, xtrace)
     iptracefull = hcat(iptracefull, reduce(hcat, iptrace))
 end
-countmap(iptracefull[1,:]) # uniform!
 aggV = zeros(eltype(ns.np.c), length(ns.np.c)) # accumulate sums here, then divide by nvisits
 nvisits = zeros(Int, length(aggV))
 for (n, ip) in enumerate(eachcol(iptracefull))
@@ -154,5 +196,3 @@ for (n, ip) in enumerate(eachcol(iptracefull))
 end
 aggV ./= nvisits
 plot!(ns.np.betas, aggV, label="ST-Tour", palette = cvd_pal)
-
-

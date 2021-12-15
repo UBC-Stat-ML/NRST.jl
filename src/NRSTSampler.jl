@@ -183,28 +183,36 @@ function tune_c!(
 end
 
 # run in parallel multiple rounds with an exponentially increasing number of tours
-# return estimate of partition function
-# NOTE: ns.np is shared across samplers so changing ns.np affects all samplers
+# NOTE: the np field is shared across samplers so changing just samplers[1] affects all samplers
 function tune!(
-    ns::NRSTSampler{T,I,K,B};
-    nrounds::Int = 8,
-    nthrds::Int = Threads.nthreads(),
+    samplers::Vector{NRSTSampler{T,I,K,B}};
+    nrounds::Int  = 5,
+    nthrds::Int   = Threads.nthreads(),
     verbose::Bool = false
     ) where {T,I,K,B}
-    
-    samplers = get_samplers_vector(ns, nthrds = nthrds) # construct a samplers vector
-    ntours = 16                                         # initialize number of tours (i.e., 1st round uses 32)
+
+    ntours = 16 # initialize number of tours (i.e., 1st round uses 32)
     for nr in 1:nrounds
         ntours *= 2
         if verbose
             println("Tuning round $nr with $ntours tours per thread")
             println("Current c:")
-            display(ns.np.c)
+            display(samplers[1].np.c)
             println("")
         end
-        trace = parallel_run!(samplers, ntours = ntours*nthrds)
-        tune_c!(ns, trace[:xarray]) # ns.np is shared across the samplers so this is enough to change all
+        results = parallel_run!(samplers, ntours = ntours*nthrds)
+        tune_c!(samplers[1], results[:xarray]) # np is shared across the samplers so this is enough to change all
     end
-    
+end
+
+# utility that builds the samplers object for you and returns it
+function tune!(
+    ns::NRSTSampler;
+    nrounds::Int  = 5,
+    nthrds::Int   = Threads.nthreads(),
+    verbose::Bool = false
+    )
+    samplers = get_samplers_vector(ns, nthrds = nthrds) # construct a samplers vector
+    tune!(ns, nrounds = nrounds, nthrds = nthrds, verbose = verbose)
     return samplers
 end
