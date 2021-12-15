@@ -1,5 +1,5 @@
 ###############################################################################
-# Toy example in ℜ^d with
+# Toy example in ℝᵈ with
 # - Prior     : N(0, s_0^2 I)
 # - Likelihood: N(m1, I)
 # Implies Gaussian annealing path: b ↦ N(mu_b, s_b^2 I), with
@@ -8,7 +8,12 @@
 # the exp() in the Gaussian pdf), we get that the free energy is given by
 #     F(b) := -log(Z(b)) = -0.5d(log(2pi s_b^2) - bm^2[1 - bs_b^2])
 # Using the thermodynamic identity, we can obtain the function b ↦ E^{b}[V] by
-# differentiating F (using Zygote)
+# differentiating F (with Zygote)
+#
+# ISSUES RAISED
+# - parallel NRST produces incorrect estimates of E^{b}[V]
+# TODO
+# - check running NRST serially: single thread, no regenerations
 ###############################################################################
 
 using NRST
@@ -18,7 +23,7 @@ using StatsPlots
 using Distributions
 using LinearAlgebra
 
-const d    = 2
+const d    = 2 # contour plots will fail for d != 2 
 const s0   = 2.
 const m    = 4.
 const s0sq = s0*s0
@@ -77,19 +82,40 @@ for (i,b) in enumerate(ns.np.betas)
 end
 plot(plotvec..., size=(1600,800))
 
-# exact tuning using free energy
+# check distribution of levels under exact tuning using free energy
 copyto!(ns.np.c, F.(ns.np.betas))
 results = NRST.parallel_run!(chan, ntours=4096);
 sum(results[:visits], dims=1) # not uniform...
 
-# check free energy works
-# compare F' to NRST and to IID sampling from truth
-# conclusion: F' and MC agree, NRST does not :(
-plot(F',0.,1., label="Theory")
+# check E^{b}[V] is accurately estimated
+# compare F' to 
+# - parallel sampling with NRST: ×
+# - serial sampling with NRST  : ? <-- TODO
+# - IID sampling from truth    : ✓
+# - running exploration kernels: ✓
+
+plot(F',0.,1., label="Theory") # ground truth
+
+# parallel NRST
 aggV = similar(ns.np.c)
 for (i, xs) in enumerate(results[:xarray])
     aggV[i] = mean(ns.np.V.(xs))
 end
-plot!(ns.np.betas, aggV, label="NRST")
+plot!(ns.np.betas, aggV, label="ParNRST")
+
+# iid sampling
 meanv(b) = mean(ns.np.V.(eachcol(rand(MultivariateNormal(mu(b), sbsq(b)*I(d)),1000))))
 plot!(ns.np.betas, meanv.(ns.np.betas), label="MC")
+
+# use the explorers to approximate E^{b}[V]
+Threads.@threads for i in eachindex(aggV)
+    aggV[i] = mean(NRST.tune!(ns.explorers[i], ns.np.V, nsteps = 5000))
+end
+plot!(ns.np.betas, aggV, label="MH")
+
+# parallel NRST
+aggV = similar(ns.np.c)
+for (i, xs) in enumerate(results[:xarray])
+    aggV[i] = mean(ns.np.V.(xs))
+end
+plot!(ns.np.betas, aggV, label="ParNRST")
