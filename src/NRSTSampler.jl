@@ -184,8 +184,7 @@ end
 
 # run in parallel multiple rounds with an exponentially increasing number of tours
 # return estimate of partition function
-# NOTE: ns.np is shared across a channel so changing ns.np affects all samplers
-# in the channel
+# NOTE: ns.np is shared across samplers so changing ns.np affects all samplers
 function tune!(
     ns::NRSTSampler{T,I,K,B};
     nrounds::Int = 8,
@@ -193,12 +192,9 @@ function tune!(
     verbose::Bool = false
     ) where {T,I,K,B}
     
-    # do an initial round to construct a channel
-    ntours = 32
-    channel, trace = parallel_run!(ns, ntours = ntours*nthrds, nthrds = nthrds)
-    tune_c!(ns, trace[:xarray])
-
-    for nr in 2:nrounds
+    samplers = get_samplers_vector(ns, nthrds = nthrds) # construct a samplers vector
+    ntours = 16                                         # initialize number of tours (i.e., 1st round uses 32)
+    for nr in 1:nrounds
         ntours *= 2
         if verbose
             println("Tuning round $nr with $ntours tours per thread")
@@ -206,9 +202,9 @@ function tune!(
             display(ns.np.c)
             println("")
         end
-        trace = parallel_run!(channel, ntours = ntours*nthrds)
-        tune_c!(ns, trace[:xarray]) # ns.np is shared across the channel so this is enough to change all
+        trace = parallel_run!(samplers, ntours = ntours*nthrds)
+        tune_c!(ns, trace[:xarray]) # ns.np is shared across the samplers so this is enough to change all
     end
     
-    return channel
+    return samplers
 end

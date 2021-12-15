@@ -1,58 +1,56 @@
 ###############################################################################
 # run NRST in parallel exploiting regenerations
+# uses the multithreaded approach described here
+# https://discourse.julialang.org/t/request-for-comments-on-approach-to-multithreaded-work/72728
+# FAILED APPROACH: channels are not thread safe? Consider filing an issue
 ###############################################################################
 
-# create vector of identical copies of a given nrst sampler
-# used to avoid race conditions between threads
-# initialize with ns and additional nthrds-1 (deep)copies
-function get_samplers_vector(
-    ns::NRSTSampler{T,I,K,B};        
-    nthrds::Int
-) where {T,I,K,B}
-    samplers = Vector{NRSTSampler{T,I,K,B}}(undef, nthrds)
-    samplers[1] = ns
-    for i in 2:nthrds
-        samplers[i] = NRSTSampler(ns)
-    end
-    return samplers
-end
-
-# utility that creates the samplers vector for you and then uses it to run
 function parallel_run!(
-    ns::NRSTSampler;        
+    ns::NRSTSampler{T,I,K,B};        
     ntours::Int,                      # run a total of ntours
     nthrds::Int = Threads.nthreads(), # number of threads available to run tours
     verbose::Bool = false
-)
-    samplers = get_samplers_vector(ns, nthrds = nthrds)
-    trace = parallel_run!(samplers, ntours=ntours, verbose=verbose)
-    return (samplers = samplers, trace = trace)
+) where {T,I,K,B}
+    # create channel containing idle nrst samplers, which can be used by workers
+    # initialize with ns and additional nthrds-1 (deep)copies
+    idle_nrst = Channel{Tuple{Int,NRSTSampler{T,I,K,B}}}(nthrds)
+    put!(idle_nrst, (1, ns))
+    for i in 2:nthrds
+        put!(idle_nrst, (i, NRSTSampler(ns)))
+    end
+
+    # returns channel and output
+    return (chan = idle_nrst, trace = parallel_run!(idle_nrst, ntours=ntours, verbose=verbose))
 end
 
 function parallel_run!(
-    samplers::Vector{NRSTSampler{T,I,K,B}}; # contains (deep)copies of an NRSTSampler object 
-    ntours::Int,                            # run a total of ntours tours
+    idle_nrst::Channel{Tuple{Int,NRSTSampler{T,I,K,B}}}; # contains (deep)copies of an NRSTSampler object 
+    ntours::Int,                                         # run a total of ntours tours
     verbose::Bool = false
 ) where {T,I,K,B}
     # need separate storage for each threadid because push! is not atomic!
-    trace_vec = [Tuple{K, Vector{T}, Vector{MVector{2,I}}}[] for _ in 1:length(samplers)]
+    trace_vec = [Tuple{K, Vector{T}, Vector{MVector{2,I}}}[] for _ in 1:idle_nrst.sz_max]
 
     # run tours in parallel using the available nrst's in the channel
     Threads.@threads for tour in 1:ntours
+        i, nrst = take!(idle_nrst)         # take an idle NRSTSampler. No other thread can now work on it
         seconds = @elapsed begin
-            xtrace, iptrace = tour!(samplers[Threads.threadid()]) # run a full tour with the sampler corresponding to this thread, avoiding race conditions
+            xtrace, iptrace = tour!(nrst)  # run a full tour with nrst
         end
         push!(
-            trace_vec[Threads.threadid()],                        # push results to this thread's own storage, avoiding race condition
+            trace_vec[Threads.threadid()], # push results to this thread's own storage, avoiding race condition
             (seconds, xtrace, iptrace)
         )
         verbose && println(
-            "thread ", Threads.threadid(), ": completed tour ", tour
+            "thread ", Threads.threadid(), ": completed tour ", tour, " using sampler ", i
         )
+        put!(idle_nrst, (i, nrst))         # mark nrst as idle
     end
     
-    trace = vcat(trace_vec...)
-    N = length(samplers[1].np.betas)
+    trace = vcat(trace_vec...) # collect traces into unique vector
+    i, nrst = take!(idle_nrst) # cumbersome way of finding what N is...
+    N = length(nrst.np.betas)
+    put!(idle_nrst, (i, nrst))
     return postprocess_tours(ntours, N, trace)
 end
 
