@@ -11,10 +11,10 @@
 # differentiating F (with Zygote)
 #
 # ISSUES RAISED
-# - parallel NRST does not give uniform distribution over levels under exact c(b) = F(b)
-#     - serial has no issue
-# - parallel NRST produces incorrect estimates of E^{b}[V]
-#     - serial has no issue
+# - Multithreaded touring NRST does not give uniform distribution over levels under exact c(b) = F(b)
+#     - single thread touring has no issue
+# - Multithreaded touring NRST produces incorrect estimates of E^{b}[V]
+#     - single thread touring has no issue
 ###############################################################################
 
 using NRST
@@ -48,8 +48,8 @@ ns=NRST.NRSTSampler(
 
 # check distribution of levels under exact tuning using free energy
 copyto!(ns.np.c, F.(ns.np.betas))
-chan, results = NRST.parallel_run!(ns, ntours=4096);
-sum(results[:visits], dims=1) # not uniform...
+# chan, results = NRST.parallel_run!(ns, ntours=4096);
+# sum(results[:visits], dims=1) # not uniform...
 
 # # plot contours of pdf of N(mu_b, s_b^2 I) versus scatter of samples
 # function draw_contour!(p,b,xrange)
@@ -86,7 +86,8 @@ sum(results[:visits], dims=1) # not uniform...
 
 # check E^{b}[V] is accurately estimated
 # compare F' to 
-# - parallel sampling with NRST: ×
+# - multith touring with NRST  : ×
+# - singleth touring with NRST : ✓
 # - serial sampling with NRST  : ✓
 # - IID sampling from truth    : ✓
 # - serial exploration kernels : ✓
@@ -96,47 +97,66 @@ aggV = similar(ns.np.c)
 cvd_pal = :tol_bright
 plot(F',0.,1., label="Theory", palette = cvd_pal) # ground truth
 
+# # iid sampling
+# meanv(b) = mean(ns.np.V.(eachcol(rand(MultivariateNormal(mu(b), sbsq(b)*I(d)),1000))))
+# plot!(ns.np.betas, meanv.(ns.np.betas), label="MC", palette = cvd_pal)
+
+# # use the explorers to approximate E^{b}[V]: single thread
+# for i in eachindex(aggV)
+#     if i==1
+#         aggV[1] = mean(NRST.tune!(ns.explorers[1], ns.np.V,nsteps=500))
+#     else        
+#         traceV = similar(aggV, 5000)
+#         NRST.run_with_trace!(ns.explorers[i], ns.np.V, traceV)
+#         aggV[i] = mean(traceV)
+#     end
+# end
+# plot!(ns.np.betas, aggV, label="SerMH", palette = cvd_pal)
+
+# # use the explorers to approximate E^{b}[V]: multithread
+# Threads.@threads for i in eachindex(aggV)
+#     if i==1
+#         aggV[1] = mean(NRST.tune!(ns.explorers[1], ns.np.V,nsteps=500))
+#     else        
+#         traceV = similar(aggV, 5000)
+#         NRST.run_with_trace!(ns.explorers[i], ns.np.V, traceV)
+#         aggV[i] = mean(traceV)
+#     end
+# end
+# plot!(ns.np.betas, aggV, label="ParMH", palette = cvd_pal)
+
+# # serial NRST: no tours involved
+# xtrace, iptrace = NRST.run!(ns, nsteps=10000)
+# aggV = zeros(eltype(ns.np.c), length(ns.np.c)) # accumulate sums here, then divide by nvisits
+# nvisits = zeros(Int, length(aggV))
+# for (n, ip) in enumerate(eachcol(iptrace))
+#     nvisits[ip[1] + 1] += 1
+#     aggV[ip[1] + 1]    += ns.np.V(xtrace[n])
+# end
+# aggV ./= nvisits
+# plot!(ns.np.betas, aggV, label="SerNRST", palette = cvd_pal)
+
+# single thread NRST by tours
+xtracefull = Vector{typeof(ns.x)}(undef, 0)
+iptracefull = Matrix{Int}(undef, 2, 0)
+ntours = 1000
+for k in 1:ntours
+    xtrace, iptrace = NRST.tour!(ns)
+    append!(xtracefull, xtrace)
+    iptracefull = hcat(iptracefull, reduce(hcat, iptrace))
+end
+countmap(iptracefull[1,:]) # uniform!
+aggV = zeros(eltype(ns.np.c), length(ns.np.c)) # accumulate sums here, then divide by nvisits
+nvisits = zeros(Int, length(aggV))
+for (n, ip) in enumerate(eachcol(iptracefull))
+    nvisits[ip[1] + 1] += 1
+    aggV[ip[1] + 1]    += ns.np.V(xtracefull[n])
+end
+aggV ./= nvisits
+plot!(ns.np.betas, aggV, label="ST-Tour", palette = cvd_pal)
+
 # parallel NRST
 for (i, xs) in enumerate(results[:xarray])
     aggV[i] = mean(ns.np.V.(xs))
 end
-plot!(ns.np.betas, aggV, label="ParNRST", palette = cvd_pal)
-
-# iid sampling
-meanv(b) = mean(ns.np.V.(eachcol(rand(MultivariateNormal(mu(b), sbsq(b)*I(d)),1000))))
-plot!(ns.np.betas, meanv.(ns.np.betas), label="MC", palette = cvd_pal)
-
-# use the explorers to approximate E^{b}[V]: single thread
-for i in eachindex(aggV)
-    if i==1
-        aggV[1] = mean(NRST.tune!(ns.explorers[1], ns.np.V,nsteps=500))
-    else        
-        traceV = similar(aggV, 5000)
-        NRST.run_with_trace!(ns.explorers[i], ns.np.V, traceV)
-        aggV[i] = mean(traceV)
-    end
-end
-plot!(ns.np.betas, aggV, label="SerMH", palette = cvd_pal)
-
-# use the explorers to approximate E^{b}[V]: multithread
-Threads.@threads for i in eachindex(aggV)
-    if i==1
-        aggV[1] = mean(NRST.tune!(ns.explorers[1], ns.np.V,nsteps=500))
-    else        
-        traceV = similar(aggV, 5000)
-        NRST.run_with_trace!(ns.explorers[i], ns.np.V, traceV)
-        aggV[i] = mean(traceV)
-    end
-end
-plot!(ns.np.betas, aggV, label="ParMH", palette = cvd_pal)
-
-# serial NRST
-xtrace, iptrace = NRST.run!(ns, nsteps=10000)
-aggV = zeros(eltype(ns.np.c), length(ns.np.c)) # accumulate sums here, then divide by nvisits
-nvisits = zeros(Int, length(aggV))
-for (n, ip) in enumerate(eachcol(iptrace))
-    nvisits[ip[1] + 1] += 1
-    aggV[ip[1] + 1]    += ns.np.V(xtrace[n])
-end
-aggV ./= nvisits
-plot!(ns.np.betas, aggV, label="SerNRST", palette = cvd_pal)
+plot!(ns.np.betas, aggV, label="MT-Tour", palette = cvd_pal)

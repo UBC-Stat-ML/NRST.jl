@@ -135,8 +135,8 @@ function run!(
     xtrace  = Vector{T}(undef, nsteps)
     iptrace = Matrix{I}(undef, 2, nsteps) # can use a matrix here
     for n in 1:nsteps
-        xtrace[n] = copy(ns.x) # needs copy o.w. pushes a ref to ns.x
-        copyto!(iptrace, 1:2, n:n, ns.ip, 1:2, 1:1)
+        xtrace[n] = copy(ns.x)                      # needs copy o.w. pushes a ref to ns.x
+        copyto!(iptrace, 1:2, n:n, ns.ip, 1:2, 1:1) # no need for another copy since there's already 1 due to implicit conversion
         step!(ns)
     end
     return xtrace, iptrace
