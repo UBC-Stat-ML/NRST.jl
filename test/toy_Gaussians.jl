@@ -1,22 +1,39 @@
 ###############################################################################
-# 
+# Toy example in ℜ^d with
+# - Prior     : N(0, s_0^2 I)
+# - Likelihood: N(m1, I)
+# Implies Gaussian annealing path: b ↦ N(mu_b, s_b^2 I), with
+#     s_b^2 := (s_0^{-2} + b)^{-1},     mu_b := b m s_b^2 1
+# Using un-normalized Vprior and V (i.e., using V = negative of what is inside
+# the exp() in the Gaussian pdf), we get that the free energy is given by
+#     F(b) := -log(Z(b)) = -0.5d(log(2pi s_b^2) - bm^2[1 - bs_b^2])
+# Using the thermodynamic identity, we can obtain the function b ↦ E^{b}[V] by
+# differentiating F (using Zygote)
 ###############################################################################
 
 using NRST
 using Zygote
-using StatsPlots, StatsBase
+using StatsBase
+using StatsPlots
 using Distributions
 using LinearAlgebra
 
-const d = 2
-const s0 = 2.
-const m = 4.
-sbsq(b) = 1/(1/(s0*s0) + b)
-mu(b) = b*m*sbsq(b)*ones(d)
+const d    = 2
+const s0   = 2.
+const m    = 4.
+const s0sq = s0*s0
+sbsq(b)    = 1/(1/s0sq + b)
+mu(b)      = b*m*sbsq(b)*ones(d)
+
+# true free energy function == -log(Z(b))
+function F(b)
+    ssq = sbsq(b)
+    -0.5*d*( log(2*pi*ssq) - b*m*m*(1-b*ssq) )
+end
 
 ns=NRST.NRSTSampler(
-    x->(0.5sum(abs2,x.-m*ones(d))), # likelihood: N(m1, I)
-    x->(0.5sum(abs2,x)/(s0*s0)),    # reference: N(0, s0^2I)
+    x->(0.5sum(abs2,x.-fill(m,d))), # likelihood: N(m1, I)
+    x->(0.5sum(abs2,x)/s0sq),       # reference: N(0, s0^2I)
     () -> s0*randn(d),              # reference: N(0, s0^2I)
     collect(range(0,1,length=9)),   # betas = uniform grid in [0,1]
     50,                             # nexpl
@@ -25,7 +42,7 @@ ns=NRST.NRSTSampler(
 
 # tune and run
 chan = NRST.tune!(ns, verbose=true);
-results = NRST.parallel_run!(chan, ntours=400);
+results = NRST.parallel_run!(chan, ntours=4096);
 
 # plot contours of pdf of N(mu_b, s_b^2 I) versus scatter of samples
 function draw_contour!(p,b,xrange)
@@ -60,17 +77,12 @@ for (i,b) in enumerate(ns.np.betas)
 end
 plot(plotvec..., size=(1600,800))
 
-# true neg log partition == free energy
-function F(b)
-    ssq = sbsq(b)
-    -0.5*d*( log(2*pi*ssq) - b*m*m*(1-b*ssq) )
-end
-
-# manual tuning
+# exact tuning using free energy
 copyto!(ns.np.c, F.(ns.np.betas))
-results = NRST.parallel_run!(chan, ntours=4000);
+results = NRST.parallel_run!(chan, ntours=4096);
 sum(results[:visits], dims=1) # not uniform...
 
+# check free energy works
 # compare F' to NRST and to IID sampling from truth
 # conclusion: F' and MC agree, NRST does not :(
 plot(F',0.,1., label="Theory")
