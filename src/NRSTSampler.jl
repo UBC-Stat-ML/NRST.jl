@@ -127,6 +127,21 @@ function step!(ns::NRSTSampler)
     expl_step!(ns)
 end
 
+# run for fixed number of steps
+function run!(
+    ns::NRSTSampler{T,I,K,B};
+    nsteps::Int
+    ) where {T,I,K,B}
+    xtrace  = Vector{T}(undef, nsteps)
+    iptrace = Matrix{I}(undef, 2, nsteps) # can use a matrix here
+    for n in 1:nsteps
+        xtrace[n] = copy(ns.x) # needs copy o.w. pushes a ref to ns.x
+        copyto!(iptrace, 1:2, n:n, ns.ip, 1:2, 1:1)
+        step!(ns)
+    end
+    return xtrace, iptrace
+end
+
 # run a tour: run the sampler until we reach the atom ip=(0,-1)
 # note: by finishing at the atom (0,-1) and restarting using the renewal measure,
 # repeatedly calling this function is equivalent to standard sequential sampling 

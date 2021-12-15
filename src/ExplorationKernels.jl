@@ -58,7 +58,7 @@ MHSampler(U,xinit,sigma=1.0) = MHSampler(U,xinit,similar(xinit),Ref(sigma),Ref(U
 
 # set_state: change x and curU 
 function set_state!(mhs::MHSampler,xinit)
-    copyto!(mhs.x,xinit)
+    copyto!(mhs.x, xinit)
     mhs.curU[] = mhs.U(xinit)
 end
 
@@ -173,7 +173,7 @@ function init_explorers(V,Vref,randref,betas,xinit::AbstractVector{<:AbstractFlo
     A[1] = IIDSampler(Vref,randref)
     for i in 2:length(betas)
         beta = betas[i] # better to extract the beta, o.w. the closure grabs the whole vector
-        A[i] = MHSampler(x->(Vref(x) + beta*V(x)),xinit)
+        A[i] = MHSampler(x->(Vref(x) + beta*V(x)), copy(xinit)) # copy is necessary or all explorers end up sharing the same x
     end
     return A
 end
