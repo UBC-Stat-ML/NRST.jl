@@ -96,6 +96,79 @@ ns=NRST.NRSTSampler(
     true                          # tune c using mean energy
 );
 ```
-```@repl
-Threads.nthreads()
+Since we wish to run NRST in parallel, we construct `nthreads()` identical copies of `ns` so that each thread can work independently of the others, thus avoiding race conditions.
+```@example tg
+samplers = NRST.copy_sampler(ns, nthrds = Threads.nthreads());
+```
+The original `ns` object is stored in the first entry `samplers[1]`.
+
+
+### Efficacy of tuning
+
+Here we run the tuning routine on our collection of samplers and compare the resulting `c` vector to the analytical expression for $\mathcal{F}(\cdot)$.
+```@example tg
+NRST.tune!(samplers, verbose=true)
+```
+Let us compute the maximum absolute relative deviation with respect to the truth
+```@example tg
+true_c = F.(ns.np.betas) .- F(ns.np.betas[1]) # adjust to convention c(0)=0
+maximum(abs.(samplers[1].np.c[2:end] .- true_c[2:end]) ./ true_c[2:end])
+```
+
+### Uniformity under exact tuning
+
+Likewise, we can tune the vector `c` using the analytic expression for the free energy
+```@example tg
+copyto!(ns.np.c, F.(ns.np.betas))
+```
+
+!!! note "`np` is shared"
+    The `np` field is shared across `samplers`, so by running the line above we are effectively changing the setting for all of them.
+
+As mentioned in [Analytical form of the partition function](@ref), we would expect to obtain a uniform distribution over levels. Let us confirm this by running 512 tours per thread in parallel
+```@example tg
+results = NRST.parallel_run!(samplers, ntours=512*Threads.nthreads());
+```
+The number of visits to each state within each tour is stored in the field `results[:visits]`. Summing over all tours gives
+```@example tg
+sum(results[:visits], dims=1)
+```
+which is indeed fairly uniform.
+
+
+### Visual inspection of samples
+
+```@example tg
+function draw_contour!(p,b,xrange)
+    dist = MultivariateNormal(mu(b), sbsq(b)*I(d))
+    f(x1,x2) = pdf(dist,[x1,x2])
+    Z = f.(xrange, xrange')
+    contour!(p,xrange,xrange,Z,levels=lvls,aspect_ratio = 1)
+end
+
+function draw_points!(p,i;x...)
+    M = reduce(hcat,results[:xarray][i])'
+    scatter!(p, M[:,1], M[:,2];x...)
+end
+
+if d == 2
+    # plot!
+    xmax = 4*s0
+    xrange = -xmax:0.1:xmax
+    xlim = extrema(xrange)
+    minloglev = logpdf(MultivariateNormal(mu(0.), sbsq(0.)*I(d)), 3*s0*ones(2))
+    maxloglev = logpdf(MultivariateNormal(mu(1.), sbsq(1.)*I(d)), mu(1.))
+    lvls = exp.(range(minloglev,maxloglev,length=10))
+    anim = @animate for (i,b) in enumerate(ns.np.betas)
+        p = plot()
+        draw_contour!(p,b,xrange)
+        draw_points!(
+            p,i;xlim=xlim,ylim=xlim,
+            markeralpha=0.3,markerstrokewidth=0,
+            legend_position=:bottomleft,label="β=$(round(b,digits=2))"
+        )
+        plot(p)
+    end
+    gif(anim, fps = 2)
+end
 ```

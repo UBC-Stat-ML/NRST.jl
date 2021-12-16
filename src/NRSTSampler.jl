@@ -197,7 +197,7 @@ function tune!(
         if verbose
             println("Tuning round $nr with $ntours tours per thread")
             println("Current c:")
-            display(samplers[1].np.c)
+            show(samplers[1].np.c)
             println("")
         end
         results = parallel_run!(samplers, ntours = ntours*nthrds)
