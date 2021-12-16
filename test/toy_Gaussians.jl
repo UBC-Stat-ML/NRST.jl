@@ -129,6 +129,7 @@ end
 # - IID sampling from truth    : ✓
 # - serial exploration kernels : ✓
 # - parlel exploration kernels : ✓
+###############################################################################
 
 aggV = similar(ns.np.c)
 cvd_pal = :tol_bright
@@ -196,3 +197,11 @@ for (n, ip) in enumerate(eachcol(iptracefull))
 end
 aggV ./= nvisits
 plot!(ns.np.betas, aggV, label="ST-Tour", palette = cvd_pal)
+
+###############################################################################
+# compute TE and ESS as difficulty increases. For example: 
+# - m → ∞
+# - d → ∞
+# PROBLEM: these parameters are set as const
+###############################################################################
+
