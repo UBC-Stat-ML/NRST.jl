@@ -212,7 +212,7 @@ function tune!(
     nthrds::Int   = Threads.nthreads(),
     verbose::Bool = false
     )
-    samplers = get_samplers_vector(ns, nthrds = nthrds) # construct a samplers vector
+    samplers = copy_sampler(ns, nthrds = nthrds) # construct a samplers vector
     tune!(ns, nrounds = nrounds, nthrds = nthrds, verbose = verbose)
     return samplers
 end

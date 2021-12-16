@@ -5,7 +5,7 @@
 # create vector of identical copies of a given nrst sampler
 # used to avoid race conditions between threads
 # initialize with ns and additional nthrds-1 (deep)copies
-function get_samplers_vector(
+function copy_sampler(
     ns::NRSTSampler{T,I,K,B};        
     nthrds::Int
 ) where {T,I,K,B}
@@ -52,7 +52,7 @@ function parallel_run!(
     nthrds::Int = Threads.nthreads(), # number of threads available to run tours
     verbose::Bool = false
 )
-    samplers = get_samplers_vector(ns, nthrds = nthrds)
+    samplers = copy_sampler(ns, nthrds = nthrds)
     results = parallel_run!(samplers, ntours=ntours, verbose=verbose)
     return (samplers = samplers, results = results)
 end

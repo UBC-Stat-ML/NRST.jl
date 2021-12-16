@@ -33,16 +33,16 @@ end
 
 # build an NRST sampler, tune exploration kernels, and do initial tuning of c
 ns=NRST.NRSTSampler(
-    x->(0.5sum(abs2,x.-fill(m,d))), # likelihood: N(m1, I)
-    x->(0.5sum(abs2,x)/s0sq),       # reference: N(0, s0^2I)
-    () -> s0*randn(d),              # reference: N(0, s0^2I)
-    collect(range(0,1,length=9)),   # betas = uniform grid in [0,1]
-    50,                             # nexpl
-    true                            # tune c using mean energy
+    x->(0.5sum(abs2,x .- m)),     # likelihood: N(m1, I)
+    x->(0.5sum(abs2,x)/s0sq),     # reference: N(0, s0^2I)
+    () -> s0*randn(d),            # reference: N(0, s0^2I)
+    collect(range(0,1,length=9)), # betas = uniform grid in [0,1]
+    50,                           # nexpl
+    true                          # tune c using mean energy
 );
 
 # build vector of identical copies of ns for safe parallel computations
-samplers = NRST.get_samplers_vector(ns, nthrds = Threads.nthreads());
+samplers = NRST.copy_sampler(ns, nthrds = Threads.nthreads());
 
 ###############################################################################
 # compare self-tuning to truth
