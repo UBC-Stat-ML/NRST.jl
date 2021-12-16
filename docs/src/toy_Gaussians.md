@@ -138,6 +138,7 @@ which is indeed fairly uniform.
 
 ### Visual inspection of samples
 
+Here we compare the contours of the pdf of the annealed distributions versus the samples at each of the levels. First we write a function to add a contour to a plot
 ```@example tg
 function draw_contour!(p,b,xrange)
     dist = MultivariateNormal(mu(b), sbsq(b)*I(d))
@@ -145,12 +146,16 @@ function draw_contour!(p,b,xrange)
     Z = f.(xrange, xrange')
     contour!(p,xrange,xrange,Z,levels=lvls,aspect_ratio = 1)
 end
-
+```
+Next we write a function to add scatter plots of samples. Note that these are collected in the field `results[:xarray]`, which is a vector of length $N+1$. Its `i`-th entry contains a vector of samples from `i`-th annealed distribution, of length equal to the total number of visits to that level.
+```@example tg
 function draw_points!(p,i;x...)
     M = reduce(hcat,results[:xarray][i])'
     scatter!(p, M[:,1], M[:,2];x...)
 end
-
+```
+Finally, we use these two functions to produce an animation that loops over the annealing levels
+```@example tg
 if d == 2
     # plot!
     xmax = 4*s0
@@ -171,4 +176,30 @@ if d == 2
     end
     gif(anim, fps = 2)
 end
+```
+We see that the samples correctly describe the pdf of the corresponding distributions.
+
+
+### Estimating the average energy
+
+In section [Efficacy of tuning](@ref) we assessed the correctness of the approximation of
+```math
+\mathcal{F}(b)=-\log(\mathcal{Z}(\beta)) = \int_0^\beta \mathrm{d}\ b \mathbb{E}^{(b)}[V]
+```
+Instead, in this section we focus directly on $\mathbb{E}^{(b)}[V]$. The exact value for these quantities can be obtained by differentiating $\mathcal{F}(b)$
+```math
+\frac{\mathrm{d}}{\mathrm{d}b}\mathcal{F}(b)= \mathbb{E}^{(b)}[V]
+```
+Here we use the "prime operator" `'` from [Zygote](https://fluxml.ai/Zygote.jl/) to carry out this calculation through automatic differentation.
+```@example tg; continued = true
+p = plot(F',0.,1., label="Theory", title="Expected value of the energy");
+```
+We contrast this with the approximations obtained through NRST
+```@example tg; continued = false
+aggV = similar(ns.np.c)
+for (i, xs) in enumerate(results[:xarray])
+    aggV[i] = mean(ns.np.V.(xs))
+end
+plot!(p,ns.np.betas, aggV, label="NRST", seriestype=:scatter)
+plot(p)
 ```

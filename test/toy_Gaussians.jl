@@ -131,11 +131,11 @@ end
 # - parlel exploration kernels : ✓
 ###############################################################################
 
-aggV = similar(ns.np.c)
 cvd_pal = :tol_bright
 plot(F',0.,1., label="Theory", palette = cvd_pal) # ground truth
 
 # parallel NRST
+aggV = similar(ns.np.c)
 for (i, xs) in enumerate(results[:xarray])
     aggV[i] = mean(ns.np.V.(xs))
 end
