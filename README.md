@@ -8,15 +8,10 @@ From the `docs` folder, start julia and go to Pkg mode typing `]`. Type
 ```julia
 (@v1.7) pkg> activate .
 ```
-to switch to the `docs` environment. Now add Documenter as dependency
-```julia
-(docs) pkg> add Documenter
-```
-Finally, type
+to switch to the `docs` environment. Now add NRST as dependency
 ```julia
 (docs) pkg> dev ..
 ```
-to add NRST as dependency for `docs`.
 
 ### Compile the documentation
 
