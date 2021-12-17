@@ -55,7 +55,9 @@ It follows that the free energy $\mathcal{F}$ function is
 &= -\frac{d}{2}\left(\log(2\pi s_b^2) -bm^2\left[1 - bs_b^2\right] \right).
 \end{aligned}
 ```
-As we know from theory, by using $c(b) = \mathcal{F}(b)$ we should obtain a uniform distribution over the indices.
+
+!!! note "Exact tuning"
+    As we know from theory, by using $c(b) = \mathcal{F}(b)$ we should obtain a uniform distribution over the indices.
 
 
 ## Experiments
@@ -70,14 +72,14 @@ using Distributions
 using LinearAlgebra
 ```
 Define the parameters of the problem
-```@example tg
+```@example tg; continued = true
 const d    = 2
 const s0   = 2.
 const m    = 4.
 const s0sq = s0*s0;
 ```
 Using these we can write expressions for $\mu_b$, $s_b^2$, and $\mathcal{F}$
-```@example tg
+```@example tg; continued = true
 sbsq(b) = 1/(1/s0sq + b)
 mu(b)   = b*m*sbsq(b)*ones(d)
 function F(b)
@@ -86,7 +88,7 @@ function F(b)
 end
 ```
 The following statement initializes an `NRSTSampler` object with the energy functions of the problem. It also carries out the tuning of exploration kernels as well as a basic initial tuning of the `c` function.
-```@example tg
+```@example tg; continued = true
 ns=NRST.NRSTSampler(
     x->(0.5sum(abs2,x .- m)),     # likelihood: N(m1, I)
     x->(0.5sum(abs2,x)/s0sq),     # reference: N(0, s0^2I)
@@ -97,7 +99,7 @@ ns=NRST.NRSTSampler(
 );
 ```
 Since we wish to run NRST in parallel, we construct `nthreads()` identical copies of `ns` so that each thread can work independently of the others, thus avoiding race conditions.
-```@example tg
+```@example tg; continued = true
 samplers = NRST.copy_sampler(ns, nthrds = Threads.nthreads());
 ```
 The original `ns` object is stored in the first entry `samplers[1]`.
@@ -106,7 +108,7 @@ The original `ns` object is stored in the first entry `samplers[1]`.
 ### Efficacy of tuning
 
 Here we run the tuning routine on our collection of samplers and compare the resulting `c` vector to the analytical expression for $\mathcal{F}(\cdot)$.
-```@example tg
+```@example tg; continued = false
 NRST.tune!(samplers, verbose=true)
 ```
 Let us compute the maximum absolute relative deviation with respect to the truth
