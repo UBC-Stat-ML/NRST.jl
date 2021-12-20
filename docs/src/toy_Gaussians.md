@@ -105,42 +105,60 @@ samplers = NRST.copy_sampler(ns, nthrds = Threads.nthreads());
 The original `ns` object is stored in the first entry `samplers[1]`.
 
 
-### Efficacy of tuning
+### Assessing estimates of mean energy and free energy 
 
-Here we run the tuning routine on our collection of samplers and compare the resulting `c` vector to the analytical expression for $\mathcal{F}(\cdot)$.
-```@example tg; continued = false
+We want to understand how well our sampler approximates $\mathbb{E}^{(\beta)}[V]$ and $\mathcal{F}(\beta)$. To do this, we first carry out the tuning procedure, and then run the sampler to obtain estimates of the expected energy. The free energy estimates correspond to `c` under the current tuning strategy.
+```@example tg; continued = true
 NRST.tune!(samplers, verbose=true)
+restune = NRST.parallel_run!(samplers, ntours=512*Threads.nthreads());
+meanV   = [mean(ns.np.V.(xs)) for xs in restune[:xarray]]
 ```
-Let us compute the maximum absolute relative deviation with respect to the truth
-```@example tg
-true_c = F.(ns.np.betas) .- F(ns.np.betas[1]) # adjust to convention c(0)=0
-maximum(abs.(samplers[1].np.c[2:end] .- true_c[2:end]) ./ true_c[2:end])
+Let us visually inspect the results
+```@example tg; continued = false
+# energy
+p1 = plot(F',0.,1., label="Theory", title="Mean energy")
+plot!(p1, ns.np.betas, meanV, label="Estimate", seriestype=:scatter)
+
+# free-energy
+p2 = plot(
+    b -> F(b)-F(0.), 0., 1., label="Theory", legend_position = :bottomright,
+    title = "Free energy"
+)
+plot!(p2, ns.np.betas, samplers[1].np.c, label="Estimate", seriestype = :scatter)
+
+plot(p1,p2,size=(800,400))
 ```
+The first figure shows a high level of agreement between the estimated mean energies and the theoretical values. The second plot shows more disagreement betweeen the theoretical and approximated values of the free energy. This means that the discrepancy could be corrected by having a finer grid.
 
-### Uniformity under exact tuning
 
-Likewise, we can tune the vector `c` using the analytic expression for the free energy
-```@example tg
+### Uniformity of the distribution over levels
+
+Under the mean-energy tuning strategy, we expect a uniform distribution over the levels. We can check this by inspecting the trace of the previous section. Also, we can do the same for the case where we set `c` to the exact value of the free energy
+```@example tg; continued = true
 copyto!(ns.np.c, F.(ns.np.betas))
+resexact = NRST.parallel_run!(samplers, ntours=512*Threads.nthreads());
 ```
 
 !!! note "`np` is shared"
-    The `np` field is shared across `samplers`, so by running the line above we are effectively changing the setting for all of them.
+    The `np` field is shared across `samplers`, and `ns=samplers[1]`. Thus, by changing `ns.np.c` we are effectively changing the setting for all the samplers.
 
-As mentioned in [Analytical form of the partition function](@ref), we would expect to obtain a uniform distribution over levels. Let us confirm this by running 512 tours per thread in parallel
-```@example tg
-results = NRST.parallel_run!(samplers, ntours=512*Threads.nthreads());
+Let us visually inspect the results
+```@example tg; continued = false
+xs = repeat(1:length(ns.np.c), 2)
+gs = repeat(["Exact c", "Tuned c"], inner=length(ns.np.c))
+ys = vcat(vec(sum(resexact[:visits], dims=1)),vec(sum(restune[:visits], dims=1)))
+groupedbar(
+    xs,ys,group=gs, legend_position=:topleft,
+    title="Number of visits to every level"
+)
 ```
-The number of visits to each state within each tour is stored in the field `results[:visits]`. Summing over all tours gives
-```@example tg
-sum(results[:visits], dims=1)
-```
-which is indeed fairly uniform.
+Setting `c` to its theoretical value under the mean-energy strategy indeed gives a very uniform distribution over levels. The case where `c` is tuned, on the other, has a slight bias towards the levels closer to the target measure.
 
 
 ### Visual inspection of samples
 
-Here we compare the contours of the pdf of the annealed distributions versus the samples at each of the levels. First we write a function to add a contour to a plot
+Here we compare the contours of the pdf of the annealed distributions versus the samples obtained at each of the levels when NRST is run using the tuned `c`. As we know from the theory, ergodicity holds for any (reasonable) `c`, so we should expect to see agreement between contours and samples.
+
 ```@example tg
 function draw_contour!(p,b,xrange)
     dist = MultivariateNormal(mu(b), sbsq(b)*I(d))
@@ -148,16 +166,12 @@ function draw_contour!(p,b,xrange)
     Z = f.(xrange, xrange')
     contour!(p,xrange,xrange,Z,levels=lvls,aspect_ratio = 1)
 end
-```
-Next we write a function to add scatter plots of samples. Note that these are collected in the field `results[:xarray]`, which is a vector of length $N+1$. Its `i`-th entry contains a vector of samples from `i`-th annealed distribution, of length equal to the total number of visits to that level.
-```@example tg
+
 function draw_points!(p,i;x...)
-    M = reduce(hcat,results[:xarray][i])'
-    scatter!(p, M[:,1], M[:,2];x...)
+    M = reduce(hcat,restune[:xarray][i])
+    scatter!(p, M[1,:], M[2,:];x...)
 end
-```
-Finally, we use these two functions to produce an animation that loops over the annealing levels
-```@example tg
+
 if d == 2
     # plot!
     xmax = 4*s0
@@ -181,27 +195,3 @@ end
 ```
 We see that the samples correctly describe the pdf of the corresponding distributions.
 
-
-### Estimating the average energy
-
-In section [Efficacy of tuning](@ref) we assessed the correctness of the approximation of
-```math
-\mathcal{F}(b)=-\log(\mathcal{Z}(\beta)) = \int_0^\beta \mathrm{d}\ b \mathbb{E}^{(b)}[V]
-```
-Instead, in this section we focus directly on $\mathbb{E}^{(b)}[V]$. The exact value for these quantities can be obtained by differentiating $\mathcal{F}(b)$
-```math
-\frac{\mathrm{d}}{\mathrm{d}b}\mathcal{F}(b)= \mathbb{E}^{(b)}[V]
-```
-Here we use the "prime operator" `'` from [Zygote](https://fluxml.ai/Zygote.jl/) to carry out this calculation through automatic differentation.
-```@example tg; continued = true
-p = plot(F',0.,1., label="Theory", title="Expected value of the energy");
-```
-We contrast this with the approximations obtained through NRST
-```@example tg; continued = false
-aggV = similar(ns.np.c)
-for (i, xs) in enumerate(results[:xarray])
-    aggV[i] = mean(ns.np.V.(xs))
-end
-plot!(p,ns.np.betas, aggV, label="NRST", seriestype=:scatter)
-plot(p)
-```

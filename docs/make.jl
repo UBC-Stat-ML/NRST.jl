@@ -7,6 +7,7 @@ makedocs(
         "Home" => "index.md",
         "Case studies" => [
             "Toy Gaussians" => "toy_Gaussians.md"
-        ]
+        ],
+        "Internals" => "internals.md",
     ]
 )

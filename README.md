@@ -1,5 +1,9 @@
 # NRST
 
+A Julia package implementing Non-reversible Simulated Tempering.
+
+Take a look at the documentation to understand how `NRST` works. The best way to learn how to use this package is to go through the growing list of case studies.
+
 ## Building the documentation
 
 ### Prepare the docs environment (only for first time building)

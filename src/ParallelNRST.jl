@@ -42,7 +42,7 @@ function parallel_run!(
     
     trace = vcat(trace_vec...)
     N = length(samplers[1].np.betas)
-    return postprocess_tours(ntours, N, trace)
+    return postprocess_tours(trace, ntours, N)
 end
 
 # utility that creates the samplers vector for you and then returns it along results
@@ -57,11 +57,26 @@ function parallel_run!(
     return (samplers = samplers, results = results)
 end
 
-# process the raw trace
+"""
+    postprocess_tours(trace, ntours, N)
+
+Returns a `NamedTuple` containing the fields
+
+- `:nsteps`: `Vector{I}` of length `ntours` containing the total number of
+             steps of each tour
+- `:times` : `Vector{K}` of length `ntours` containing the total time spent
+             in each tour
+- `:xarray`: vector of length `N+1`. The `i`-th entry contains samples from the
+             `i`-th annealed distribution, and its length is equal to the total
+             number of visits to that level.
+- `:visits`: `Matrix{I}` of size `ntours × N` containing the number of visits
+             to each state in each tour
+- `:ip`    : the full trace of the index process
+"""
 function postprocess_tours(
+    trace::Vector{Tuple{K, Vector{T}, Vector{MVector{2,I}}}},
     ntours::Int,
-    N::Int,
-    trace::Vector{Tuple{K, Vector{T}, Vector{MVector{2,I}}}}
+    N::Int
     ) where {K,T,I}
 
     xarray = [T[] for _ in 1:N]       # sequentially collect the value of x at each of the levels
