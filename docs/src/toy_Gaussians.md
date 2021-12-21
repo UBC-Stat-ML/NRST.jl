@@ -154,6 +154,51 @@ groupedbar(
 ```
 Setting `c` to its theoretical value under the mean-energy strategy indeed gives a very uniform distribution over levels. The case where `c` is tuned, on the other, has a slight bias towards the levels closer to the target measure.
 
+### Scaling of the maximal tour length and duration
+
+Here the samplers are run multiple rounds, using an exponentially increasing number of tours. For each round, we compute the maximal tour length and duration in seconds. Each round is repeated `nreps` times to assess the variability of these measurements.
+```@example tg; continued = true
+function max_scaling(samplers, nrounds, nreps)
+    ntours  = Threads.nthreads()*round.(Int, 2 .^(0:(nrounds-1)))
+    msteps  = Matrix{Int}(undef, nreps, nrounds)
+    mtimes  = Matrix{Float64}(undef, nreps, nrounds)
+    for rep in 1:nreps
+        for r in 1:nrounds
+            res = NRST.parallel_run!(samplers, ntours=ntours[r])
+            msteps[rep,r] = maximum(res[:nsteps])
+            mtimes[rep,r] = maximum(res[:times])
+        end
+    end
+    return ntours, msteps, mtimes
+end
+```
+We must run the function first to avoid counting compilation times
+```@example tg; continued = true
+ntours, msteps, mtimes = max_scaling(samplers, 2, 2)
+```
+Now we may proceed with the experiment
+```@example tg; continued = false
+ntours, msteps, mtimes = max_scaling(samplers, 10, 50)
+p1 = plot()
+p2 = plot()
+for (r,m) in enumerate(eachrow(msteps))
+    plot!(p1, ntours, m, xaxis=:log, linealpha = 0.2, label="", linecolor = :blue)
+    plot!(p2, ntours, mtimes[r,:], xaxis=:log, linealpha = 0.2, label="", linecolor = :blue)
+end
+plot!(
+    p1, ntours, vec(sum(msteps,dims=1))/size(msteps,1), xaxis=:log,
+    linewidth = 2, label="Average", linecolor = :blue, legend_position=:topleft,
+    xlabel="Number of tours", ylabel="Maximum number of steps across tours"
+)
+plot!(
+    p2, ntours, vec(sum(mtimes,dims=1))/size(mtimes,1), xaxis=:log,
+    linewidth = 2, label="Average", linecolor = :blue, legend_position=:topleft,
+    xlabel="Number of tours", ylabel="Time to complete longest tour (s)"
+)
+using Plots.PlotMeasures
+plot(p1,p2,size=(1000,450), margin = 4mm)
+```
+
 
 ### Visual inspection of samples
 
