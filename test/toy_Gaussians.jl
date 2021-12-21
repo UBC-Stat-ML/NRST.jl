@@ -116,6 +116,55 @@ if d == 2
     gif(anim, fps = 2)
 end
 
+###############################################################################
+# check scaling of max(nsteps) and max(times) as ntours → ∞
+# use exact c
+# run twice to avoid including compilation times
+###############################################################################
+
+function max_scaling(samplers, nrounds, nreps)
+    ntours  = Threads.nthreads()*round.(Int, 2 .^(0:(nrounds-1)))
+    msteps  = Matrix{Int}(undef, nreps, nrounds)
+    mtimes  = Matrix{Float64}(undef, nreps, nrounds)
+    for rep in 1:nreps
+        for r in 1:nrounds
+            res = NRST.parallel_run!(samplers, ntours=ntours[r])
+            msteps[rep,r] = maximum(res[:nsteps])
+            mtimes[rep,r] = maximum(res[:times])
+        end
+    end
+    return ntours, msteps, mtimes
+end
+
+ntours, msteps, mtimes = max_scaling(samplers, 2, 2)
+ntours, msteps, mtimes = max_scaling(samplers, 10, 50)
+p1 = plot()
+p2 = plot()
+for (r,m) in enumerate(eachrow(msteps))
+    plot!(p1, ntours, m, xaxis=:log, linealpha = 0.2, label="", linecolor = :blue)
+    plot!(p2, ntours, mtimes[r,:], xaxis=:log, linealpha = 0.2, label="", linecolor = :blue)
+end
+plot!(
+    p1, ntours, vec(sum(msteps,dims=1))/size(msteps,1), xaxis=:log,
+    linewidth = 2, label="Average", linecolor = :blue, legend_position=:topleft,
+    xlabel="Number of tours", ylabel="Maximum number of steps across tours"
+)
+plot!(
+    p2, ntours, vec(sum(mtimes,dims=1))/size(mtimes,1), xaxis=:log,
+    linewidth = 2, label="Average", linecolor = :blue, legend_position=:topleft,
+    xlabel="Number of tours", ylabel="Time to complete longest tour (s)"
+)
+using Plots.PlotMeasures
+plot(p1,p2,size=(1000,450), margin = 4mm)
+
+###############################################################################
+# compute TE and ESS (use mcmcse.jl and traditional) as difficulty increases. For example: 
+# - m → ∞
+# - d → ∞
+# PROBLEM: these parameters are set as const
+###############################################################################
+
+
 # ###############################################################################
 # # check E^{b}[V] is accurately estimated
 # # compare F' to 
@@ -193,11 +242,4 @@ end
 # end
 # aggV ./= nvisits
 # plot!(ns.np.betas, aggV, label="ST-Tour", palette = cvd_pal)
-
-###############################################################################
-# compute TE and ESS (use mcmcse.jl and traditional) as difficulty increases. For example: 
-# - m → ∞
-# - d → ∞
-# PROBLEM: these parameters are set as const
-###############################################################################
 

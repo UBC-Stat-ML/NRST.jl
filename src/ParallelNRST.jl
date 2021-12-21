@@ -12,7 +12,7 @@ function copy_sampler(
     samplers = Vector{NRSTSampler{T,I,K,B}}(undef, nthrds)
     samplers[1] = ns
     for i in 2:nthrds
-        samplers[i] = NRSTSampler(ns)
+        samplers[i] = NRSTSampler(ns) # copy constructor
     end
     return samplers
 end
@@ -28,12 +28,12 @@ function parallel_run!(
 
     # run tours in parallel using the available nrst's in the channel
     Threads.@threads for tour in 1:ntours
-        seconds = @elapsed begin
+        tstats = @timed begin
             xtrace, iptrace = tour!(samplers[Threads.threadid()]) # run a full tour with the sampler corresponding to this thread, avoiding race conditions
         end
         push!(
             trace_vec[Threads.threadid()],                        # push results to this thread's own storage, avoiding race condition
-            (seconds, xtrace, iptrace)
+            (tstats.time - tstats.gctime, xtrace, iptrace)        # remove GC time from total elapsed time
         )
         verbose && println(
             "thread ", Threads.threadid(), ": completed tour ", tour
@@ -57,19 +57,23 @@ function parallel_run!(
     return (samplers = samplers, results = results)
 end
 
+# TODO: split every item into 2 separate functions
+# - light postprocess: only return nsteps, times
+# - full postprocess : light + the rest
+# Should help some tests go faster where only light pp is needed
 """
     postprocess_tours(trace, ntours, N)
 
 Returns a `NamedTuple` containing the fields
 
-- `:nsteps`: `Vector{I}` of length `ntours` containing the total number of
+- `:nsteps`: vector of length `ntours` containing the total number of
              steps of each tour
-- `:times` : `Vector{K}` of length `ntours` containing the total time spent
+- `:times` : vector of length `ntours` containing the total time spent
              in each tour
 - `:xarray`: vector of length `N+1`. The `i`-th entry contains samples from the
              `i`-th annealed distribution, and its length is equal to the total
              number of visits to that level.
-- `:visits`: `Matrix{I}` of size `ntours × N` containing the number of visits
+- `:visits`: matrix of size `ntours × N` containing the number of visits
              to each state in each tour
 - `:ip`    : the full trace of the index process
 """
