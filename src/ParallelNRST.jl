@@ -26,6 +26,7 @@ struct ParallelRunResults{T,I,K}
     times::Vector{K}          # time spent in every tour
     xarray::Vector{Vector{T}} # sequentially collect the value of x at each of the levels
     visits::Matrix{I}         # number of visits to each level on each tour
+    toureff::Vector{K}        # tour effectiveness for each level
     status::Base.RefValue{Int}# 1: first 4 fields computed // 2: first 6 // 3: all
 end
 
@@ -36,12 +37,13 @@ function ParallelRunResults(
     ntours::Int,
     nthrds::Int
 ) where {T,I,K}
-    nsteps = Vector{I}(undef, ntours)
-    times  = Vector{K}(undef, ntours)
-    xarray = [T[] for i in 1:N]
-    visits = zeros(I, ntours, N)
+    nsteps  = Vector{I}(undef, ntours)
+    times   = Vector{K}(undef, ntours)
+    xarray  = [T[] for i in 1:N]
+    visits  = zeros(I, ntours, N)
+    toureff = Vector{K}(undef, N)
     ParallelRunResults(
-        trace, N, ntours, nthrds, nsteps, times, xarray, visits, Ref(1)
+        trace, N, ntours, nthrds, nsteps, times, xarray, visits, toureff, Ref(1)
     )
 end
 

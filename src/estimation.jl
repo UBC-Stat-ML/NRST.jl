@@ -1,44 +1,47 @@
-# ###############################################################################
-# # utilities for estimating expectations of a test function h under every
-# # distribution, with calculation of standard errors
-# ###############################################################################
+###############################################################################
+# utilities for estimating expectations of a test function h under level
+# distributions, with calculation of standard errors
+###############################################################################
 
+# compute only the point estimate
 function point_estimate(
     res::ParallelRunResults{T,I,K},
     h::Function,
-    at::AbstractVector{<:Int},         # estimate E^{i}[h] for i in at
-    aggfun::Function = Statistics.mean                  
-    ) where {K,T,I}
+    at::AbstractVector{<:Int},      # indexes ⊂ 1:res.N at which to estimate E^{i}[h(x)]
+    aggfun::Function = mean                  
+    ) where {T,I,K}
     full_postprocessing!(res)
     [length(xs) > 0 ? aggfun(h.(xs)) : zero(K) for xs in res.xarray[at]]
 end
 
+# by default, compute h at all levels
 function point_estimate(
     res::ParallelRunResults,
     h::Function,
-    aggfun::Function = Statistics.mean
+    aggfun::Function = mean                  
     )
     point_estimate(res, h, 1:res.N, aggfun)
 end
 
-# function estimate_se(
-#     res::ParallelRunResults{T,I,K},
-#     h::Function,
-#     at:AbstractVector{<:Int}
-#     ) where {K,T,I}
-#     @unpack N, trace, ntours = res
-#     tour = 0
-#     for (_, xtrace, iptrace) in trace
-#         tour += 1
-#         len = 0
-#         for (n, ip) in enumerate(iptrace)
-#             len += 1
-#             visits[tour, ip[1] + 1] += 1
-#             push!(xarray[ip[1] + 1], xtrace[n])
-#         end
-#         nsteps[tour] = len
-#         times[tour]  = seconds
-#     end
-# end
-
-
+# compute point estimate and its approximate asymptotic Monte Carlo variance, so
+# that ±1.96sqrt.(vars/res.ntours) gives approximately a 95% confidence coverage
+function estimate(
+    res::ParallelRunResults{T,I,K},
+    h::Function,
+    at::AbstractVector{<:Int} = 1:res.N # indexes ⊂ 1:res.N at which to estimate E^{i}[h(x)]
+    ) where {T,I,K}
+    means = point_estimate(res, h, at)
+    sumsq = zeros(K, length(at))
+    tsum  = Vector{K}(undef, length(at))
+    for (_, xtrace, iptrace) in res.trace
+        fill!(tsum, zero(K)) # reset sums
+        for (n, ip) in enumerate(iptrace)
+            a = findfirst(isequal(ip[1] + 1), at)
+            if !isnothing(a)
+                tsum[a] += h(xtrace[n]) - means[a]
+            end
+        end
+        sumsq .+= tsum .* tsum
+    end
+    return (means = means, vars = sumsq ./ res.ntours)
+end

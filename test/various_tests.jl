@@ -1,5 +1,4 @@
 using NRST
-using Zygote
 using StatsBase
 using StatsPlots
 using Distributions
@@ -32,5 +31,11 @@ ns=NRST.NRSTSampler(
 samplers = NRST.copy_sampler(ns, nthrds = Threads.nthreads());
 copyto!(ns.np.c, F.(ns.np.betas))
 res = NRST.parallel_run!(samplers, ntours=512*Threads.nthreads());
-NRST.point_estimate(res, ns.np.V)
-NRST.tune!(samplers)
+
+# tour effectiveness
+NRST.full_postprocessing!(res)
+all(res.toureff .== [(mean(v)^2) / mean(v.*v) for v in eachcol(res.visits)])
+
+means, vars = NRST.estimate(res, x -> all(x .> m))
+plot(ns.np.betas, means, ribbon = 1.96sqrt.(vars/res.ntours))
+all(vars .< (4 ./ res.toureff))
