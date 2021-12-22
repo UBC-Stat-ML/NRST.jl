@@ -107,17 +107,20 @@ The original `ns` object is stored in the first entry `samplers[1]`.
 
 ### Assessing estimates of mean energy and free energy 
 
-We want to understand how well our sampler approximates $\mathbb{E}^{(\beta)}[V]$ and $\mathcal{F}(\beta)$. To do this, we first carry out the tuning procedure, and then run the sampler to obtain estimates of the expected energy. The free energy estimates correspond to `c` under the current tuning strategy.
+We want to understand how well our sampler approximates $\mathbb{E}^{(\beta)}[V]$ and $\mathcal{F}(\beta)$. To do this, we first carry out the tuning procedure. The free energy estimates correspond to `c` under the current tuning strategy. For the mean energy, we run the sampler again, and using the resulting `ParallelRunResults` object, we request an estimation that also returns an approximation of the asymptotic Monte Carlo variance
 ```@example tg; continued = true
 NRST.tune!(samplers, verbose=true)
 restune = NRST.parallel_run!(samplers, ntours=512*Threads.nthreads());
-meanV   = [mean(ns.np.V.(xs)) for xs in restune[:xarray]]
+means, vars = NRST.estimate(restune, ns.np.V)
 ```
-Let us visually inspect the results
+Let us visually inspect the results. We use the estimated variance to produce an approximate 95% confidence interval around each point estimate.
 ```@example tg; continued = false
 # energy
 p1 = plot(F',0.,1., label="Theory", title="Mean energy")
-plot!(p1, ns.np.betas, meanV, label="Estimate", seriestype=:scatter)
+plot!(
+    p1, ns.np.betas, means, label="Estimate", seriestype=:scatter,
+    yerror = 1.96sqrt.(vars/restune.ntours)
+)
 
 # free-energy
 p2 = plot(
@@ -137,6 +140,7 @@ Under the mean-energy tuning strategy, we expect a uniform distribution over the
 ```@example tg; continued = true
 copyto!(ns.np.c, F.(ns.np.betas))
 resexact = NRST.parallel_run!(samplers, ntours=512*Threads.nthreads());
+NRST.full_postprocessing!(resexact) # computes the :visits field and others
 ```
 
 !!! note "`np` is shared"
@@ -146,7 +150,7 @@ Let us visually inspect the results
 ```@example tg; continued = false
 xs = repeat(1:length(ns.np.c), 2)
 gs = repeat(["Exact c", "Tuned c"], inner=length(ns.np.c))
-ys = vcat(vec(sum(resexact[:visits], dims=1)),vec(sum(restune[:visits], dims=1)))
+ys = vcat(vec(sum(resexact.visits, dims=1)),vec(sum(restune.visits, dims=1)))
 groupedbar(
     xs,ys,group=gs, legend_position=:topleft,
     title="Number of visits to every level"
@@ -165,8 +169,9 @@ function max_scaling(samplers, nrounds, nreps)
     for rep in 1:nreps
         for r in 1:nrounds
             res = NRST.parallel_run!(samplers, ntours=ntours[r])
-            msteps[rep,r] = maximum(res[:nsteps])
-            mtimes[rep,r] = maximum(res[:times])
+            NRST.tour_durations!(res) # populates only the :nsteps and :times fields
+            msteps[rep,r] = maximum(res.nsteps)
+            mtimes[rep,r] = maximum(res.times)
         end
     end
     return ntours, msteps, mtimes
@@ -213,7 +218,7 @@ function draw_contour!(p,b,xrange)
 end
 
 function draw_points!(p,i;x...)
-    M = reduce(hcat,restune[:xarray][i])
+    M = reduce(hcat,restune.xarray[i])
     scatter!(p, M[1,:], M[2,:];x...)
 end
 
