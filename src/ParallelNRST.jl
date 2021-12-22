@@ -2,9 +2,53 @@
 # run NRST in parallel exploiting regenerations
 ###############################################################################
 
+"""
+    ParallelRunResults
+
+A struct containing raw results as well as postprocessed quantities
+
+- `:nsteps`: vector of length `ntours` containing the total number of
+             steps of each tour
+- `:times` : vector of length `ntours` containing the total time spent
+             in each tour
+- `:xarray`: vector of length `N+1`. The `i`-th entry contains samples from the
+             `i`-th annealed distribution, and its length is equal to the total
+             number of visits to that level.
+- `:visits`: matrix of size `ntours × N` containing the number of visits
+             to each state in each tour
+"""
+struct ParallelRunResults{T,I,K}
+    trace::Vector{Tuple{K, Vector{T}, Vector{MVector{2,I}}}}
+    N::Int
+    ntours::Int
+    nthrds::Int
+    nsteps::Vector{I}         # number of steps in every tour
+    times::Vector{K}          # time spent in every tour
+    xarray::Vector{Vector{T}} # sequentially collect the value of x at each of the levels
+    visits::Matrix{I}         # number of visits to each level on each tour
+    status::Base.RefValue{Int}# 1: first 4 fields computed // 2: first 6 // 3: all
+end
+
+# outer constructor for minimal initialization (status 1)
+function ParallelRunResults(
+    trace::Vector{Tuple{K, Vector{T}, Vector{MVector{2,I}}}},
+    N::Int,
+    ntours::Int,
+    nthrds::Int
+) where {T,I,K}
+    nsteps = Vector{I}(undef, ntours)
+    times  = Vector{K}(undef, ntours)
+    xarray = [T[] for i in 1:N]
+    visits = zeros(I, ntours, N)
+    ParallelRunResults(
+        trace, N, ntours, nthrds, nsteps, times, xarray, visits, Ref(1)
+    )
+end
+
 # create vector of identical copies of a given nrst sampler
 # used to avoid race conditions between threads
 # initialize with ns and additional nthrds-1 (deep)copies
+# note that np object is still shared since it's not modified during simulation
 function copy_sampler(
     ns::NRSTSampler{T,I,K,B};        
     nthrds::Int
@@ -41,69 +85,7 @@ function parallel_run!(
     end
     
     trace = vcat(trace_vec...)
-    N = length(samplers[1].np.betas)
-    return postprocess_tours(trace, ntours, N)
-end
-
-# utility that creates the samplers vector for you and then returns it along results
-function parallel_run!(
-    ns::NRSTSampler;        
-    ntours::Int,                      # run a total of ntours
-    nthrds::Int = Threads.nthreads(), # number of threads available to run tours
-    verbose::Bool = false
-)
-    samplers = copy_sampler(ns, nthrds = nthrds)
-    results = parallel_run!(samplers, ntours=ntours, verbose=verbose)
-    return (samplers = samplers, results = results)
-end
-
-# TODO: split every item into 2 separate functions
-# - light postprocess: only return nsteps, times
-# - full postprocess : light + the rest
-# Should help some tests go faster where only light pp is needed
-"""
-    postprocess_tours(trace, ntours, N)
-
-Returns a `NamedTuple` containing the fields
-
-- `:nsteps`: vector of length `ntours` containing the total number of
-             steps of each tour
-- `:times` : vector of length `ntours` containing the total time spent
-             in each tour
-- `:xarray`: vector of length `N+1`. The `i`-th entry contains samples from the
-             `i`-th annealed distribution, and its length is equal to the total
-             number of visits to that level.
-- `:visits`: matrix of size `ntours × N` containing the number of visits
-             to each state in each tour
-- `:ip`    : the full trace of the index process
-"""
-function postprocess_tours(
-    trace::Vector{Tuple{K, Vector{T}, Vector{MVector{2,I}}}},
-    ntours::Int,
-    N::Int
-    ) where {K,T,I}
-
-    xarray = [T[] for _ in 1:N]       # sequentially collect the value of x at each of the levels
-    nsteps = Vector{I}(undef, ntours) # number of steps in every tour
-    times  = Vector{K}(undef, ntours) # time spent in every tour
-    visits = zeros(I, ntours, N)      # number of visits to each level on each tour
-    iptracefull = zeros(I, 2 ,0)      # collect the whole index process in one big matrix (for the obligatory index process plot)
-    tour = 0
-    for (seconds, xtrace, iptrace) in trace
-        tour += 1
-        len = 0
-        for (n, ip) in enumerate(iptrace)
-            len += 1
-            visits[tour, ip[1] + 1] += 1
-            push!(xarray[ip[1] + 1], xtrace[n])
-        end
-        nsteps[tour] = len
-        times[tour]  = seconds
-        iptracefull  = hcat(iptracefull, reduce(hcat, iptrace))
-    end
-    @assert tour == ntours
-    return (
-        nsteps = nsteps, times = times, xarray = xarray, visits = visits,
-        ip = collect(iptracefull')
+    ParallelRunResults(
+        trace, length(samplers[1].np.betas), ntours, length(samplers)
     )
 end

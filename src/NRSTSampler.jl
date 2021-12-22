@@ -37,11 +37,6 @@ function initial_tuning!(explorers, np::NRSTProblem, nsteps::Int)
     trpz_apprx!(c,betas,aggV)                         # use trapezoidal approx to estimate int_0^beta db aggV(b)
 end
 
-# # test
-# @code_warntype initial_tuning!(np,5000) # predict not type stable!
-# initial_tuning!(np,5000)
-# plot(np.betas, np.c)
-
 # constructor that also builds an NRSTProblem and does initial tuning
 function NRSTSampler(V, Vref, randref, betas, nexpl, use_mean)
     x = randref()
@@ -101,10 +96,6 @@ function comm_step!(ns::NRSTSampler)
     return acc 
 end
 
-# # test
-# comm_step!(ns)
-# ns.ip
-
 # exploration step
 function expl_step!(ns::NRSTSampler)
     @unpack np,explorers,ip,curV,nexpl = ns
@@ -114,12 +105,6 @@ function expl_step!(ns::NRSTSampler)
     copyto!(ns.x, explorers[ip[1]+1].x)  # update nrst's state with the explorer's
     curV[] = V(ns.x)                     # compute energy at new point
 end
-
-# # test
-# ns.x
-# ns.ip
-# expl_step!(ns)
-# ns.x
 
 # NRST step = comm_step ∘ expl_step
 function step!(ns::NRSTSampler)
@@ -157,62 +142,4 @@ function tour!(ns::NRSTSampler{T,I,K,B}) where {T,I,K,B}
     push!(xtrace, copy(ns.x))
     push!(iptrace, copy(ns.ip))
     return xtrace, iptrace
-end
-
-# # test
-# xtrace,iptrace = run!(ns,100)
-# plot(iptrace[1,:],label="",seriestype = :steppost)
-
-###############################################################################
-# second-stage tuning (i.e., after initial_tuning)
-# uses the output of postprocess_tours
-###############################################################################
-
-function tune_c!(
-    ns::NRSTSampler{T,I,K,B},
-    xarray::Vector{Vector{T}},
-    ) where {T,I,K,B}
-    @unpack np = ns
-    @unpack c, betas, V, use_mean = np
-    aggfun = use_mean ? mean : median
-    aggV = similar(c)
-    for (i, xs) in enumerate(xarray)
-        aggV[i] = length(xs) > 0 ? aggfun(V.(xs)) : zero(K)
-    end
-    trpz_apprx!(c, betas, aggV) # use trapezoidal approx to estimate int_0^beta db aggV(b)
-end
-
-# run in parallel multiple rounds with an exponentially increasing number of tours
-# NOTE: the np field is shared across samplers so changing just samplers[1] affects all samplers
-function tune!(
-    samplers::Vector{NRSTSampler{T,I,K,B}};
-    nrounds::Int  = 5,
-    nthrds::Int   = Threads.nthreads(),
-    verbose::Bool = false
-    ) where {T,I,K,B}
-
-    ntours = 16 # initialize number of tours (i.e., 1st round uses 32)
-    for nr in 1:nrounds
-        ntours *= 2
-        if verbose
-            println("Tuning round $nr with $ntours tours per thread")
-            println("Current c:")
-            show(samplers[1].np.c)
-            println("")
-        end
-        results = parallel_run!(samplers, ntours = ntours*nthrds)
-        tune_c!(samplers[1], results[:xarray]) # np is shared across the samplers so this is enough to change all
-    end
-end
-
-# utility that builds the samplers object for you and returns it
-function tune!(
-    ns::NRSTSampler;
-    nrounds::Int  = 5,
-    nthrds::Int   = Threads.nthreads(),
-    verbose::Bool = false
-    )
-    samplers = copy_sampler(ns, nthrds = nthrds) # construct a samplers vector
-    tune!(ns, nrounds = nrounds, nthrds = nthrds, verbose = verbose)
-    return samplers
 end
