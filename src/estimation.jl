@@ -7,7 +7,7 @@
 function point_estimate(
     res::ParallelRunResults{T,I,K},
     h::Function,
-    at::AbstractVector{<:Int},      # indexes ⊂ 1:res.N at which to estimate E^{i}[h(x)]
+    at::AbstractVector{<:Int},      # indexes i ∈ 1:res.N at which to estimate E^{i}[h(x)]
     aggfun::Function = mean                  
     ) where {T,I,K}
     full_postprocessing!(res)
@@ -24,7 +24,8 @@ function point_estimate(
 end
 
 # compute point estimate and its approximate asymptotic Monte Carlo variance, so
-# that ±1.96sqrt.(vars/res.ntours) gives approximately a 95% confidence coverage
+# if the sampler is repeatedly run independently for the same number of tours,
+# 95% of the intervals means±1.96sqrt(vars/ntours) should contain the true posterior mean
 function estimate(
     res::ParallelRunResults{T,I,K},
     h::Function,

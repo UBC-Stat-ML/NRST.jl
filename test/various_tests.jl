@@ -37,5 +37,5 @@ NRST.full_postprocessing!(res)
 all(res.toureff .== [(mean(v)^2) / mean(v.*v) for v in eachcol(res.visits)])
 
 means, vars = NRST.estimate(res, x -> all(x .> m))
-plot(ns.np.betas, means, ribbon = 1.96sqrt.(vars/res.ntours))
+plot(ns.np.betas, means, label="Estimate", seriestype=:scatter, yerror = 1.96sqrt.(vars/res.ntours))
 all(vars .< (4 ./ res.toureff))
