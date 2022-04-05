@@ -89,7 +89,7 @@ end
 ```
 The following statement initializes an `NRSTSampler` object with the energy functions of the problem. It also carries out the tuning of exploration kernels as well as a basic initial tuning of the `c` function.
 ```@example tg; continued = true
-ns=NRST.NRSTSampler(
+ns=NRSTSampler(
     x->(0.5sum(abs2,x .- m)),     # likelihood: N(m1, I)
     x->(0.5sum(abs2,x)/s0sq),     # reference: N(0, s0^2I)
     () -> s0*randn(d),            # reference: N(0, s0^2I)
@@ -100,7 +100,7 @@ ns=NRST.NRSTSampler(
 ```
 Since we wish to run NRST in parallel, we construct `nthreads()` identical copies of `ns` so that each thread can work independently of the others, thus avoiding race conditions.
 ```@example tg; continued = true
-samplers = NRST.copy_sampler(ns, nthrds = Threads.nthreads());
+samplers = copy_sampler(ns, nthrds = Threads.nthreads());
 ```
 The original `ns` object is stored in the first entry `samplers[1]`.
 
@@ -109,9 +109,9 @@ The original `ns` object is stored in the first entry `samplers[1]`.
 
 We want to understand how well our sampler approximates $\mathbb{E}^{(\beta)}[V]$ and $\mathcal{F}(\beta)$. To do this, we first carry out the tuning procedure. The free energy estimates correspond to `c` under the current tuning strategy. For the mean energy, we run the sampler again, and using the resulting `ParallelRunResults` object, we request an estimation that also returns an approximation of the asymptotic Monte Carlo variance
 ```@example tg; continued = true
-NRST.tune!(samplers, verbose=true)
-restune = NRST.parallel_run!(samplers, ntours=512*Threads.nthreads());
-means, vars = NRST.estimate(restune, ns.np.V)
+tune!(samplers, verbose=true)
+restune = parallel_run!(samplers, ntours=512*Threads.nthreads());
+means, vars = estimate(restune, ns.np.V)
 ```
 Let us visually inspect the results. We use the estimated variance to produce an approximate 95% confidence interval around each point estimate.
 ```@example tg; continued = false
@@ -139,8 +139,8 @@ The first figure shows a high level of agreement between the estimated mean ener
 Under the mean-energy tuning strategy, we expect a uniform distribution over the levels. We can check this by inspecting the trace of the previous section. Also, we can do the same for the case where we set `c` to the exact value of the free energy
 ```@example tg; continued = true
 copyto!(ns.np.c, F.(ns.np.betas))
-resexact = NRST.parallel_run!(samplers, ntours=512*Threads.nthreads());
-NRST.full_postprocessing!(resexact) # computes the :visits field and others
+resexact = parallel_run!(samplers, ntours=512*Threads.nthreads());
+full_postprocessing!(resexact) # computes the :visits field and others
 ```
 
 !!! note "`np` is shared"
@@ -168,8 +168,8 @@ function max_scaling(samplers, nrounds, nreps)
     mtimes  = Matrix{Float64}(undef, nreps, nrounds)
     for rep in 1:nreps
         for r in 1:nrounds
-            res = NRST.parallel_run!(samplers, ntours=ntours[r])
-            NRST.tour_durations!(res) # populates only the :nsteps and :times fields
+            res = parallel_run!(samplers, ntours=ntours[r])
+            tour_durations!(res) # populates only the :nsteps and :times fields
             msteps[rep,r] = maximum(res.nsteps)
             mtimes[rep,r] = maximum(res.times)
         end

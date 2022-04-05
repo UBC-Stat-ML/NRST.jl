@@ -2,6 +2,21 @@ module NRST
 
 using UnPack,Random,Distributions,Printf,StatsBase,Statistics,StaticArrays,DynamicPPL
 
+# NRSTSampler.jl
+export NRSTSampler,
+    copy_sampler,
+    tune!
+
+# ParallelNRST.jl
+export parallel_run!
+
+# postprocess_results.jl
+export full_postprocessing!,
+    tour_durations!
+
+# estimation.jl
+export estimate
+
 # Turing_interface.jl
 export gen_randref
 
