@@ -1,14 +1,20 @@
 name = "NRST"
 uuid = "e9d47f39-3606-4fdc-aee6-45685448eee6"
 authors = ["Miguel Biron-Lattes <miguel.biron@stat.ubc.ca> and contributors"]
-version = "0.1.0"
+version = "0.0.1"
 
 [deps]
+AbstractMCMC = "80f14c24-f653-4e6a-9b94-39d6b0f70001"
+AdvancedHMC = "0bf59076-c3b1-5ca4-86bd-e02cd72cde3d"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+DynamicPPL = "366bfd00-2699-11ea-058f-f148b4cae6d8"
+HypothesisTests = "09f84164-cd44-5f33-b23f-e6b0d136a0d5"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
+Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 UnPack = "3a884ed6-31ef-47d7-9d2a-63182c4928ed"
 
 [compat]
@@ -16,7 +22,6 @@ julia = "1"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
-Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [targets]
-test = ["Test", "Zygote"]
+test = ["Test"]

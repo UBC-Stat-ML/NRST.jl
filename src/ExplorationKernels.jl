@@ -165,15 +165,16 @@ end
 # useful for having vectors of mixed types (as long as <=4 types)
 # see https://stackoverflow.com/a/58539098/5443023
 # also https://docs.julialang.org/en/v1/manual/types/#citeref-1
-const ContinuousSampler = Union{IIDSampler, MHSampler}
+const MHorIIDSampler = Union{IIDSampler, MHSampler}
 
 # create a vector of exploration kernels: continous case
 function init_explorers(V,Vref,randref,betas,xinit::AbstractVector{<:AbstractFloat})
-    A = Vector{ContinuousSampler}(undef, length(betas))
+    A = Vector{MHorIIDSampler}(undef, length(betas))
     A[1] = IIDSampler(Vref,randref)
     for i in 2:length(betas)
-        beta = betas[i] # better to extract the beta, o.w. the closure grabs the whole vector
+        beta = betas[i] # better to extract beta here, o.w. the closure grabs the whole vector
         A[i] = MHSampler(x->(Vref(x) + beta*V(x)), copy(xinit)) # copy is necessary or all explorers end up sharing the same x
     end
     return A
 end
+

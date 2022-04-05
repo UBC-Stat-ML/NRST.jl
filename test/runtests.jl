@@ -1,6 +1,9 @@
 using NRST
 using Test
+using DynamicPPL
+using Turing
+using HypothesisTests
 
 @testset "NRST.jl" begin
-    # Write your tests here.
+    include("Turing_interface.jl")
 end
