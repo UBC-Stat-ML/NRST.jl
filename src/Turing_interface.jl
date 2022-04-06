@@ -1,7 +1,7 @@
 ###############################################################################
-# Using Turing's samplers as ExplorationKernels
-# Note: this requires that we run everything in the transformed space, and only
-# use constrained space for estimation  
+# Minimal interface that lets one obtain randref, Vref and V from a DynamicPPL.Model
+# The transformation 𝕏 → ℝ from constrained to unconstrained Euclidean space
+# is used to simplify the work for exploration kernels 
 ###############################################################################
 
 # NRSTSampler constructor
