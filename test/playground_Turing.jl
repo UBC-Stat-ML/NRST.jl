@@ -52,15 +52,15 @@ _, state = Turing.AbstractMCMC.step(rng, lnmodel, spl, state)
 ####################################################
 
 β = 0.7
-vi = VarInfo(rng, lnmodel, SampleFromPrior())
+vi = VarInfo(rng, lnmodel)
 s = vi[@varname(s)]
 getlogp(vi) == logpdf(LogNormal(),s) + logpdf(Normal(0.,s),lnmodel.args[1])
 mbctx = MiniBatchContext(DefaultContext(),β)
 vi = last(DynamicPPL.evaluate!!(lnmodel, vi, mbctx))
 getlogp(vi) == logpdf(LogNormal(),s) + β*logpdf(Normal(0.,s),lnmodel.args[1])
 
-spl = Sampler(HMC(0.1,5), lnmodel) # create basic HMC sampler for the model
-link!(vi, spl)                    # convert the variables to unconstrained form
+spl = Sampler(HMC(0.1,5))
+link!(vi, spl)
 istrans(vi,@varname(s))
 vi = last(DynamicPPL.evaluate!!(lnmodel, rng, vi, spl, mbctx)) # since mbctx uses DefaultContext, this does not sample, only evaluates
 theta = vi[spl]
@@ -79,24 +79,15 @@ link!(vi, spl)
 getlogp(vi)
 vi[@varname(s)]
 vi[spl]
-# simplified and modified version of gen_logπ in Turing
-# https://github.com/TuringLang/Turing.jl/blob/b5fd7611e596ba2806479f0680f8a5965e4bf055/src/inference/hmc.jl#L444
-# difference: it does not retain the original value in vi, which we don't really need 
-function gen_Vref(vi, spl, model)
-    function Vref(x)::Float64
-        vi  = DynamicPPL.setindex!!(vi, x, spl)
-        vi  = last(DynamicPPL.evaluate!!(model, vi, spl, PriorContext()))
-        pot = -getlogp(vi)
-        return pot
-    end
-    return Vref
-end
-Vref = gen_Vref(vi,spl,lnmodel)
-[[x,Vref([x])] for x in randn(10)]
-x = 1.4
-all(map(x-> Vref([x]) ≈ (-logpdf(Normal(), x)), randn(10)))
-#logpdf(Normal(), vi[spl][1]) == logpdf(LogNormal(),exp(vi[spl][1])) + vi[spl][1]
-get_num_produce(vi)
+
+V = gen_V(vi,spl,lnmodel)
+s = rand(LogNormal())
+V([log(s)]) == -logpdf(Normal(0.,s),lnmodel.args[1])
+all(map(θ-> V([θ]) ≈ -logpdf(Normal(0.,exp(θ)),lnmodel.args[1]), randn(rng,10)))
+[[θ,V([θ])] for θ in randn(10)]
+vi[@varname(s)]
+θ = 1.4
+
 #########################################################################################
 # Outline of how Turing adapts AdvancedHMC to work with trans variables, within AdvancedMCMC framework
 # 1) the sampling starts with a call to "sample"

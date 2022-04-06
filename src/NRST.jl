@@ -19,7 +19,8 @@ export estimate
 
 # Turing_interface.jl
 export gen_randref,
-    gen_Vref
+    gen_Vref,
+    gen_V
 
 include("utils.jl")
 include("ExplorationKernels.jl")

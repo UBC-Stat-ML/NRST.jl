@@ -41,7 +41,7 @@ function gen_randref(model::Model, spl::Sampler)
     return randref
 end
 
-# generate a function that computes the prior (i.e., reference) potential 
+# generate functions to compute prior (Vref) and likelihood (V) potentials 
 # simplified and modified version of gen_logπ in Turing
 # https://github.com/TuringLang/Turing.jl/blob/b5fd7611e596ba2806479f0680f8a5965e4bf055/src/inference/hmc.jl#L444
 # difference: it does not retain the original value in vi, which we don't really need 
@@ -54,3 +54,13 @@ function gen_Vref(vi, spl, model)
     end
     return Vref
 end
+function gen_V(vi, spl, model)
+    function V(x)::Float64
+        vi  = DynamicPPL.setindex!!(vi, x, spl)
+        vi  = last(DynamicPPL.evaluate!!(model, vi, spl, LikelihoodContext()))
+        pot = -getlogp(vi)
+        return pot
+    end
+    return V
+end
+
