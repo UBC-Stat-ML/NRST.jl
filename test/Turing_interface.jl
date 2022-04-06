@@ -2,12 +2,12 @@
     # lognormal prior, normal likelihood
     @model function Lnmodel(x)
         s ~ LogNormal()
-        x ~ Normal(0.,s)
+        x .~ Normal(0.,s)
     end
-    xobs    = -.1234
+    rng     = Random.GLOBAL_RNG
+    xobs    = randn(rng, 30) #-.1234
     lnormal = Lnmodel(xobs)
     spl     = Sampler(HMC(0.1,5)) # only used to enforce (0,∞) → ℝ trans via `link!`
-    rng     = Random.GLOBAL_RNG
     vi      = DynamicPPL.VarInfo(rng, lnormal)
     link!(vi, spl)
     @testset "gen_randref" begin
@@ -23,7 +23,7 @@
     end
     @testset "gen_V" begin
         V = gen_V(vi,spl,lnormal)
-        @test all(map(θ-> V([θ]) ≈ -logpdf(Normal(0.,exp(θ)),xobs), randn(rng,10)))
+        @test all(map(θ-> V([θ]) ≈ -sum(logpdf.(Normal(0.,exp(θ)),xobs)), randn(rng,10)))
     end
 end
 

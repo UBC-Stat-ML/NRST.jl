@@ -2,20 +2,20 @@
 # interfacing with the Turing.jl environment
 #########################################################################################
 
-using Random, Distributions, AbstractMCMC, AdvancedHMC, DynamicPPL, Turing
+using Random, Distributions, DynamicPPL, Turing
 
 # lognormal prior for variance, normal likelihood
 @model function Lnmodel(x)
     s ~ LogNormal()
-    x ~ Normal(0.,s)
+    x .~ Normal(0.,s)
 end
-lnmodel = Lnmodel(-.1234)
+lnmodel = Lnmodel(randn(30)) # -.1234
 rng = Random.GLOBAL_RNG
 
 # check logposterior is accurately computed
 vi = VarInfo(rng, lnmodel)
 s = vi[@varname(s)]
-getlogp(vi) == logpdf(LogNormal(),s) + logpdf(Normal(0.,s),lnmodel.args[1])
+getlogp(vi) ≈ logpdf(LogNormal(),s) + sum(logpdf.(Normal(0.,s),lnmodel.args[1]))
 
 ####################################################
 # below I'm loosely following DynamicPPL.initialstep
@@ -32,7 +32,7 @@ istrans(vi,@varname(s))
 vi = last(DynamicPPL.evaluate!!(lnmodel, rng, vi, spl))
 theta = vi[spl]
 theta[1] == log(s) # DynamicPPL.Bijectors.bijector(LogNormal())() == Bijectors.Log{0}()
-getlogp(vi) == (logpdf(LogNormal(),s) + log(s)) + logpdf(Normal(0.,s),lnmodel.args[1])
+getlogp(vi) ≈ (logpdf(LogNormal(),s) + log(s)) + sum(logpdf.(Normal(0.,s),lnmodel.args[1]))
 
 ####################################################
 # step with HMC
@@ -49,44 +49,35 @@ _, state = Turing.AbstractMCMC.step(rng, lnmodel, spl, state)
 
 ####################################################
 # evaluating tempered posteriors
+# does NOT work when link!'d
 ####################################################
 
 β = 0.7
 vi = VarInfo(rng, lnmodel)
 s = vi[@varname(s)]
-getlogp(vi) == logpdf(LogNormal(),s) + logpdf(Normal(0.,s),lnmodel.args[1])
+getlogp(vi) ≈ logpdf(LogNormal(),s) + sum(logpdf.(Normal(0.,s),lnmodel.args[1]))
 mbctx = MiniBatchContext(DefaultContext(),β)
 vi = last(DynamicPPL.evaluate!!(lnmodel, vi, mbctx))
-getlogp(vi) == logpdf(LogNormal(),s) + β*logpdf(Normal(0.,s),lnmodel.args[1])
+getlogp(vi) ≈ logpdf(LogNormal(),s) + β*sum(logpdf.(Normal(0.,s),lnmodel.args[1]))
 
-spl = Sampler(HMC(0.1,5))
 link!(vi, spl)
 istrans(vi,@varname(s))
 vi = last(DynamicPPL.evaluate!!(lnmodel, rng, vi, spl, mbctx)) # since mbctx uses DefaultContext, this does not sample, only evaluates
 theta = vi[spl]
 theta[1] == log(s)
-getlogp(vi) == (logpdf(LogNormal(),s) + log(s)) + β*logpdf(Normal(0.,s),lnmodel.args[1])
+getlogp(vi) ≈ (logpdf(LogNormal(),s) + log(s)) + β*sum(logpdf.(Normal(0.,s),lnmodel.args[1]))
+
+using NRST
+
+# this works :)
+V    = gen_V(vi, spl, lnmodel)
+Vref = gen_Vref(vi, spl, lnmodel)
+-(Vref(theta) + β*V(theta)) ≈ (logpdf(LogNormal(),s) + log(s)) + β*sum(logpdf.(Normal(0.,s),lnmodel.args[1]))
+
 
 ####################################################
-# generating randref, Vref, V, and any Vβ
-# use a single vi for all these things
+# inference with NRST using the Turin interface
 ####################################################
-
-# these lines are the basic initialization. needs only model and spl
-# from this we get a linked vi
-vi = DynamicPPL.VarInfo(rng, lnmodel)
-link!(vi, spl)
-getlogp(vi)
-vi[@varname(s)]
-vi[spl]
-
-V = gen_V(vi,spl,lnmodel)
-s = rand(LogNormal())
-V([log(s)]) == -logpdf(Normal(0.,s),lnmodel.args[1])
-all(map(θ-> V([θ]) ≈ -logpdf(Normal(0.,exp(θ)),lnmodel.args[1]), randn(rng,10)))
-[[θ,V([θ])] for θ in randn(10)]
-vi[@varname(s)]
-θ = 1.4
 
 #########################################################################################
 # Outline of how Turing adapts AdvancedHMC to work with trans variables, within AdvancedMCMC framework

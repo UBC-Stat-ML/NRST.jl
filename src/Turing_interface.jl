@@ -1,23 +1,20 @@
 ###############################################################################
 # Using Turing's samplers as ExplorationKernels
 # Note: this requires that we run everything in the transformed space, and only
-# use constrained space for estimation
-# TODO: 
-# - NRSTSampler constructor that takes a Turing Model object
-#    - will probably need to add a "metadata" field to NRSTProblem to hold the model   
+# use constrained space for estimation  
 ###############################################################################
 
-# # TODO: NRSTSampler constructor
-# function NRSTSampler(model::Model, alg::InferenceAlgorithm, betas, nexpl, use_mean)
-#     randref = gen_randref(model, spl)
-#     x = randref()
-#     np = NRSTProblem(V, Vref, randref, betas, similar(betas), use_mean, nothing)
-#     explorers = init_explorers(V, Vref, randref, betas, x)
-#     # tune explorations kernels and get initial c estimate 
-#     initial_tuning!(explorers, np, 10*nexpl)
-#     NRSTSampler(np, explorers, x, MVector(0,1), Ref(V(x)), nexpl)
-# end
-
+# NRSTSampler constructor
+function NRSTSampler(model::Model, betas, nexpl, use_mean)
+    # build a TypedVarInfo and a dummy sampler that forces 𝕏 → ℝ trans via `link!`
+    vi  = DynamicPPL.VarInfo(rng, model)
+    spl = DynamicPPL.Sampler(Turing.HMC(0.1,5))
+    DynamicPPL.link!(vi, spl)
+    randref = gen_randref(model, spl)
+    V       = gen_V(vi, spl, model)
+    Vref    = gen_Vref(vi, spl, model)
+    NRSTSampler(V, Vref, randref, betas, nexpl, use_mean)
+end
 
 #######################################
 # utilities
@@ -41,7 +38,8 @@ function gen_randref(model::Model, spl::Sampler)
     return randref
 end
 
-# generate functions to compute prior (Vref) and likelihood (V) potentials 
+# generate functions to compute prior (Vref) and likelihood (V) potentials
+# these functions act on transfomed (i.e., unconstrained) variables
 # simplified and modified version of gen_logπ in Turing
 # https://github.com/TuringLang/Turing.jl/blob/b5fd7611e596ba2806479f0680f8a5965e4bf055/src/inference/hmc.jl#L444
 # difference: it does not retain the original value in vi, which we don't really need 
