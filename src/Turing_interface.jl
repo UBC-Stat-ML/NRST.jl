@@ -7,7 +7,7 @@
 # NRSTSampler constructor
 function NRSTSampler(model::Model, betas, nexpl, use_mean)
     # build a TypedVarInfo and a dummy sampler that forces 𝕏 → ℝ trans via `link!`
-    vi  = DynamicPPL.VarInfo(rng, model)
+    vi  = DynamicPPL.VarInfo(model)
     spl = DynamicPPL.Sampler(Turing.HMC(0.1,5))
     DynamicPPL.link!(vi, spl)
     randref = gen_randref(model, spl)
@@ -42,7 +42,9 @@ end
 # these functions act on transfomed (i.e., unconstrained) variables
 # simplified and modified version of gen_logπ in Turing
 # https://github.com/TuringLang/Turing.jl/blob/b5fd7611e596ba2806479f0680f8a5965e4bf055/src/inference/hmc.jl#L444
-# difference: it does not retain the original value in vi, which we don't really need 
+# difference: it does not retain the original value in vi, which we don't really need
+# Note: can use hasproperty(V,:vi) to distinguish V's created with Turing interface
+# TODO: this is inefficient because it requires 2 passes over the graph to get Vref + βV
 function gen_Vref(vi, spl, model)
     function Vref(x)::Float64
         vi  = DynamicPPL.setindex!!(vi, x, spl)

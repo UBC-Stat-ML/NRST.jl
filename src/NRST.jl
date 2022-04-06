@@ -1,6 +1,6 @@
 module NRST
 
-using UnPack,Random,Distributions,Printf,StatsBase,Statistics,StaticArrays,DynamicPPL
+using UnPack,Random,Distributions,Printf,StatsBase,Statistics,StaticArrays,DynamicPPL,Turing
 
 # NRSTSampler.jl
 export NRSTSampler,

@@ -3,14 +3,13 @@
 ###############################################################################
 
 # encapsulates the specifics of the inference problem
-struct NRSTProblem{F,G,H,K<:AbstractFloat,A<:AbstractVector{K},TM<:Model}
+struct NRSTProblem{F,G,H,K<:AbstractFloat,A<:AbstractVector{K}}
     V::F           # energy Function
     Vref::G        # energy of reference distribution
     randref::H     # produces independent sample from reference distribution
     betas::A       # vector of tempering parameters (length N)
     c::A           # vector of parameters for the pseudoprior
     use_mean::Bool # should we use "mean" (true) or "median" (false) for tuning c?
-    mdl::Union{TM, Nothing} # optional DynamicPPL.Model
 end
 
 struct NRSTSampler{T,I<:Int,K<:AbstractFloat,B<:AbstractVector{<:ExplorationKernel}}
@@ -31,8 +30,9 @@ function initial_tuning!(explorers, np::NRSTProblem, nsteps::Int)
     @unpack c, betas, V = np
     aggfun = np.use_mean ? mean : median
     aggV = similar(c)
-    Threads.@threads for i in eachindex(aggV)
-        aggV[i] = aggfun(tune!(explorers[i], V, nsteps = nsteps))
+    # Threads.@threads for (i,e) in enumerate(explorers)
+    for (i,e) in enumerate(explorers)
+        aggV[i] = aggfun(tune!(e, V, nsteps = nsteps))
     end
     # copyto!(aggV,predict(loess(betas, aggV),betas)) # use LOESS smoothing to remove kinks. note: predict is not type stable!
     trpz_apprx!(c,betas,aggV)                         # use trapezoidal approx to estimate int_0^beta db aggV(b)
@@ -41,7 +41,7 @@ end
 # constructor that also builds an NRSTProblem and does initial tuning
 function NRSTSampler(V, Vref, randref, betas, nexpl, use_mean)
     x = randref()
-    np = NRSTProblem(V, Vref, randref, betas, similar(betas), use_mean, nothing)
+    np = NRSTProblem(V, Vref, randref, betas, similar(betas), use_mean)
     explorers = init_explorers(V, Vref, randref, betas, x)
     # tune explorations kernels and get initial c estimate 
     initial_tuning!(explorers, np, 10*nexpl)

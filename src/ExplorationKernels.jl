@@ -127,9 +127,13 @@ end
 
 # tune sigma and return sample {V(xn)} for some function V
 # uses simplified SGD approach targetting 0.5(acc-target)^2 with R-M seq a_r = 10r^{-0.51}
-function tune!(mhs::MHSampler,V; nsteps=500, target_acc=0.234, eps=0.03, max_rounds=8, verbose=false)
-    err = eps
-    r = 0
+function tune!(mhs::MHSampler,V; nsteps=500, target_acc=0.234, eps=0.03, max_rounds=8, verbose=true)
+    if nsteps < 1
+        return typeof(V(mhs.x))[]
+    end
+    minsigma = 1e-4
+    err      = eps
+    r        = 0
     verbose && @printf("Tuning initiated at sigma=%.1f\n", mhs.sigma[])
     while err >= eps && r < max_rounds
         r += 1
@@ -137,6 +141,7 @@ function tune!(mhs::MHSampler,V; nsteps=500, target_acc=0.234, eps=0.03, max_rou
         acc = nacc / nsteps                             # compute acceptance ratio
         err = abs(acc - target_acc)                     # absolute error
         mhs.sigma[] += 10(r^(-0.51))*(acc - target_acc) # SGD step
+        mhs.sigma[] = max(minsigma,mhs.sigma[])         # force sanity
         verbose && @printf(
             "Round %d: acc=%.3f, err=%.2f, new_sigma=%.1f\n",r, acc, err, mhs.sigma[]
         )

@@ -74,10 +74,26 @@ V    = gen_V(vi, spl, lnmodel)
 Vref = gen_Vref(vi, spl, lnmodel)
 -(Vref(theta) + β*V(theta)) ≈ (logpdf(LogNormal(),s) + log(s)) + β*sum(logpdf.(Normal(0.,s),lnmodel.args[1]))
 
+####################################################
+# inference with NRST using the Turing interface
+####################################################
 
-####################################################
-# inference with NRST using the Turin interface
-####################################################
+using NRST, Plots, StatsBase
+ns=NRSTSampler(
+    lnmodel,                      # use the Turing model to build potentials and prior sampling
+    pushfirst!(10. .^range(-2,0,9), 0.), # betas = exponential grid in [0,1]
+    50,                           # nexpl
+    true                          # tune c using mean energy
+);
+xtrace, iptrace = NRST.run!(ns,nsteps=1000)
+plot(iptrace[1,:]) # visits all states except the reference, need tuning
+print(sort(collect(countmap(iptrace[1,:])), by=x->x[1])) #
+
+# inspect samples at the top chain
+idx = iptrace[1,:] .== (length(ns.np.betas)-1)
+ss = exp.(vcat(xtrace[idx]...)) # transform to constrained space
+plot(ss)
+histogram(ss)
 
 #########################################################################################
 # Outline of how Turing adapts AdvancedHMC to work with trans variables, within AdvancedMCMC framework
