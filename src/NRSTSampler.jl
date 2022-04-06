@@ -3,13 +3,14 @@
 ###############################################################################
 
 # encapsulates the specifics of the inference problem
-struct NRSTProblem{F,G,H,K<:AbstractFloat,A<:AbstractVector{K}}
+struct NRSTProblem{F,G,H,K<:AbstractFloat,A<:AbstractVector{K},TM<:Model}
     V::F           # energy Function
     Vref::G        # energy of reference distribution
     randref::H     # produces independent sample from reference distribution
     betas::A       # vector of tempering parameters (length N)
     c::A           # vector of parameters for the pseudoprior
     use_mean::Bool # should we use "mean" (true) or "median" (false) for tuning c?
+    mdl::Union{TM, Nothing} # optional DynamicPPL.Model
 end
 
 struct NRSTSampler{T,I<:Int,K<:AbstractFloat,B<:AbstractVector{<:ExplorationKernel}}
@@ -40,7 +41,7 @@ end
 # constructor that also builds an NRSTProblem and does initial tuning
 function NRSTSampler(V, Vref, randref, betas, nexpl, use_mean)
     x = randref()
-    np = NRSTProblem(V, Vref, randref, betas, similar(betas), use_mean)
+    np = NRSTProblem(V, Vref, randref, betas, similar(betas), use_mean, nothing)
     explorers = init_explorers(V, Vref, randref, betas, x)
     # tune explorations kernels and get initial c estimate 
     initial_tuning!(explorers, np, 10*nexpl)

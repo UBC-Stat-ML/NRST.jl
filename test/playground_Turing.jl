@@ -1,10 +1,8 @@
 #########################################################################################
 # interfacing with the Turing.jl environment
-# TODO:
-# - use DynamicPPL @models, evaluate V_b(x) := Vref(x) + bV(x) with MiniBatchContext()
 #########################################################################################
 
-using Random, Distributions, AbstractMCMC, AdvancedHMC, DynamicPPL, Turing, HypothesisTests
+using Random, Distributions, AbstractMCMC, AdvancedHMC, DynamicPPL, Turing
 
 # lognormal prior for variance, normal likelihood
 @model function Lnmodel(x)
@@ -15,7 +13,7 @@ lnmodel = Lnmodel(-.1234)
 rng = Random.GLOBAL_RNG
 
 # check logposterior is accurately computed
-vi = VarInfo(rng, lnmodel, SampleFromPrior())
+vi = VarInfo(rng, lnmodel)
 s = vi[@varname(s)]
 getlogp(vi) == logpdf(LogNormal(),s) + logpdf(Normal(0.,s),lnmodel.args[1])
 
@@ -23,9 +21,9 @@ getlogp(vi) == logpdf(LogNormal(),s) + logpdf(Normal(0.,s),lnmodel.args[1])
 # below I'm loosely following DynamicPPL.initialstep
 ####################################################
 
-!istrans(vi,@varname(s))           # variables are currently in constrained space (s>0)
-spl = Sampler(HMC(0.1,5), lnmodel) # create basic HMC sampler for the model
-link!(vi, spl)                     # convert the variables to unconstrained form
+!istrans(vi,@varname(s))  # variables are currently in constrained space (s>0)
+spl = Sampler(HMC(0.1,5)) # create basic HMC sampler for the model
+link!(vi, spl)            # convert the variables to unconstrained form
 istrans(vi,@varname(s))
 
 # this call to evaluate!! implicitly uses the DefaultContext, which does not
@@ -36,44 +34,8 @@ theta = vi[spl]
 theta[1] == log(s) # DynamicPPL.Bijectors.bijector(LogNormal())() == Bijectors.Log{0}()
 getlogp(vi) == (logpdf(LogNormal(),s) + log(s)) + logpdf(Normal(0.,s),lnmodel.args[1])
 
-# create a Hamiltonian
-metricT = Turing.Inference.getmetricT(spl.alg)
-metric = metricT(length(theta))
-∂logπ∂θ = Turing.Inference.gen_∂logπ∂θ(vi, spl, lnmodel)
-logπ = Turing.Inference.gen_logπ(vi, spl, lnmodel)
-logπ(theta) == getlogp(vi)
-hamiltonian = AdvancedHMC.Hamiltonian(metric, logπ, ∂logπ∂θ)
-z = AdvancedHMC.phasepoint(rng, theta, hamiltonian)
-log_density_old = getlogp(vi)
-ϵ = spl.alg.ϵ
-kernel = Turing.Inference.make_ahmc_kernel(spl.alg, ϵ)
-t = AdvancedHMC.transition(rng, hamiltonian, kernel, z)
-adaptor = Turing.Inference.AHMCAdaptor(spl.alg, hamiltonian.metric; ϵ=ϵ) # no adaptation because HMC(0.1,5) is not adaptive
-if spl.alg isa AdaptiveHamiltonian
-    # nadapts is passed to check that i<=nadapts, otherwise nothing is done: https://github.com/TuringLang/AdvancedHMC.jl/blob/7cad9f02e6eb4095ad8b2e7ef06d3474dfb19135/src/sampler.jl#L80
-    hamiltonian, kernel, _ =
-        AdvancedHMC.adapt!(hamiltonian, kernel, adaptor,
-                    1, nadapts, t.z.θ, t.stat.acceptance_rate)
-end
-if t.stat.is_accept
-    vi = DynamicPPL.setindex!!(vi, t.z.θ, spl)
-    vi = DynamicPPL.setlogp!!(vi, t.stat.log_density)
-else
-    vi = DynamicPPL.setindex!!(vi, theta, spl)
-    vi = DynamicPPL.setlogp!!(vi, log_density_old)
-end
-transition = Turing.Inference.HMCTransition(vi, t)
-transition.θ
-transition.lp
-transition.stat
-state = Turing.Inference.HMCState(vi, 1, kernel, hamiltonian, t.z, adaptor)
-
-# loop
-sample, state = Turing.AbstractMCMC.step(rng, lnmodel, spl, state)
-state.i
-
 ####################################################
-# now do this using the step methods
+# step with HMC
 ####################################################
 
 # initial step
@@ -106,28 +68,36 @@ theta[1] == log(s)
 getlogp(vi) == (logpdf(LogNormal(),s) + log(s)) + β*logpdf(Normal(0.,s),lnmodel.args[1])
 
 ####################################################
-# sampling from the prior
+# generating randref, Vref, V, and any Vβ
+# use a single vi for all these things
 ####################################################
 
-function gen_randref(model::Model, spl::Sampler)
-    function randref(rng)
-        vi = VarInfo(rng, model, SampleFromPrior())
-        link!(vi, spl)
-        vi[spl]
+# these lines are the basic initialization. needs only model and spl
+# from this we get a linked vi
+vi = DynamicPPL.VarInfo(rng, lnmodel)
+link!(vi, spl)
+getlogp(vi)
+vi[@varname(s)]
+vi[spl]
+# simplified and modified version of gen_logπ in Turing
+# https://github.com/TuringLang/Turing.jl/blob/b5fd7611e596ba2806479f0680f8a5965e4bf055/src/inference/hmc.jl#L444
+# difference: it does not retain the original value in vi, which we don't really need 
+function gen_Vref(vi, spl, model)
+    function Vref(x)::Float64
+        vi  = DynamicPPL.setindex!!(vi, x, spl)
+        vi  = last(DynamicPPL.evaluate!!(model, vi, spl, PriorContext()))
+        pot = -getlogp(vi)
+        return pot
     end
-    return randref
+    return Vref
 end
-randref = gen_randref(lnmodel, spl)
-thetas = map(_ -> randref(rng)[1], 1:100)
-pvalue(OneSampleADTest(thetas, Normal())) > 0.05
-
+Vref = gen_Vref(vi,spl,lnmodel)
+[[x,Vref([x])] for x in randn(10)]
+x = 1.4
+all(map(x-> Vref([x]) ≈ (-logpdf(Normal(), x)), randn(10)))
+#logpdf(Normal(), vi[spl][1]) == logpdf(LogNormal(),exp(vi[spl][1])) + vi[spl][1]
+get_num_produce(vi)
 #########################################################################################
-# TODO:
-# - use AdvancedHMC samplers as exploration kernels. Cannot really use the Turing because
-#   the model for the explorer is only specified through the tempered energy V_b, which is
-#   more similar to the standard AdvancedHMC interface. however, must be careful about link/unlik
-#   to handle transformations 
-#
 # Outline of how Turing adapts AdvancedHMC to work with trans variables, within AdvancedMCMC framework
 # 1) the sampling starts with a call to "sample"
 #	https://github.com/TuringLang/Turing.jl/blob/b5fd7611e596ba2806479f0680f8a5965e4bf055/src/inference/hmc.jl#L103

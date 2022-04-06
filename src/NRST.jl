@@ -18,7 +18,8 @@ export full_postprocessing!,
 export estimate
 
 # Turing_interface.jl
-export gen_randref
+export gen_randref,
+    gen_Vref
 
 include("utils.jl")
 include("ExplorationKernels.jl")
