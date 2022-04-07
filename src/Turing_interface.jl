@@ -7,12 +7,12 @@
 # NRSTSampler constructor
 function NRSTSampler(model::Model, betas, nexpl, use_mean)
     # build a TypedVarInfo and a dummy sampler that forces 𝕏 → ℝ trans via `link!`
-    vi  = DynamicPPL.VarInfo(model)
-    spl = DynamicPPL.Sampler(Turing.HMC(0.1,5))
-    DynamicPPL.link!(vi, spl)
-    randref = gen_randref(model, spl)
-    V       = gen_V(vi, spl, model)
-    Vref    = gen_Vref(vi, spl, model)
+    viout   = DynamicPPL.VarInfo(model)
+    spl     = DynamicPPL.Sampler(Turing.HMC(0.1,5))
+    DynamicPPL.link!(viout, spl)
+    randref = gen_randref(spl, model)
+    V       = gen_V(viout, spl, model)
+    Vref    = gen_Vref(viout, spl, model)
     NRSTSampler(V, Vref, randref, betas, nexpl, use_mean)
 end
 
@@ -25,7 +25,7 @@ end
 #       so that it is captured in the closure, and then just use model()
 #       i.e., basically recreate the inside of the VarInfo method we use now: https://github.com/TuringLang/DynamicPPL.jl/blob/d222316a7a2fd5afe6ec74a7ec2a50c6f08c1d00/src/varinfo.jl#L120
 #       Alternatively, use the rand() approach (it might not work with link! tho): https://github.com/TuringLang/DynamicPPL.jl/blob/d222316a7a2fd5afe6ec74a7ec2a50c6f08c1d00/src/model.jl#L524
-function gen_randref(model::Model, spl::Sampler)
+function gen_randref(spl, model)
     # TODO: this is not type stable. could be fixed with an approach similar to their rand() method 
     #       Another option is to use the fact that vi is typed, and so can 
     #       use eltype(vi,spl), but this would need creating vi outside the inner fun
@@ -45,8 +45,9 @@ end
 # difference: it does not retain the original value in vi, which we don't really need
 # Note: can use hasproperty(V,:vi) to distinguish V's created with Turing interface
 # TODO: this is inefficient because it requires 2 passes over the graph to get Vref + βV
-function gen_Vref(vi, spl, model)
+function gen_Vref(viout, spl, model)
     function Vref(x)::Float64
+        vi  = viout # this helps with the re-binding+Boxing issue: https://invenia.github.io/blog/2019/10/30/julialang-features-part-1/#an-aside-on-boxing
         vi  = DynamicPPL.setindex!!(vi, x, spl)
         vi  = last(DynamicPPL.evaluate!!(model, vi, spl, PriorContext()))
         pot = -getlogp(vi)
@@ -54,8 +55,9 @@ function gen_Vref(vi, spl, model)
     end
     return Vref
 end
-function gen_V(vi, spl, model)
+function gen_V(viout, spl, model)
     function V(x)::Float64
+        vi  = viout # https://invenia.github.io/blog/2019/10/30/julialang-features-part-1/#an-aside-on-boxing
         vi  = DynamicPPL.setindex!!(vi, x, spl)
         vi  = last(DynamicPPL.evaluate!!(model, vi, spl, LikelihoodContext()))
         pot = -getlogp(vi)

@@ -16,7 +16,7 @@ rng = Random.GLOBAL_RNG
 vi = VarInfo(rng, lnmodel)
 s = vi[@varname(s)]
 getlogp(vi) ≈ logpdf(LogNormal(),s) + sum(logpdf.(Normal(0.,s),lnmodel.args[1]))
-
+tonamedtuple(vi)
 ####################################################
 # below I'm loosely following DynamicPPL.initialstep
 ####################################################
@@ -25,6 +25,9 @@ getlogp(vi) ≈ logpdf(LogNormal(),s) + sum(logpdf.(Normal(0.,s),lnmodel.args[1]
 spl = Sampler(HMC(0.1,5)) # create basic HMC sampler for the model
 link!(vi, spl)            # convert the variables to unconstrained form
 istrans(vi,@varname(s))
+s == vi[@varname(s)]      # the getindex method for (vi,varname) does the conversion using Bijectors.invlink: https://github.com/TuringLang/DynamicPPL.jl/blob/1744ba7bbc9da5cd8e0d04ab66ba588030e30879/src/varinfo.jl#L911
+
+s == tonamedtuple(vi)[:s][1][1] # 
 
 # this call to evaluate!! implicitly uses the DefaultContext, which does not
 # sample, only calculates logp. And since now the variables are transformed,
@@ -39,7 +42,11 @@ getlogp(vi) ≈ (logpdf(LogNormal(),s) + log(s)) + sum(logpdf.(Normal(0.,s),lnmo
 ####################################################
 
 # initial step
-_, state = DynamicPPL.AbstractMCMC.step(rng, lnmodel, spl)
+t, state = DynamicPPL.AbstractMCMC.step(rng, lnmodel, spl)
+Turing.Inference.getparams(t)
+Turing.Inference.getparams(state.vi)
+Turing.Inference.metadata(t)
+
 s = state.vi[@varname(s)]
 state.vi[spl][1] == log(s)
 getlogp(state.vi) == state.hamiltonian.ℓπ(state.vi[spl])
@@ -78,25 +85,51 @@ Vref = gen_Vref(vi, spl, lnmodel)
 # inference with NRST using the Turing interface
 ####################################################
 
-using NRST, Plots, StatsBase
+using Random, Distributions, DynamicPPL, NRST, Plots, StatsBase
+
+# lognormal prior for variance, normal likelihood
+@model function Lnmodel(x)
+    s ~ LogNormal()
+    x .~ Normal(0.,s)
+end
+lnmodel = Lnmodel(randn(30)) # -.1234
+betas = range(0,1,10) .^2 #pushfirst!(10. .^range(-2,0,9), 0.)
 ns=NRSTSampler(
-    lnmodel,                      # use the Turing model to build potentials and prior sampling
-    pushfirst!(10. .^range(-2,0,9), 0.), # betas = exponential grid in [0,1]
-    50,                           # nexpl
-    true                          # tune c using mean energy
+    lnmodel, # use the Turing model to build potentials and prior sampling
+    betas,
+    50,      # nexpl
+    true     # tune c using mean energy
 );
+ns.np.Vref.viout
+ns.np.V.viout
+@code_warntype ns.np.Vref(ns.x) # yey
+
 xtrace, iptrace = NRST.run!(ns,nsteps=1000)
-plot(iptrace[1,:]) # visits all states except the reference, need tuning
-print(sort(collect(countmap(iptrace[1,:])), by=x->x[1])) #
+print(sort(collect(countmap(iptrace[1,:])), by=x->x[1]))
+plot(iptrace[1,:])
 
 # inspect samples at the top chain
 idx = iptrace[1,:] .== (length(ns.np.betas)-1)
 ss = exp.(vcat(xtrace[idx]...)) # transform to constrained space
 plot(ss)
 histogram(ss)
+typeof(ns.np.Vref.vi.contents.metadata.s.vals)
 
+
+using Turing,StatsPlots
+
+# Define a simple Normal model with unknown mean and variance.
+@model function gdemo(x, y)
+    s² ~ InverseGamma(2, 3)
+    m ~ Normal(0, sqrt(s²))
+    x ~ Normal(m, sqrt(s²))
+    y ~ Normal(m, sqrt(s²))
+end
+c3 = sample(gdemo(1.5, 2), HMC(0.1, 5), 1000)
+extrema(c3[:,1,1])
+mean(c3[:,1,1])
 #########################################################################################
-# Outline of how Turing adapts AdvancedHMC to work with trans variables, within AdvancedMCMC framework
+# Outline of how sampling using Turing.HMC works
 # 1) the sampling starts with a call to "sample"
 #	https://github.com/TuringLang/Turing.jl/blob/b5fd7611e596ba2806479f0680f8a5965e4bf055/src/inference/hmc.jl#L103
 #    - after setting default params, this call is redirected to the "mcmcsample" method
@@ -120,3 +153,17 @@ histogram(ss)
 #	  c) does a transtion 
 #	  d) does adaptation
 #	  e) creates a new HMCState, used for the next call 
+#	  f) ... 
+# 3)   After "initialstep" returns, "mcmcsampling" proceeds using the regular "step!" function, possibly adapting.
+#      At each step an "HMCTransition" is created, which holds the parameters in constrained space
+#   https://github.com/TuringLang/Turing.jl/blob/b5fd7611e596ba2806479f0680f8a5965e4bf055/src/inference/hmc.jl#L30   
+#      This is achieved by calling "tonamedtuple(vi)", which essentially does vi[@varname(v)] for each variable v.
+#   https://github.com/TuringLang/DynamicPPL.jl/blob/1744ba7bbc9da5cd8e0d04ab66ba588030e30879/src/varinfo.jl#L1022
+#      This indexing is the part that implicitly carries out the invlink'ing for a linked vi 
+#   https://github.com/TuringLang/DynamicPPL.jl/blob/1744ba7bbc9da5cd8e0d04ab66ba588030e30879/src/varinfo.jl#L911
+#
+#      Eventually, sampling finishes, at which point "bundle_samples" is called. this is specialized in Turing,
+#      to construct their Chains object from the "samples", which for HMC is a vector of HMCTransitions. Therefore,
+#      no need to work with invlink at this stage since the HMCTransitions already have the constrained values.
+#   https://github.com/TuringLang/Turing.jl/blob/9087412bb574bc83eacd9301f7fa5892a839c666/src/inference/Inference.jl#L322
+
