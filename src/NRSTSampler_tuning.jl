@@ -1,7 +1,37 @@
 ###############################################################################
-# second-stage tuning (i.e., after initial_tuning)
-# uses the output of postprocess_tours
+# tuning routines
 ###############################################################################
+
+#######################################
+# serial methods
+#######################################
+
+# tune all explorers' parameters in parallel, then adjust c
+function tune!(
+    explorers::AbstractVector{<:ExplorationKernel},
+    np::NRSTProblem;
+    nsteps::Int,
+    only_c::Bool=false
+    )
+    @unpack c, betas, V, randref = np
+    aggfun  = np.use_mean ? mean : median
+    aggV    = similar(c)
+    aggV[1] = aggfun([V(randref()) for _ in 1:nsteps])
+    traceV  = similar(c, nsteps)
+    # Threads.@threads for (i,e) in enumerate(explorers)
+    for (i,e) in enumerate(explorers)
+        only_c ? run_with_trace!(e, V, traceV) : tune!(e, V, traceV)
+        aggV[i+1] = aggfun(traceV)
+    end
+    trpz_apprx!(c,betas,aggV)                         # use trapezoidal approx to estimate int_0^beta db aggV(b)
+end
+
+tune!(ns::NRSTSampler; kwargs...) = tune!(ns.explorers, ns.np; kwargs...)
+
+#######################################
+# Tuning using NRST in parallel
+# uses the output of postprocess_tours
+#######################################
 
 function tune_c!(ns::NRSTSampler,res::ParallelRunResults)
     @unpack np = ns
@@ -14,7 +44,7 @@ end
 # run in parallel multiple rounds with an exponentially increasing number of tours
 # NOTE: the np field is shared across samplers so changing just one affects all
 # TODO: this is a REAALLLY bad procedure in practice, for some reason simply doing
-#    NRST.initial_tuning!(ns.explorers, ns.np, 2000)
+#    NRST.tune!(ns.explorers, ns.np, 2000)
 # is so much better! Basically, the latter is more efficient by not dealing with
 # the index process: it only works with the explorers!
 function tune!(

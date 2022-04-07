@@ -28,7 +28,7 @@ include("ExplorationKernels.jl")
 include("NRSTSampler.jl")
 include("ParallelNRST.jl")
 include("postprocess_results.jl")
-include("tuning.jl")
+include("NRSTSampler_tuning.jl")
 include("estimation.jl")
 include("Turing_interface.jl")
 

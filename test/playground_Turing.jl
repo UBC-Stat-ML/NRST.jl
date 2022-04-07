@@ -100,7 +100,6 @@ ns=NRSTSampler(
     50,      # nexpl
     true     # tune c using mean energy
 );
-NRST.initial_tuning!(ns.explorers, ns.np, 2000) # improve tuning
 xtrace, iptrace = NRST.run!(ns,nsteps=10000)
 print(sort(collect(countmap(iptrace[1,:])), by=x->x[1]))
 plot(iptrace[1,:])
@@ -112,8 +111,6 @@ plot(ss)
 histogram(ss)
 
 # run in parallel
-samplers = copy_sampler(ns, nthrds = Threads.nthreads());
-tune!(samplers, verbose=true)
 [get_num_produce(sam.explorers[4].U.V.viout) for sam in samplers] # different viout across NRSTSamplers, same within 
 
 using Turing,StatsPlots

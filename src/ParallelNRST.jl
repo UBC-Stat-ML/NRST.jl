@@ -65,24 +65,25 @@ end
 
 # run in parallel using a vector of identical copies of NRST samplers
 function parallel_run!(
-    samplers::Vector{NRSTSampler{T,I,K,B}}; # contains nthrds (deep)copies of an NRSTSampler object 
-    ntours::Int,                            # run a total of ntours tours
+    samplers::Vector{NRSTSampler{T,I,K}}; # contains nthrds (deep)copies of an NRSTSampler object 
+    ntours::Int,                          # run a total of ntours tours
     verbose::Bool = false
-) where {T,I,K,B}
+) where {T,I,K}
     # need separate storage for each threadid because push! is not atomic!
     trace_vec = [Tuple{K, Vector{T}, Vector{MVector{2,I}}}[] for _ in 1:length(samplers)]
 
     # run tours in parallel using the available nrst's in the channel
     Threads.@threads for tour in 1:ntours
+        tid = Threads.threadid()
         tstats = @timed begin
-            xtrace, iptrace = tour!(samplers[Threads.threadid()]) # run a full tour with the sampler corresponding to this thread, avoiding race conditions
+            xtrace, iptrace = tour!(samplers[tid])         # run a full tour with the sampler corresponding to this thread, avoiding race conditions
         end
         push!(
-            trace_vec[Threads.threadid()],                        # push results to this thread's own storage, avoiding race condition
-            (tstats.time - tstats.gctime, xtrace, iptrace)        # remove GC time from total elapsed time
+            trace_vec[tid],                                # push results to this thread's own storage, avoiding race condition
+            (tstats.time - tstats.gctime, xtrace, iptrace) # remove GC time from total elapsed time
         )
         verbose && println(
-            "thread ", Threads.threadid(), ": completed tour ", tour
+            "thread ", tid, ": completed tour ", tour
         )
     end
     

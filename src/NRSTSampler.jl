@@ -25,30 +25,16 @@ end
 # constructors and initialization methods
 ###############################################################################
 
-# tune all explorers' parameters in parallel, then adjust c
-function initial_tuning!(explorers, np::NRSTProblem, nsteps::Int)
-    @unpack c, betas, V, randref = np
-    aggfun  = np.use_mean ? mean : median
-    aggV    = similar(c)
-    aggV[1] = aggfun([V(randref()) for _ in 1:nsteps])
-    # Threads.@threads for (i,e) in enumerate(explorers)
-    for (i,e) in enumerate(explorers)
-        aggV[i+1] = aggfun(tune!(e, V, nsteps = nsteps))
-    end
-    # copyto!(aggV,predict(loess(betas, aggV),betas)) # use LOESS smoothing to remove kinks. note: predict is not type stable!
-    trpz_apprx!(c,betas,aggV)                         # use trapezoidal approx to estimate int_0^beta db aggV(b)
-end
-
 # constructor that also builds an NRSTProblem and does initial tuning
 function NRSTSampler(V, Vref, randref, betas, nexpl, use_mean)
     x         = randref()
     np        = NRSTProblem(V, Vref, randref, betas, similar(betas), use_mean)
     explorers = init_explorers(V, Vref, betas, x)
-    initial_tuning!(explorers, np, 10*nexpl) # tune explorations kernels and get initial c estimate 
+    tune!(explorers, np, nsteps=10*nexpl) # tune explorations kernels and get initial c estimate 
     NRSTSampler(np, explorers, x, MVector(0,1), Ref(V(x)), nexpl)
 end
 
-# copy-constructor, using a given NRSTSampler (usually already initially-tuned)
+# copy-constructor, using a given NRSTSampler (usually already tuned)
 # note: "np" is fully shared, only "explorers" is deepcopied.
 # so don't change np in threads!
 function NRSTSampler(ns::NRSTSampler)
