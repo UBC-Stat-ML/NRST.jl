@@ -44,7 +44,8 @@ end
 # https://github.com/TuringLang/Turing.jl/blob/b5fd7611e596ba2806479f0680f8a5965e4bf055/src/inference/hmc.jl#L444
 # difference: it does not retain the original value in vi, which we don't really need
 # Note: can use hasproperty(V,:vi) to distinguish V's created with Turing interface
-# TODO: this is inefficient because it requires 2 passes over the graph to get Vref + βV
+# TODO: this is inefficient because it requires 2 passes over the graph to get Vref + βV,
+# but this would probably need improving the way we work with Vref and V in NRST
 function gen_Vref(viout, spl, model)
     function Vref(x)::Float64
         vi  = viout # this helps with the re-binding+Boxing issue: https://invenia.github.io/blog/2019/10/30/julialang-features-part-1/#an-aside-on-boxing
@@ -57,7 +58,7 @@ function gen_Vref(viout, spl, model)
 end
 function gen_V(viout, spl, model)
     function V(x)::Float64
-        vi  = viout # https://invenia.github.io/blog/2019/10/30/julialang-features-part-1/#an-aside-on-boxing
+        vi  = viout # this helps with the re-binding+Boxing issue: https://invenia.github.io/blog/2019/10/30/julialang-features-part-1/#an-aside-on-boxing
         vi  = DynamicPPL.setindex!!(vi, x, spl)
         vi  = last(DynamicPPL.evaluate!!(model, vi, spl, LikelihoodContext()))
         pot = -getlogp(vi)

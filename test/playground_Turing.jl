@@ -100,11 +100,12 @@ ns=NRSTSampler(
     50,      # nexpl
     true     # tune c using mean energy
 );
-ns.np.Vref.viout
-ns.np.V.viout
-@code_warntype ns.np.Vref(ns.x) # yey
-
 xtrace, iptrace = NRST.run!(ns,nsteps=1000)
+ns.np.Vref.viout # no box
+ns.np.V.viout # no box
+@code_warntype ns.np.Vref(ns.x) # should be inferrable!
+@code_warntype NRST.expl_step!(ns)
+@code_warntype ns.np.randref()
 print(sort(collect(countmap(iptrace[1,:])), by=x->x[1]))
 plot(iptrace[1,:])
 
@@ -113,8 +114,15 @@ idx = iptrace[1,:] .== (length(ns.np.betas)-1)
 ss = exp.(vcat(xtrace[idx]...)) # transform to constrained space
 plot(ss)
 histogram(ss)
-typeof(ns.np.Vref.vi.contents.metadata.s.vals)
 
+# run in parallel
+samplers = copy_sampler(ns, nthrds = Threads.nthreads());
+tune!(samplers, verbose=true)
+xtrace, iptrace = NRST.run!(ns,nsteps=1000)
+restune = parallel_run!(samplers, ntours=512*Threads.nthreads());
+@code_warntype NRST.expl_step!(ns)
+
+arr = [NRST.MHSampler(x->(ns.np.Vref(x) + β*ns.np.V(x)), copy(ns.x)) for β in betas[2:end]]
 
 using Turing,StatsPlots
 
@@ -165,5 +173,4 @@ mean(c3[:,1,1])
 #      Eventually, sampling finishes, at which point "bundle_samples" is called. this is specialized in Turing,
 #      to construct their Chains object from the "samples", which for HMC is a vector of HMCTransitions. Therefore,
 #      no need to work with invlink at this stage since the HMCTransitions already have the constrained values.
-#   https://github.com/TuringLang/Turing.jl/blob/9087412bb574bc83eacd9301f7fa5892a839c666/src/inference/Inference.jl#L322
-
+#   https://github.com/TuringLang/Turing.jl/blob/9087412bb574bc83eacd9301f7fa5892a839c666/src/inference/Inferen

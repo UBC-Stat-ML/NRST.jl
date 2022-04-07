@@ -12,9 +12,9 @@ struct NRSTProblem{F,G,H,K<:AbstractFloat,A<:AbstractVector{K}}
     use_mean::Bool # should we use "mean" (true) or "median" (false) for tuning c?
 end
 
-struct NRSTSampler{T,I<:Int,K<:AbstractFloat,B<:AbstractVector{<:ExplorationKernel}}
-    np::NRSTProblem        # encapsulates problem specifics
-    explorers::B           # vector length N of exploration kernels
+struct NRSTSampler{T,I<:Int,K<:AbstractFloat,B<:AbstractVector{<:ExplorationKernel},TProb}
+    np::TProb              # encapsulates problem specifics
+    explorers::B           # vector length N-1 of exploration kernels (N=length(betas))
     x::T                   # current state of target variable. no need to keep it in sync all the time with explorers. they are updated at exploration step
     ip::MVector{2,I}       # current state of the Index Process (i,eps). uses statically sized but mutable vector
     curV::Base.RefValue{K} # current energy V(x) (stored as ref to make it mutable)
@@ -27,12 +27,13 @@ end
 
 # tune all explorers' parameters in parallel, then adjust c
 function initial_tuning!(explorers, np::NRSTProblem, nsteps::Int)
-    @unpack c, betas, V = np
-    aggfun = np.use_mean ? mean : median
-    aggV = similar(c)
+    @unpack c, betas, V, randref = np
+    aggfun  = np.use_mean ? mean : median
+    aggV    = similar(c)
+    aggV[1] = aggfun([V(randref()) for _ in 1:nsteps])
     # Threads.@threads for (i,e) in enumerate(explorers)
     for (i,e) in enumerate(explorers)
-        aggV[i] = aggfun(tune!(e, V, nsteps = nsteps))
+        aggV[i+1] = aggfun(tune!(e, V, nsteps = nsteps))
     end
     # copyto!(aggV,predict(loess(betas, aggV),betas)) # use LOESS smoothing to remove kinks. note: predict is not type stable!
     trpz_apprx!(c,betas,aggV)                         # use trapezoidal approx to estimate int_0^beta db aggV(b)
@@ -40,11 +41,10 @@ end
 
 # constructor that also builds an NRSTProblem and does initial tuning
 function NRSTSampler(V, Vref, randref, betas, nexpl, use_mean)
-    x = randref()
-    np = NRSTProblem(V, Vref, randref, betas, similar(betas), use_mean)
-    explorers = init_explorers(V, Vref, randref, betas, x)
-    # tune explorations kernels and get initial c estimate 
-    initial_tuning!(explorers, np, 10*nexpl)
+    x         = randref()
+    np        = NRSTProblem(V, Vref, randref, betas, similar(betas), use_mean)
+    explorers = init_explorers(V, Vref, betas, x)
+    initial_tuning!(explorers, np, 10*nexpl) # tune explorations kernels and get initial c estimate 
     NRSTSampler(np, explorers, x, MVector(0,1), Ref(V(x)), nexpl)
 end
 
@@ -64,8 +64,8 @@ end
 # reset state by sampling from the renewal measure
 function renew!(ns::NRSTSampler)
     copyto!(ns.x,ns.np.randref())
-    ns.ip[1] = 0
-    ns.ip[2] = 1
+    ns.ip[1]  = 0
+    ns.ip[2]  = 1
     ns.curV[] = ns.np.V(ns.x)
 end
 
@@ -99,12 +99,16 @@ end
 
 # exploration step
 function expl_step!(ns::NRSTSampler)
-    @unpack np,explorers,ip,curV,nexpl = ns
-    @unpack V = np
-    set_state!(explorers[ip[1]+1], ns.x) # pass current state to explorer
-    explore!(explorers[ip[1]+1], nexpl)  # explore for nexpl steps
-    copyto!(ns.x, explorers[ip[1]+1].x)  # update nrst's state with the explorer's
-    curV[] = V(ns.x)                     # compute energy at new point
+    @unpack x,np,explorers,ip,curV,nexpl = ns
+    if ip[1] == 0
+        copyto!(x, np.randref()) 
+    else
+        expl = explorers[ip[1]] # current explorer (recall that ip[1] is 0-based)
+        set_state!(expl, x)     # pass current state to explorer
+        explore!(expl, nexpl)   # explore for nexpl steps
+        copyto!(x, expl.x)      # update nrst's state with the explorer's
+    end
+    curV[] = np.V(x)            # compute energy at new point
 end
 
 # NRST step = comm_step ∘ expl_step
@@ -114,10 +118,7 @@ function step!(ns::NRSTSampler)
 end
 
 # run for fixed number of steps
-function run!(
-    ns::NRSTSampler{T,I,K,B};
-    nsteps::Int
-    ) where {T,I,K,B}
+function run!(ns::NRSTSampler{T,I}; nsteps::Int) where {T,I}
     xtrace  = Vector{T}(undef, nsteps)
     iptrace = Matrix{I}(undef, 2, nsteps) # can use a matrix here
     for n in 1:nsteps
@@ -131,7 +132,7 @@ end
 # run a tour: run the sampler until we reach the atom ip=(0,-1)
 # note: by finishing at the atom (0,-1) and restarting using the renewal measure,
 # repeatedly calling this function is equivalent to standard sequential sampling 
-function tour!(ns::NRSTSampler{T,I,K,B}) where {T,I,K,B}
+function tour!(ns::NRSTSampler{T,I}) where {T,I}
     renew!(ns)
     xtrace = T[]
     iptrace = MVector{2,I}[]
