@@ -10,7 +10,7 @@ function NRSTSampler(model::Model, betas, nexpl, use_mean)
     viout   = DynamicPPL.VarInfo(model)
     spl     = DynamicPPL.Sampler(Turing.HMC(0.1,5))
     DynamicPPL.link!(viout, spl)
-    randref = gen_randref(spl, model)
+    randref = gen_randref(viout, spl, model)
     V       = gen_V(viout, spl, model)
     Vref    = gen_Vref(viout, spl, model)
     NRSTSampler(V, Vref, randref, betas, nexpl, use_mean)
@@ -22,16 +22,11 @@ end
 
 # generate a closure to get a (transformed!) iid sample from the prior
 # TODO: it might be more efficient to create (and link!) vi once outside the inner fn,
-#       so that it is captured in the closure, and then just use model()
-#       i.e., basically recreate the inside of the VarInfo method we use now: https://github.com/TuringLang/DynamicPPL.jl/blob/d222316a7a2fd5afe6ec74a7ec2a50c6f08c1d00/src/varinfo.jl#L120
-#       Alternatively, use the rand() approach (it might not work with link! tho): https://github.com/TuringLang/DynamicPPL.jl/blob/d222316a7a2fd5afe6ec74a7ec2a50c6f08c1d00/src/model.jl#L524
-function gen_randref(spl, model)
-    # TODO: this is not type stable. could be fixed with an approach similar to their rand() method 
-    #       Another option is to use the fact that vi is typed, and so can 
-    #       use eltype(vi,spl), but this would need creating vi outside the inner fun
-    #       Another similar op: construct the typed vi and then get TVal from the metadata: https://github.com/TuringLang/DynamicPPL.jl/blob/d222316a7a2fd5afe6ec74a7ec2a50c6f08c1d00/src/varinfo.jl#L58 
+# so that it is captured in the closure, and then just use model(). However,
+# I haven't been able to "reuse" a typed VarInfo for sampling
+function gen_randref(::Tvi, spl, model) where {Tvi} # passing the type of viout is enough to make randref type-stable
     function randref(rng::AbstractRNG=Random.GLOBAL_RNG)
-        vi = DynamicPPL.VarInfo(rng, model, SampleFromPrior(), PriorContext()) # avoids evaluating the likelihood
+        vi::Tvi = DynamicPPL.VarInfo(rng, model, SampleFromPrior(), PriorContext()) # avoids evaluating the likelihood
         DynamicPPL.link!(vi, spl)
         vi[spl]
     end

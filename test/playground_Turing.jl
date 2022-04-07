@@ -93,19 +93,15 @@ using Random, Distributions, DynamicPPL, NRST, Plots, StatsBase
     x .~ Normal(0.,s)
 end
 lnmodel = Lnmodel(randn(30)) # -.1234
-betas = range(0,1,10) .^2 #pushfirst!(10. .^range(-2,0,9), 0.)
+betas = range(0,1,15) .^(2) #pushfirst!(10. .^range(-2,0,9), 0.)
 ns=NRSTSampler(
     lnmodel, # use the Turing model to build potentials and prior sampling
     betas,
     50,      # nexpl
     true     # tune c using mean energy
 );
-xtrace, iptrace = NRST.run!(ns,nsteps=1000)
-ns.np.Vref.viout # no box
-ns.np.V.viout # no box
-@code_warntype ns.np.Vref(ns.x) # should be inferrable!
-@code_warntype NRST.expl_step!(ns)
-@code_warntype ns.np.randref()
+NRST.initial_tuning!(ns.explorers, ns.np, 2000) # improve tuning
+xtrace, iptrace = NRST.run!(ns,nsteps=10000)
 print(sort(collect(countmap(iptrace[1,:])), by=x->x[1]))
 plot(iptrace[1,:])
 
@@ -118,11 +114,7 @@ histogram(ss)
 # run in parallel
 samplers = copy_sampler(ns, nthrds = Threads.nthreads());
 tune!(samplers, verbose=true)
-xtrace, iptrace = NRST.run!(ns,nsteps=1000)
-restune = parallel_run!(samplers, ntours=512*Threads.nthreads());
-@code_warntype NRST.expl_step!(ns)
-
-arr = [NRST.MHSampler(x->(ns.np.Vref(x) + β*ns.np.V(x)), copy(ns.x)) for β in betas[2:end]]
+[get_num_produce(sam.explorers[4].U.V.viout) for sam in samplers] # different viout across NRSTSamplers, same within 
 
 using Turing,StatsPlots
 

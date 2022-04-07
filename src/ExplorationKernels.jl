@@ -127,7 +127,7 @@ end
 
 # tune sigma and return sample {V(xn)} for some function V
 # uses simplified SGD approach targetting 0.5(acc-target)^2 with R-M seq a_r = 10r^{-0.51}
-function tune!(mhs::MHSampler,V; nsteps=500, target_acc=0.234, eps=0.05, max_rounds=8, verbose=true)
+function tune!(mhs::MHSampler,V; nsteps=500, target_acc=0.234, eps=0.03, max_rounds=8, verbose=true)
     if nsteps < 1
         return typeof(V(mhs.x))[]
     end
