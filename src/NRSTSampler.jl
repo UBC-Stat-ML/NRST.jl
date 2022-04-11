@@ -3,23 +3,35 @@
 ###############################################################################
 
 # encapsulates the specifics of the inference problem
-struct NRSTProblem{F,G,H,K<:AbstractFloat,A<:AbstractVector{K}}
+struct NRSTProblem{F,G,H,K<:AbstractFloat,A<:AbstractVector{K},TInt<:Int}
     V::F           # energy Function
     Vref::G        # energy of reference distribution
     randref::H     # produces independent sample from reference distribution
-    betas::A       # vector of tempering parameters (length N)
+    N::TInt        # number of states additional to reference (N+1 in total)
+    betas::A       # vector of tempering parameters (length N+1)
     c::A           # vector of parameters for the pseudoprior
     use_mean::Bool # should we use "mean" (true) or "median" (false) for tuning c?
 end
 
+# struct for the sampler
 struct NRSTSampler{T,I<:Int,K<:AbstractFloat,B<:AbstractVector{<:ExplorationKernel},TProb}
     np::TProb              # encapsulates problem specifics
-    explorers::B           # vector length N-1 of exploration kernels (N=length(betas))
+    explorers::B           # vector length N of exploration kernels
     x::T                   # current state of target variable. no need to keep it in sync all the time with explorers. they are updated at exploration step
     ip::MVector{2,I}       # current state of the Index Process (i,eps). uses statically sized but mutable vector
     curV::Base.RefValue{K} # current energy V(x) (stored as ref to make it mutable)
     nexpl::I               # number of exploration steps
 end
+
+# contains output of a serial run (no reference to tours)
+# also contains a pointer to the originating NRSTProblem (as metadata storage)
+struct SerialNRSTTrace{T,TInt<:Int,TProb}
+    xtrace::Vector{T}
+    iptrace::Vector{MVector{2,TInt}}
+    acctrace::BitVector
+    np::TProb
+end
+Base.length(tr::SerialNRSTTrace) = length(tr.xtrace) # overload Base method
 
 ###############################################################################
 # constructors and initialization methods
@@ -28,7 +40,7 @@ end
 # constructor that also builds an NRSTProblem and does initial tuning
 function NRSTSampler(V, Vref, randref, betas, nexpl, use_mean)
     x         = randref()
-    np        = NRSTProblem(V, Vref, randref, betas, similar(betas), use_mean)
+    np        = NRSTProblem(V, Vref, randref, length(betas)-1, betas, similar(betas), use_mean)
     explorers = init_explorers(V, Vref, betas, x)
     tune!(explorers, np, nsteps=10*nexpl) # tune explorations kernels and get initial c estimate 
     NRSTSampler(np, explorers, x, MVector(0,1), Ref(V(x)), nexpl)
@@ -58,26 +70,25 @@ end
 # communication step
 function comm_step!(ns::NRSTSampler)
     @unpack np,ip,curV = ns
-    @unpack betas,c = np
+    @unpack N,betas,c = np
     iprop = sum(ip)               # propose i + eps
     if iprop < 0                  # bounce below
         ip[1] = 0
         ip[2] = 1
         return false
-    elseif iprop >= length(betas) # bounce above
-        ip[1] = length(betas) - 1
+    elseif iprop > N              # bounce above
+        ip[1] = N
         ip[2] = -1
         return false
     else
-        i = ip[1] # current index
-        # note: U(0,1) =: U < p <=> log(U) < log(p) 
-        # <=> Exp(1) > -log(p) =: neglaccpr
+        i = ip[1]                 # current index
+        # note: U(0,1) =: U < p <=> log(U) < log(p) <=> Exp(1) > -log(p) =: neglaccpr
         neglaccpr = (betas[iprop+1] - betas[i+1]) * curV[] - (c[iprop+1] - c[i+1])
         acc = (neglaccpr < rand(Exponential())) # accept?
         if acc
-            ip[1] = iprop # move
+            ip[1] = iprop         # move
         else
-            ip[2] = -ip[2] # flip direction
+            ip[2] = -ip[2]        # flip direction
         end
     end
     return acc 
@@ -99,20 +110,23 @@ end
 
 # NRST step = comm_step ∘ expl_step
 function step!(ns::NRSTSampler)
-    comm_step!(ns)
+    acc = comm_step!(ns) # returns acceptance indicator
     expl_step!(ns)
+    return acc    
 end
 
 # run for fixed number of steps
 function run!(ns::NRSTSampler{T,I}; nsteps::Int) where {T,I}
-    xtrace  = Vector{T}(undef, nsteps)
-    iptrace = Matrix{I}(undef, 2, nsteps) # can use a matrix here
+    xtrace   = Vector{T}(undef, nsteps)
+    iptrace  = Vector{typeof(ns.ip)}(undef, nsteps)
+    acctrace = BitVector(undef, nsteps)
     for n in 1:nsteps
-        xtrace[n] = copy(ns.x)                      # needs copy o.w. pushes a ref to ns.x
-        copyto!(iptrace, 1:2, n:n, ns.ip, 1:2, 1:1) # no need for another copy since there's already 1 due to implicit conversion
-        step!(ns)
+        xtrace[n]   = copy(ns.x)  # needs copy o.w. pushes a ref to ns.x
+        iptrace[n]  = copy(ns.ip)
+        # copyto!(iptrace, 1:2, n:n, ns.ip, 1:2, 1:1) # no need for another copy since there's already 1 due to implicit conversion
+        acctrace[n] = step!(ns)   # note: since iptrace[n] was stored before, acctrace[n] is acc of swap **initiated** from iptrace[n]
     end
-    return xtrace, iptrace
+    return SerialNRSTTrace(xtrace, iptrace, acctrace, ns.np)
 end
 
 # run a tour: run the sampler until we reach the atom ip=(0,-1)
@@ -120,14 +134,56 @@ end
 # repeatedly calling this function is equivalent to standard sequential sampling 
 function tour!(ns::NRSTSampler{T,I}) where {T,I}
     renew!(ns)
-    xtrace = T[]
-    iptrace = MVector{2,I}[]
+    xtrace   = T[]
+    iptrace  = typeof(ns.ip)[]
+    acctrace = BitVector()
     while !(ns.ip[1] == 0 && ns.ip[2] == -1)
         push!(xtrace, copy(ns.x))   # needs copy o.w. pushes a ref to ns.x
         push!(iptrace, copy(ns.ip)) # same
-        step!(ns)
+        push!(acctrace, step!(ns))
     end
     push!(xtrace, copy(ns.x))
     push!(iptrace, copy(ns.ip))
-    return xtrace, iptrace
+    push!(acctrace, step!(ns))
+    return SerialNRSTTrace(xtrace, iptrace, acctrace, ns.np)
 end
+
+###############################################################################
+# trace postprocessing
+###############################################################################
+
+abstract type PostProcessor end
+abstract type SerialPostProcessor <: PostProcessor end
+
+struct SerialNoPostProcess <: SerialPostProcessor end
+post_process(tr::SerialNRSTTrace, ::SerialNoPostProcess, args...) = tr
+post_process(tr::SerialNRSTTrace) = post_process(tr::SerialNRSTTrace,SerialNoPostProcess())
+
+struct SerialFullPostProcess <: SerialPostProcessor end
+function post_process(
+    tr::SerialNRSTTrace{T,I},
+    ::SerialFullPostProcess,
+    xarray::Vector{Vector{T}}, # length = N+1. i-th entry has samples at state i
+    visacc::Matrix{I},         # size (N+1) × 2. accumulates visits. must be all zeros
+    rejacc::Matrix{I}          # size (N+1) × 2. accumulates rejections of swaps initiated at (i,eps)
+    ) where {T,I}
+    for (n, ip) in enumerate(tr.iptrace)
+        idx    = ip[1] + 1
+        idxeps = (ip[2] == one(I) ? 1 : 2)
+        visacc[idx, idxeps] += 1
+        (!tr.acctrace[n]) && (rejacc[idx, idxeps] += 1)
+        push!(xarray[idx], tr.xtrace[n])
+    end
+end
+function post_process(
+    tr::SerialNRSTTrace{T,I,TProb},
+    sfpp::SerialFullPostProcess
+    ) where {T,I,TProb}
+    N = tr.np.N
+    xarray = [T[] for _ in 0:N] # i-th entry has samples at state i
+    visacc = zeros(I, N+1, 2)   # accumulates visits. must be all zeros
+    rejacc = zeros(I, N+1, 2)   # accumulates rejections of swaps initiated at (i,eps)
+    post_process(tr,sfpp,xarray,visacc,rejacc)
+    return xarray,visacc,rejacc
+end
+

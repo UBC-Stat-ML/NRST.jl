@@ -62,3 +62,67 @@ function gen_V(viout, spl, model)
     return V
 end
 
+###############################################################################
+# TODOs
+###############################################################################
+
+# ####################################################
+# # evaluating tempered posteriors
+# # does NOT work when link!'d
+# ####################################################
+
+# β = 0.7
+# vi = VarInfo(rng, lnmodel)
+# s = vi[@varname(s)]
+# getlogp(vi) ≈ logpdf(LogNormal(),s) + sum(logpdf.(Normal(0.,s),lnmodel.args[1]))
+# mbctx = MiniBatchContext(DefaultContext(),β)
+# vi = last(DynamicPPL.evaluate!!(lnmodel, vi, mbctx))
+# getlogp(vi) ≈ logpdf(LogNormal(),s) + β*sum(logpdf.(Normal(0.,s),lnmodel.args[1]))
+
+# link!(vi, spl)
+# istrans(vi,@varname(s))
+# vi = last(DynamicPPL.evaluate!!(lnmodel, rng, vi, spl, mbctx)) # since mbctx uses DefaultContext, this does not sample, only evaluates
+# theta = vi[spl]
+# theta[1] == log(s)
+# getlogp(vi) ≈ (logpdf(LogNormal(),s) + log(s)) + β*sum(logpdf.(Normal(0.,s),lnmodel.args[1]))
+
+# using NRST
+
+# # this works :)
+# V    = gen_V(vi, spl, lnmodel)
+# Vref = gen_Vref(vi, spl, lnmodel)
+# -(Vref(theta) + β*V(theta)) ≈ (logpdf(LogNormal(),s) + log(s)) + β*sum(logpdf.(Normal(0.,s),lnmodel.args[1]))
+
+# ####################################################
+# # step with HMC
+# ####################################################
+
+# # initial step
+# t, state = DynamicPPL.AbstractMCMC.step(rng, lnmodel, spl)
+# Turing.Inference.getparams(t)
+# Turing.Inference.getparams(state.vi)
+# Turing.Inference.metadata(t)
+
+# s = state.vi[@varname(s)]
+# state.vi[spl][1] == log(s)
+# getlogp(state.vi) == state.hamiltonian.ℓπ(state.vi[spl])
+
+# # subsequent steps
+# _, state = Turing.AbstractMCMC.step(rng, lnmodel, spl, state)
+
+# ####################################################
+# # invlink using DPPL machinery
+# ####################################################
+
+# vns = DynamicPPL._getvns(ns.np.V.viout,ns.np.V.spl)
+# typeof(vns)
+# typeof(vns[1])
+# dist = DynamicPPL.getdist(ns.np.V.viout, vns[1][1])
+# DynamicPPL.Bijectors.invlink(
+#     dist,
+#     reconstruct(
+#         dist,
+#         DynamicPPL.getval(ns.np.V.viout, vns[1])
+#     )
+# )
+
