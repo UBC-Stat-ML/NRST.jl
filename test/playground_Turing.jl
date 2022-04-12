@@ -20,14 +20,15 @@ ns=NRSTSampler(
 tune!(ns,nsteps=50000,only_c=true);
 res = post_process(run!(ns,nsteps=50000));
 plot(0:ns.np.N, vec(sum(res.visits,dims=2)))
+ns.np.fns
 
-# TODO: FAIL, completely nonuniform distribution over i ∈ 0:N :(((
-par_res = parallel_run(ns,nthreads=4,ntours=5000);
-plot(0:res.tr.N, vec(sum(par_res.visits,dims=2)))
-samplers = copy_sampler(ns, nthreads=4);
-# LIKELY: because viout is shared => need smarter copy_sampler, so that
-ns.np.V.viout
-samplers[4].np.V.viout
+# parallel
+samplers = copy_sampler(ns, nthreads = 4);
+par_res = run!(samplers, ntours = 5000);
+plot(0:ns.np.N, vec(sum(par_res.visits,dims=2)))
+ns.np.fns.viout
+[get_num_produce(s.np.fns.viout) for s in samplers]
+run!(samplers,ntours=4);
 hasproperty(ns.np.V, :viout)
 #########################################################################################
 # Outline of how sampling using Turing.HMC works

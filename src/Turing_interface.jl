@@ -4,16 +4,45 @@
 # is used to simplify the work for exploration kernels 
 ###############################################################################
 
-# NRSTSampler constructor
-function NRSTSampler(model::Model, betas, nexpl, use_mean)
-    # build a TypedVarInfo and a dummy sampler that forces 𝕏 → ℝ trans via `link!`
-    viout   = DynamicPPL.VarInfo(model)
-    spl     = DynamicPPL.Sampler(Turing.HMC(0.1,5))
-    DynamicPPL.link!(viout, spl)
+# storage for functions associated to a tempered problem
+struct TuringFuns{TV,TVr,Tr,Tmod,Tspl,TVi} <: Funs
+    V::TV       # energy Function
+    Vref::TVr   # energy of reference distribution
+    randref::Tr # produces independent sample from reference distribution
+    model::Tmod # a DynamicPPL.Model
+    spl::Tspl   # a DynamicPPL.Sampler
+    viout::TVi  # a DynamicPPL.VarInfo
+end
+
+function TuringFuns(model::Model)
+    viout   = DynamicPPL.VarInfo(model)             # build a TypedVarInfo
+    spl     = DynamicPPL.Sampler(Turing.HMC(0.1,5)) # build a dummy sampler that works in unconstrained space
+    DynamicPPL.link!(viout, spl)                    # force transformation 𝕏 → ℝ
     randref = gen_randref(viout, spl, model)
     V       = gen_V(viout, spl, model)
     Vref    = gen_Vref(viout, spl, model)
-    NRSTSampler(V, Vref, randref, betas, nexpl, use_mean)
+    TuringFuns(V, Vref, randref, model, spl, viout)
+end
+
+function Base.copy(fns::TuringFuns)
+    @unpack model, spl = fns
+    vinew = DynamicPPL.VarInfo(model)              # build a new TypedVarInfo
+    DynamicPPL.link!(vinew, spl)                   # link with old sampler to force transformation 𝕏 → ℝ
+    randref = gen_randref(vinew, spl, model)
+    V       = gen_V(vinew, spl, model)
+    Vref    = gen_Vref(vinew, spl, model)
+    TuringFuns(V, Vref, randref, model, spl, vinew)
+end
+
+# # TODO: when the MiniBatchContext gets fixed, use it build custom gen_Vβ
+# function gen_Vβ(fns::TuringFuns, β::AbstractFloat)
+#     ...
+# end
+
+# NRSTSampler constructor
+function NRSTSampler(model::Model, betas, nexpl, use_mean)
+    fns = TuringFuns(model)
+    NRSTSampler(fns, betas, nexpl, use_mean)
 end
 
 #######################################

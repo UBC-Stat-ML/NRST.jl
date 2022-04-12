@@ -8,19 +8,25 @@ struct SimpleFuns{TV,TVr,Tr} <: Funs
     Vref::TVr   # energy of reference distribution
     randref::Tr # produces independent sample from reference distribution
 end
-function gen_Vβ(fns::SimpleFuns, β::AbstractFloat)
+function gen_Vβ(fns::Funs, β::AbstractFloat)
     function Vβ(x)
         fns.Vref(x) + β*fns.V(x)
     end
 end
+Base.copy(fns::SimpleFuns) = fns # dont do anything
 
-# encapsulates the specifics of the inference problem
+# encapsulates all the specifics of the tempered problem
 struct NRSTProblem{TFuns,K<:AbstractFloat,A<:AbstractVector{K},TInt<:Int}
     fns::TFuns     # struct that contains at least V, Vref, and randref
     N::TInt        # number of states additional to reference (N+1 in total)
     betas::A       # vector of tempering parameters (length N+1)
     c::A           # vector of parameters for the pseudoprior
     use_mean::Bool # should we use "mean" (true) or "median" (false) for tuning c?
+end
+
+# copy constructor, allows replacing fns, but keeps everything else
+function NRSTProblem(oldnp::NRSTProblem, newfns)
+    NRSTProblem(newfns,oldnp.N,oldnp.betas,oldnp.c,oldnp.use_mean)
 end
 
 # struct for the sampler
@@ -55,29 +61,27 @@ end
 ###############################################################################
 
 # constructor that also builds an NRSTProblem and does initial tuning
-function NRSTSampler(V, Vref, randref, betas, nexpl, use_mean)
-    np = NRSTProblem(
-        SimpleFuns(V, Vref, randref),
-        length(betas)-1, betas, similar(betas), use_mean
-    )
-    x = randref()
-    explorers = init_explorers(np.fns, betas, x)
+function NRSTSampler(fns, betas, nexpl, use_mean)
+    np = NRSTProblem(fns,length(betas)-1, betas, similar(betas), use_mean)
+    x  = fns.randref()
+    explorers = init_explorers(fns, betas, x)
     tune!(explorers, np, nsteps=10*nexpl) # tune explorations kernels and get initial c estimate
-    NRSTSampler(np, explorers, x, MVector(0,1), Ref(V(x)), nexpl)
+    NRSTSampler(np, explorers, x, MVector(0,1), Ref(fns.V(x)), nexpl)
+end
+function NRSTSampler(V, Vref, randref, betas, nexpl, use_mean)
+    fns = SimpleFuns(V, Vref, randref)
+    NRSTSampler(fns, betas, nexpl, use_mean)
 end
 
 # copy-constructor, using a given NRSTSampler (usually already tuned)
 function NRSTSampler(ns::NRSTSampler)
-    x = ns.np.fns.randref()
-    if !(ns.np.fns isa SimpleFuns) # uses Turing interface
-        throw("unimplemented")
-    else                           # standard case
-        # note: "np" is fully shared, only "explorers" is deepcopied.
-        # so don't change np in threads!
-        new_np = ns.np
-        new_explorers = deepcopy(ns.explorers) # need full recursive copy, otherwise state is shared
-    end
-    NRSTSampler(new_np, new_explorers, x, MVector(0,1), Ref(ns.np.fns.V(x)), ns.nexpl)
+    newfns    = copy(ns.np.fns)            # the only element in np that we copy
+    newnp     = NRSTProblem(ns.np, newfns) # build new Problem using new fns
+    newx      = newfns.randref()
+    explorers = init_explorers(newfns, newnp.betas, newx)
+    NRSTSampler(
+        newnp, explorers, newx, MVector(0,1), Ref(newfns.V(newx)), ns.nexpl
+    )
 end
 
 ###############################################################################
