@@ -17,21 +17,8 @@ ns=NRSTSampler(
     50,      # nexpl
     true     # tune c using mean energy
 );
-tr = NRST.run!(ns,nsteps=1000);
-length(tr) == 1000
-NRST.post_process(tr)
-@code_warntype NRST.run!(ns,nsteps=10);
-print(sort(collect(countmap(iptrace[1,:])), by=x->x[1]))
-plot(iptrace[1,:])
-
-# inspect samples at the top chain
-idx = iptrace[1,:] .== (length(ns.np.betas)-1)
-xs = xtrace[idx]
-ss = exp.(vcat(xs...)) # transform to constrained space
-plot(ss)
-histogram(ss)
-
-
+samplers = copy_sampler(ns,nthreads=4);
+par_res = run!(samplers,ntours=4000);
 
 #########################################################################################
 # Outline of how sampling using Turing.HMC works

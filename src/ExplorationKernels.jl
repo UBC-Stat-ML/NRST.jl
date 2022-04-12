@@ -87,7 +87,11 @@ function run!(mhs::MHSampler, nsteps::Int)
 end
 
 # run sampler keeping track of real-valued function V and number of accepted proposals
-function run_with_trace!(mhs::MHSampler, V, tracev::AbstractVector{<:Real})
+function run!(
+    mhs::MHSampler{F,K},
+    V,
+    tracev::AbstractVector{K}
+    ) where {F,K}
     nacc = 0
     for n in 1:length(tracev)
         step!(mhs) && (nacc += 1)
@@ -97,20 +101,19 @@ function run_with_trace!(mhs::MHSampler, V, tracev::AbstractVector{<:Real})
 end
 # # test
 # tracev = Vector{Float64}(undef, 1000)
-# nacc = run_with_trace!(mhs,x->(0.5sum(abs2,x)),tracev)
-
+# nacc = run!(mhs,x->(0.5sum(abs2,x)),tracev)
 
 # tune sigma and return sample {V(xn)} for some function V
 # uses simplified SGD approach targetting 0.5(acc-target)^2 with R-M seq a_r = 10r^{-0.51}
 function tune!(
-    mhs::MHSampler,
+    mhs::MHSampler{F,K},
     V,
-    traceV::AbstractVector{<:AbstractFloat};
+    traceV::AbstractVector{K};
     target_acc = 0.234,
     eps        = 0.03,
     max_rounds = 8,
     verbose    = true
-    )
+    ) where {F,K}
     nsteps   = length(traceV)
     if nsteps < 1
         return
@@ -131,7 +134,7 @@ function tune!(
         )
     end
     # finally return a sample V(Xn) using the tuned sampler 
-    run_with_trace!(mhs, V, traceV)
+    run!(mhs, V, traceV)
 end
 
 # # test

@@ -5,15 +5,12 @@ using Turing: Turing
 
 # NRSTSampler.jl
 export NRSTSampler,
-    copy_sampler,
-    tune!
+    run!,
+    tune!,
+    post_process
 
 # ParallelNRST.jl
-export parallel_run!
-
-# postprocess_results.jl
-export full_postprocessing!,
-    tour_durations!
+export copy_sampler
 
 # estimation.jl
 export estimate
@@ -27,7 +24,6 @@ include("utils.jl")
 include("ExplorationKernels.jl")
 include("NRSTSampler.jl")
 include("ParallelNRST.jl")
-include("postprocess_results.jl")
 include("NRSTSampler_tuning.jl")
 include("estimation.jl")
 include("Turing_interface.jl")

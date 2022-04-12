@@ -25,11 +25,11 @@ end
 
 # contains output of a serial run (no reference to tours)
 # also contains a pointer to the originating NRSTProblem (as metadata storage)
-struct SerialNRSTTrace{T,TInt<:Int,TProb}
+struct SerialNRSTTrace{T,TInt<:Int}
     xtrace::Vector{T}
     iptrace::Vector{MVector{2,TInt}}
     acctrace::BitVector
-    np::TProb
+    N::TInt
 end
 Base.length(tr::SerialNRSTTrace) = length(tr.xtrace) # overload Base method
 
@@ -126,7 +126,7 @@ function run!(ns::NRSTSampler{T,I}; nsteps::Int) where {T,I}
         # copyto!(iptrace, 1:2, n:n, ns.ip, 1:2, 1:1) # no need for another copy since there's already 1 due to implicit conversion
         acctrace[n] = step!(ns)   # note: since iptrace[n] was stored before, acctrace[n] is acc of swap **initiated** from iptrace[n]
     end
-    return SerialNRSTTrace(xtrace, iptrace, acctrace, ns.np)
+    return SerialNRSTTrace(xtrace, iptrace, acctrace, ns.np.N)
 end
 
 # run a tour: run the sampler until we reach the atom ip=(0,-1)
@@ -145,27 +145,18 @@ function tour!(ns::NRSTSampler{T,I}) where {T,I}
     push!(xtrace, copy(ns.x))
     push!(iptrace, copy(ns.ip))
     push!(acctrace, step!(ns))
-    return SerialNRSTTrace(xtrace, iptrace, acctrace, ns.np)
+    return SerialNRSTTrace(xtrace, iptrace, acctrace, ns.np.N)
 end
 
 ###############################################################################
 # trace postprocessing
 ###############################################################################
 
-abstract type PostProcessor end
-abstract type SerialPostProcessor <: PostProcessor end
-
-struct SerialNoPostProcess <: SerialPostProcessor end
-post_process(tr::SerialNRSTTrace, ::SerialNoPostProcess, args...) = tr
-post_process(tr::SerialNRSTTrace) = post_process(tr::SerialNRSTTrace,SerialNoPostProcess())
-
-struct SerialFullPostProcess <: SerialPostProcessor end
 function post_process(
     tr::SerialNRSTTrace{T,I},
-    ::SerialFullPostProcess,
     xarray::Vector{Vector{T}}, # length = N+1. i-th entry has samples at state i
-    visacc::Matrix{I},         # size (N+1) × 2. accumulates visits. must be all zeros
-    rejacc::Matrix{I}          # size (N+1) × 2. accumulates rejections of swaps initiated at (i,eps)
+    visacc::Matrix{I},         # size (N+1) × 2. accumulates visits
+    rejacc::Matrix{I}          # size (N+1) × 2. accumulates rejections
     ) where {T,I}
     for (n, ip) in enumerate(tr.iptrace)
         idx    = ip[1] + 1
@@ -175,15 +166,12 @@ function post_process(
         push!(xarray[idx], tr.xtrace[n])
     end
 end
-function post_process(
-    tr::SerialNRSTTrace{T,I,TProb},
-    sfpp::SerialFullPostProcess
-    ) where {T,I,TProb}
-    N = tr.np.N
+function post_process(tr::SerialNRSTTrace{T,I}) where {T,I}
+    N      = tr.N
     xarray = [T[] for _ in 0:N] # i-th entry has samples at state i
-    visacc = zeros(I, N+1, 2)   # accumulates visits. must be all zeros
-    rejacc = zeros(I, N+1, 2)   # accumulates rejections of swaps initiated at (i,eps)
-    post_process(tr,sfpp,xarray,visacc,rejacc)
+    visacc = zeros(I, N+1, 2)   # accumulates visits
+    rejacc = zeros(I, N+1, 2)   # accumulates rejections
+    post_process(tr,xarray,visacc,rejacc)
     return xarray,visacc,rejacc
 end
 

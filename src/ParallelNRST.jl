@@ -2,93 +2,83 @@
 # run NRST in parallel exploiting regenerations
 ###############################################################################
 
-"""
-    ParallelRunResults
-
-A struct containing raw results as well as postprocessed quantities
-
-- `:nsteps`: vector of length `ntours` containing the total number of
-             steps of each tour
-- `:times` : vector of length `ntours` containing the total time spent
-             in each tour
-- `:xarray`: vector of length `N+1`. The `i`-th entry contains samples from the
-             `i`-th annealed distribution, and its length is equal to the total
-             number of visits to that level.
-- `:visits`: matrix of size `ntours × N` containing the number of visits
-             to each state in each tour
-"""
-struct ParallelRunResults{T,I,K}
-    trace::Vector{Tuple{K, Vector{T}, Vector{MVector{2,I}}}}
-    N::Int
-    ntours::Int
-    nthrds::Int
-    nsteps::Vector{I}         # number of steps in every tour
-    times::Vector{K}          # time spent in every tour
-    xarray::Vector{Vector{T}} # sequentially collect the value of x at each of the levels
-    visits::Matrix{I}         # number of visits to each level on each tour
-    toureff::Vector{K}        # tour effectiveness for each level
-    status::Base.RefValue{Int}# 1: first 4 fields computed // 2: first 6 // 3: all
+struct ParallelRunResults{T,TInt<:Int,TF<:AbstractFloat}
+    trvec::Vector{SerialNRSTTrace{T,TInt}} # vector of raw traces from each tour
+    xarray::Vector{Vector{T}}              # i-th entry has samples at state i
+    visits::Matrix{TInt}                   # total number of visits to each (i,eps)
+    rejecs::Matrix{TInt}                   # total rejections of swaps started from each (i,eps)
+    toureff::Vector{TF}                    # tour effectiveness for each i ∈ 0:N
 end
 
-# outer constructor for minimal initialization (status 1)
-function ParallelRunResults(
-    trace::Vector{Tuple{K, Vector{T}, Vector{MVector{2,I}}}},
-    N::Int,
-    ntours::Int,
-    nthrds::Int
-) where {T,I,K}
-    nsteps  = Vector{I}(undef, ntours)
-    times   = Vector{K}(undef, ntours)
-    xarray  = [T[] for i in 1:N]
-    visits  = zeros(I, ntours, N)
-    toureff = Vector{K}(undef, N)
-    ParallelRunResults(
-        trace, N, ntours, nthrds, nsteps, times, xarray, visits, toureff, Ref(1)
-    )
-end
+#######################################
+# initialization methods
+#######################################
 
 # create vector of identical copies of a given nrst sampler
 # used to avoid race conditions between threads
-# initialize with ns and additional nthrds-1 (deep)copies
+# initialize with ns and additional nthreads-1 (deep)copies
 # note that np object is still shared since it's not modified during simulation
-function copy_sampler(
-    ns::NRSTSampler{T,I,K,B};        
-    nthrds::Int
-) where {T,I,K,B}
-    samplers = Vector{NRSTSampler{T,I,K,B}}(undef, nthrds)
+function copy_sampler(ns::NRSTSampler{T,I}; nthreads::I) where {T,I}
+    samplers    = Vector{NRSTSampler{T,I}}(undef, nthreads)
     samplers[1] = ns
-    for i in 2:nthrds
+    for i in 2:nthreads
         samplers[i] = NRSTSampler(ns) # copy constructor
     end
     return samplers
 end
 
-# run in parallel using a vector of identical copies of NRST samplers
-function parallel_run!(
-    samplers::Vector{NRSTSampler{T,I,K}}; # contains nthrds (deep)copies of an NRSTSampler object 
-    ntours::Int,                          # run a total of ntours tours
-    verbose::Bool = false
-) where {T,I,K}
-    # need separate storage for each threadid because push! is not atomic!
-    trace_vec = [Tuple{K, Vector{T}, Vector{MVector{2,I}}}[] for _ in 1:length(samplers)]
+#######################################
+# sampling methods
+#######################################
 
-    # run tours in parallel using the available nrst's in the channel
+# run in parallel using a vector of identical copies of NRST samplers
+function run!(
+    samplers::Vector{NRSTSampler{T,I}}; # contains nthreads (deep)copies of an NRSTSampler object 
+    ntours::I,                          # run a total of ntours tours
+    verbose::Bool = false
+) where {T,I}
+    # need separate storage for each threadid because push! is not atomic!!!
+    # each thread gets a vector of traces to push! results to
+    trace_vec = [SerialNRSTTrace{T,I}[] for _ in eachindex(samplers)]
+
+    # run tours in parallel
     Threads.@threads for tour in 1:ntours
         tid = Threads.threadid()
-        tstats = @timed begin
-            xtrace, iptrace = tour!(samplers[tid])         # run a full tour with the sampler corresponding to this thread, avoiding race conditions
-        end
-        push!(
-            trace_vec[tid],                                # push results to this thread's own storage, avoiding race condition
-            (tstats.time - tstats.gctime, xtrace, iptrace) # remove GC time from total elapsed time
-        )
+        tr  = tour!(samplers[tid]) # run a full tour with the sampler corresponding to this thread, avoiding race conditions
+        push!(trace_vec[tid], tr)  # push results to this thread's own storage, avoiding race conditions
         verbose && println(
             "thread ", tid, ": completed tour ", tour
         )
     end
     
-    trace = vcat(trace_vec...)
-    ParallelRunResults(
-        trace, length(samplers[1].np.betas), ntours, length(samplers)
-    )
+    trvec = vcat(trace_vec...) # collect into a single Vector{SerialNRSTTrace{T,I}}
+    return post_process(trvec)
 end
+
+#######################################
+# trace postprocessing
+#######################################
+
+function post_process(trvec::Vector{SerialNRSTTrace{T,I}}) where {T,I}
+    # allocate storage
+    ntours = length(trvec)
+    N      = trvec[1].N
+    xarray = [T[] for _ in 0:N]       # i-th entry has samples at state i
+    curvis = Matrix{I}(undef, N+1, 2) # visits in current tour to each (i,eps) state
+    sumsq  = zeros(I, N+1)            # accumulate squared number of visits for each 0:N state (for tour effectiveness)
+    totvis = zeros(I, N+1, 2)         # total visits to each (i,eps) state
+    rejecs = zeros(I, N+1, 2)         # total rejections of swaps started in each (i,eps) state
+    
+    # iterate tours
+    for (tour, tr) in enumerate(trvec)
+        fill!(curvis, zero(I))                   # reset tour visits
+        post_process(tr, xarray, curvis, rejecs) # parse tour trace
+        totvis .+= curvis                        # accumulate total visits
+        sumsq  .+= vec(sum(curvis, dims=2)).^2   # squared number of visits to each of 0:N (regardless of eps)
+    end
+    
+    # compute tour effectiveness and return
+    toureff = vec(sum(totvis, dims=2).^2) ./ (ntours*sumsq) # == (sum(totvis, 2)/ntours).^2 ./ (sumsq/ntours)
+    ParallelRunResults(trvec, xarray, totvis, rejecs, toureff)    
+end
+

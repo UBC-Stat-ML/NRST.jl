@@ -20,7 +20,7 @@ function tune!(
     traceV  = similar(c, nsteps)
     # Threads.@threads for (i,e) in enumerate(explorers)
     for (i,e) in enumerate(explorers)
-        only_c ? run_with_trace!(e, V, traceV) : tune!(e, V, traceV)
+        only_c ? run!(e, V, traceV) : tune!(e, V, traceV)
         aggV[i+1] = aggfun(traceV)
     end
     trpz_apprx!(c,betas,aggV)                         # use trapezoidal approx to estimate int_0^beta db aggV(b)
