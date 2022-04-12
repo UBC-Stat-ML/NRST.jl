@@ -18,7 +18,6 @@ ns=NRSTSampler(
     true     # tune c using mean energy
 );
 tune!(ns,nsteps=50000,only_c=true);
-NRST.renew!(ns)
 res = post_process(run!(ns,nsteps=50000));
 plot(0:ns.np.N, vec(sum(res.visits,dims=2)))
 
@@ -29,7 +28,7 @@ samplers = copy_sampler(ns, nthreads=4);
 # LIKELY: because viout is shared => need smarter copy_sampler, so that
 ns.np.V.viout
 samplers[4].np.V.viout
-
+hasproperty(ns.np.V, :viout)
 #########################################################################################
 # Outline of how sampling using Turing.HMC works
 # 1) the sampling starts with a call to "sample"

@@ -2,11 +2,21 @@
 # relevant structs 
 ###############################################################################
 
+# storage for functions associated to a tempered problem
+struct SimpleFuns{TV,TVr,Tr} <: Funs
+    V::TV       # energy Function
+    Vref::TVr   # energy of reference distribution
+    randref::Tr # produces independent sample from reference distribution
+end
+function gen_Vβ(fns::SimpleFuns, β::AbstractFloat)
+    function Vβ(x)
+        fns.Vref(x) + β*fns.V(x)
+    end
+end
+
 # encapsulates the specifics of the inference problem
-struct NRSTProblem{F,G,H,K<:AbstractFloat,A<:AbstractVector{K},TInt<:Int}
-    V::F           # energy Function
-    Vref::G        # energy of reference distribution
-    randref::H     # produces independent sample from reference distribution
+struct NRSTProblem{TFuns,K<:AbstractFloat,A<:AbstractVector{K},TInt<:Int}
+    fns::TFuns     # struct that contains at least V, Vref, and randref
     N::TInt        # number of states additional to reference (N+1 in total)
     betas::A       # vector of tempering parameters (length N+1)
     c::A           # vector of parameters for the pseudoprior
@@ -23,8 +33,7 @@ struct NRSTSampler{T,I<:Int,K<:AbstractFloat,B<:AbstractVector{<:ExplorationKern
     nexpl::I               # number of exploration steps
 end
 
-# contains output of a serial run (no reference to tours)
-# also contains a pointer to the originating NRSTProblem (as metadata storage)
+# raw output of a serial run
 struct SerialNRSTTrace{T,TInt<:Int}
     xtrace::Vector{T}
     iptrace::Vector{MVector{2,TInt}}
@@ -33,6 +42,7 @@ struct SerialNRSTTrace{T,TInt<:Int}
 end
 Base.length(tr::SerialNRSTTrace) = length(tr.xtrace) # overload Base method
 
+# processed output
 struct SerialRunResults{T,TInt<:Int}
     tr::SerialNRSTTrace{T,TInt} # raw trace
     xarray::Vector{Vector{T}}   # i-th entry has samples at state i
@@ -46,20 +56,28 @@ end
 
 # constructor that also builds an NRSTProblem and does initial tuning
 function NRSTSampler(V, Vref, randref, betas, nexpl, use_mean)
-    x         = randref()
-    np        = NRSTProblem(V, Vref, randref, length(betas)-1, betas, similar(betas), use_mean)
-    explorers = init_explorers(V, Vref, betas, x)
-    tune!(explorers, np, nsteps=10*nexpl) # tune explorations kernels and get initial c estimate 
+    np = NRSTProblem(
+        SimpleFuns(V, Vref, randref),
+        length(betas)-1, betas, similar(betas), use_mean
+    )
+    x = randref()
+    explorers = init_explorers(np.fns, betas, x)
+    tune!(explorers, np, nsteps=10*nexpl) # tune explorations kernels and get initial c estimate
     NRSTSampler(np, explorers, x, MVector(0,1), Ref(V(x)), nexpl)
 end
 
 # copy-constructor, using a given NRSTSampler (usually already tuned)
-# note: "np" is fully shared, only "explorers" is deepcopied.
-# so don't change np in threads!
 function NRSTSampler(ns::NRSTSampler)
-    x = ns.np.randref()
-    explorers_copy = deepcopy(ns.explorers) # need full recursive copy, otherwise state is shared
-    NRSTSampler(ns.np, explorers_copy, x, MVector(0,1), Ref(ns.np.V(x)), ns.nexpl)
+    x = ns.np.fns.randref()
+    if !(ns.np.fns isa SimpleFuns) # uses Turing interface
+        throw("unimplemented")
+    else                           # standard case
+        # note: "np" is fully shared, only "explorers" is deepcopied.
+        # so don't change np in threads!
+        new_np = ns.np
+        new_explorers = deepcopy(ns.explorers) # need full recursive copy, otherwise state is shared
+    end
+    NRSTSampler(new_np, new_explorers, x, MVector(0,1), Ref(ns.np.fns.V(x)), ns.nexpl)
 end
 
 ###############################################################################
@@ -68,10 +86,10 @@ end
 
 # reset state by sampling from the renewal measure
 function renew!(ns::NRSTSampler)
-    copyto!(ns.x,ns.np.randref())
+    copyto!(ns.x,ns.np.fns.randref())
     ns.ip[1]  = 0
     ns.ip[2]  = 1
-    ns.curV[] = ns.np.V(ns.x)
+    ns.curV[] = ns.np.fns.V(ns.x)
 end
 
 # communication step
@@ -105,14 +123,14 @@ end
 function expl_step!(ns::NRSTSampler)
     @unpack x,np,explorers,ip,curV,nexpl = ns
     if ip[1] == 0
-        copyto!(x, np.randref()) 
+        copyto!(x, np.fns.randref()) 
     else
         expl = explorers[ip[1]] # current explorer (recall that ip[1] is 0-based)
         set_state!(expl, x)     # pass current state to explorer
         explore!(expl, nexpl)   # explore for nexpl steps
         copyto!(x, expl.x)      # update nrst's state with the explorer's
     end
-    curV[] = np.V(x)            # compute energy at new point
+    curV[] = np.fns.V(x)        # compute energy at new point
 end
 
 # NRST step = comm_step ∘ expl_step

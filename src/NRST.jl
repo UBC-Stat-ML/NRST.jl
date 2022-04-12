@@ -21,6 +21,12 @@ export gen_randref,
     gen_Vref,
     gen_V
 
+# declarations needed here to fix the fact that the "include"s are 
+# processed sequentially, so that things appear undefined even tho they exist
+# abstract type declarations
+abstract type Funs end
+
+# load files
 include("utils.jl")
 include("ExplorationKernels.jl")
 include("NRSTSampler.jl")

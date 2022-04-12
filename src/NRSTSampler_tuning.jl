@@ -14,7 +14,8 @@ function tune!(
     nsteps::Int,
     only_c::Bool=false
     )
-    @unpack c, betas, V, randref = np
+    @unpack c, betas, fns = np
+    @unpack V, randref = fns
     aggfun  = np.use_mean ? mean : median
     aggV    = similar(c)
     aggV[1] = aggfun([V(randref()) for _ in 1:nsteps])
@@ -36,9 +37,9 @@ tune!(ns::NRSTSampler; kwargs...) = tune!(ns.explorers, ns.np; kwargs...)
 
 function tune_c!(ns::NRSTSampler,res::ParallelRunResults)
     @unpack np = ns
-    @unpack c, betas, V, use_mean = np
+    @unpack c, betas, fns, use_mean = np
     aggfun = use_mean ? mean : median
-    aggV = NRST.point_estimate(res, V, aggfun)
+    aggV = NRST.point_estimate(res, fns.V, aggfun)
     trpz_apprx!(c, betas, aggV) # use trapezoidal approx to estimate int_0^beta db aggV(b)
 end
 

@@ -150,8 +150,8 @@ end
 ###############################################################################
 
 # create a vector of exploration kernels: continous case
-function init_explorers(V,Vref,betas,xinit::AbstractVector{<:AbstractFloat})
+function init_explorers(fns::Funs,betas,xinit::AbstractVector{<:AbstractFloat})
     # copy(xinit) is necessary or all explorers end up sharing the same state x
-    [MHSampler(x->(Vref(x) + β*V(x)), copy(xinit)) for β in betas[2:end]]
+    [MHSampler(gen_Vβ(fns, β), copy(xinit)) for β in betas[2:end]]
 end
 

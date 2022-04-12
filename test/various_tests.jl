@@ -27,7 +27,6 @@ ns=NRST.NRSTSampler(
     true                          # tune c using mean energy
 );
 
-# build vector of identical copies of ns for safe parallel computations
 copyto!(ns.np.c, F.(ns.np.betas))
 par_res = parallel_run(ns,nthreads=4,ntours=50000);
 plot(0:ns.np.N, vec(sum(par_res.visits,dims=2)))
