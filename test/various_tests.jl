@@ -28,14 +28,11 @@ ns=NRST.NRSTSampler(
 );
 
 # build vector of identical copies of ns for safe parallel computations
-samplers = NRST.copy_sampler(ns, nthrds = Threads.nthreads());
 copyto!(ns.np.c, F.(ns.np.betas))
-res = NRST.parallel_run!(samplers, ntours=512*Threads.nthreads());
+par_res = parallel_run(ns,nthreads=4,ntours=50000);
+plot(0:ns.np.N, vec(sum(par_res.visits,dims=2)))
+par_res.toureff
 
-# tour effectiveness
-NRST.full_postprocessing!(res)
-all(res.toureff .== [(mean(v)^2) / mean(v.*v) for v in eachcol(res.visits)])
-
-means, vars = NRST.estimate(res, x -> all(x .> m))
-plot(ns.np.betas, means, label="Estimate", seriestype=:scatter, yerror = 1.96sqrt.(vars/res.ntours))
-all(vars .< (4 ./ res.toureff))
+# means, vars = NRST.estimate(res, x -> all(x .> m))
+# plot(ns.np.betas, means, label="Estimate", seriestype=:scatter, yerror = 1.96sqrt.(vars/res.ntours))
+# all(vars .< (4 ./ res.toureff))

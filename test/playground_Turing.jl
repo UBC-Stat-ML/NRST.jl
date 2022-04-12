@@ -10,15 +10,25 @@ using Random, Distributions, DynamicPPL, NRST, Plots, StatsBase
     x .~ Normal(0.,s)
 end
 lnmodel = Lnmodel(randn(30)) # -.1234
-betas = range(0,1,15) .^(2) #pushfirst!(10. .^range(-2,0,9), 0.)
+betas = range(0,1,30) .^(2) #pushfirst!(10. .^range(-2,0,9), 0.)
 ns=NRSTSampler(
     lnmodel, # use the Turing model to build potentials and prior sampling
     betas,
     50,      # nexpl
     true     # tune c using mean energy
 );
-samplers = copy_sampler(ns,nthreads=4);
-par_res = run!(samplers,ntours=4000);
+tune!(ns,nsteps=50000,only_c=true);
+NRST.renew!(ns)
+res = post_process(run!(ns,nsteps=50000));
+plot(0:ns.np.N, vec(sum(res.visits,dims=2)))
+
+# TODO: FAIL, completely nonuniform distribution over i ∈ 0:N :(((
+par_res = parallel_run(ns,nthreads=4,ntours=5000);
+plot(0:res.tr.N, vec(sum(par_res.visits,dims=2)))
+samplers = copy_sampler(ns, nthreads=4);
+# LIKELY: because viout is shared => need smarter copy_sampler, so that
+ns.np.V.viout
+samplers[4].np.V.viout
 
 #########################################################################################
 # Outline of how sampling using Turing.HMC works

@@ -33,6 +33,13 @@ struct SerialNRSTTrace{T,TInt<:Int}
 end
 Base.length(tr::SerialNRSTTrace) = length(tr.xtrace) # overload Base method
 
+struct SerialRunResults{T,TInt<:Int}
+    tr::SerialNRSTTrace{T,TInt} # raw trace
+    xarray::Vector{Vector{T}}   # i-th entry has samples at state i
+    visits::Matrix{TInt}        # total number of visits to each (i,eps)
+    rejecs::Matrix{TInt}        # total rejections of swaps started from each (i,eps)
+end
+
 ###############################################################################
 # constructors and initialization methods
 ###############################################################################
@@ -172,6 +179,6 @@ function post_process(tr::SerialNRSTTrace{T,I}) where {T,I}
     visacc = zeros(I, N+1, 2)   # accumulates visits
     rejacc = zeros(I, N+1, 2)   # accumulates rejections
     post_process(tr,xarray,visacc,rejacc)
-    return xarray,visacc,rejacc
+    SerialRunResults(tr, xarray, visacc, rejacc)
 end
 

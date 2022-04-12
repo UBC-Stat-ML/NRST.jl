@@ -7,6 +7,7 @@
 #######################################
 
 # tune all explorers' parameters in parallel, then adjust c
+# TODO: instead of "only_c", use an "adaptor" type that gives a different method?
 function tune!(
     explorers::AbstractVector{<:ExplorationKernel},
     np::NRSTProblem;

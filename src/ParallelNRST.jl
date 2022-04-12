@@ -55,6 +55,11 @@ function run!(
     return post_process(trvec)
 end
 
+# method for a single NRSTSampler that creates only temp copies
+function parallel_run(ns::NRSTSampler{T,I}; nthreads::I, ntours::I) where {T,I}
+    run!(copy_sampler(ns, nthreads=nthreads), ntours=ntours)
+end
+
 #######################################
 # trace postprocessing
 #######################################

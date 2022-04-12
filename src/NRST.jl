@@ -10,7 +10,8 @@ export NRSTSampler,
     post_process
 
 # ParallelNRST.jl
-export copy_sampler
+export copy_sampler,
+    parallel_run
 
 # estimation.jl
 export estimate
