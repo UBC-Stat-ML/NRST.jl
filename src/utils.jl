@@ -4,7 +4,7 @@
 # c[i] ≈ sum_{j=1}^i 0.5(f(x_j) + f(x_{j-1}))(x_j - x_{j-1})
 # Or recursively,
 # c[i] = c[i-1] + 0.5(f(x_j) + f(x_{j-1}))(x_j - x_{j-1})
-function trpz_apprx!(c::T,xs::T,ys::T) where {K<:AbstractFloat,T<:AbstractVector{K}}
+function trapez!(c::T,xs::T,ys::T) where {K<:AbstractFloat,T<:AbstractVector{K}}
     @assert length(c) == length(xs) == length(ys)
     c[1] = zero(K)
     oldx = xs[1]

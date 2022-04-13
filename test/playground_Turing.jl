@@ -10,26 +10,26 @@ using Random, Distributions, DynamicPPL, NRST, Plots, StatsBase
     x .~ Normal(0.,s)
 end
 lnmodel = Lnmodel(randn(30)) # -.1234
-betas = range(0,1,30) .^(2) #pushfirst!(10. .^range(-2,0,9), 0.)
+betas = range(0,1,30) .^(2)
 ns=NRSTSampler(
     lnmodel, # use the Turing model to build potentials and prior sampling
     betas,
     50,      # nexpl
     true     # tune c using mean energy
 );
-tune!(ns,nsteps=50000,only_c=true);
+@code_warntype run!(ns,nsteps=50000);
 res = post_process(run!(ns,nsteps=50000));
 plot(0:ns.np.N, vec(sum(res.visits,dims=2)))
-ns.np.fns
+tune_c!(ns,res);
 
 # parallel
 samplers = copy_sampler(ns, nthreads = 4);
 par_res = run!(samplers, ntours = 5000);
 plot(0:ns.np.N, vec(sum(par_res.visits,dims=2)))
 ns.np.fns.viout
-[get_num_produce(s.np.fns.viout) for s in samplers]
-run!(samplers,ntours=4);
-hasproperty(ns.np.V, :viout)
+[get_num_produce(s.np.fns.viout) for s in samplers] # they should be different
+par_res.toureff
+
 #########################################################################################
 # Outline of how sampling using Turing.HMC works
 # 1) the sampling starts with a call to "sample"

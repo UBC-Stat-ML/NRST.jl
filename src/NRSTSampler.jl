@@ -46,10 +46,10 @@ struct SerialNRSTTrace{T,TInt<:Int}
     acctrace::BitVector
     N::TInt
 end
-Base.length(tr::SerialNRSTTrace) = length(tr.xtrace) # overload Base method
+nsteps(tr::SerialNRSTTrace) = length(tr.xtrace) # recover nsteps
 
 # processed output
-struct SerialRunResults{T,TInt<:Int}
+struct SerialRunResults{T,TInt<:Int} <: RunResults
     tr::SerialNRSTTrace{T,TInt} # raw trace
     xarray::Vector{Vector{T}}   # i-th entry has samples at state i
     visits::Matrix{TInt}        # total number of visits to each (i,eps)

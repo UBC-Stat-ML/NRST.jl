@@ -2,13 +2,14 @@
 # run NRST in parallel exploiting regenerations
 ###############################################################################
 
-struct ParallelRunResults{T,TInt<:Int,TF<:AbstractFloat}
+struct ParallelRunResults{T,TInt<:Int,TF<:AbstractFloat} <: RunResults
     trvec::Vector{SerialNRSTTrace{T,TInt}} # vector of raw traces from each tour
     xarray::Vector{Vector{T}}              # i-th entry has samples at state i
     visits::Matrix{TInt}                   # total number of visits to each (i,eps)
     rejecs::Matrix{TInt}                   # total rejections of swaps started from each (i,eps)
     toureff::Vector{TF}                    # tour effectiveness for each i ∈ 0:N
 end
+ntours(res::ParallelRunResults) = length(trvec)
 
 #######################################
 # initialization methods
