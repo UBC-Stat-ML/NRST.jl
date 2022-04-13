@@ -151,6 +151,6 @@ tune!(mhs::MHSampler,params::NamedTuple;kwargs...) = tune!(mhs::MHSampler;sigma0
 # create a vector of exploration kernels: continous case
 function init_explorers(fns::Funs,betas,xinit::AbstractVector{<:AbstractFloat})
     # copy(xinit) is necessary or all explorers end up sharing the same state x
-    [MHSampler(gen_Vβ(fns, β), copy(xinit)) for β in betas[2:end]]
+    [MHSampler(gen_Vβ(fns, i, betas), copy(xinit)) for i in 2:length(betas)]
 end
 

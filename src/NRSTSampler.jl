@@ -8,8 +8,13 @@ struct SimpleFuns{TV,TVr,Tr} <: Funs
     Vref::TVr   # energy of reference distribution
     randref::Tr # produces independent sample from reference distribution
 end
-function gen_Vβ(fns::Funs, β::AbstractFloat)
+
+# default function to generate a tempered potential closure from a Funs object
+# Note: Vβ captures the whole "betas" vector, so we can tune it outside and it
+# will affect the outcome of Vβs generated prior to the change   
+function gen_Vβ(fns::Funs, ind::Int, betas::AbstractVector{<:AbstractFloat})
     function Vβ(x)
+        β = betas[ind]
         fns.Vref(x) + β*fns.V(x)
     end
 end

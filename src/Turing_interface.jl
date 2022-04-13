@@ -36,8 +36,8 @@ function Base.copy(fns::TuringFuns)
     TuringFuns(V, Vref, randref, model, spl, vinew)
 end
 
-# # TODO: when the MiniBatchContext gets fixed, use it build custom gen_Vβ
-# function gen_Vβ(fns::TuringFuns, β::AbstractFloat)
+# # TODO: when the MiniBatchContext gets fixed, use it to build custom gen_Vβ
+# function gen_Vβ(fns::TuringFuns, ind::Int, betas::AbstractVector{<:AbstractFloat})
 #     ...
 # end
 

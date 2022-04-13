@@ -27,6 +27,8 @@ plot(0:ns.np.N, vec(sum(par_res.visits,dims=2)))
 [get_num_produce(s.np.fns.viout) for s in samplers] # they should be different
 par_res.toureff
 
+
+
 #########################################################################################
 # Outline of how sampling using Turing.HMC works
 # 1) the sampling starts with a call to "sample"
