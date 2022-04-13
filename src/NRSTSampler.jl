@@ -16,6 +16,8 @@ end
 Base.copy(fns::SimpleFuns) = fns # dont do anything
 
 # encapsulates all the specifics of the tempered problem
+# NOTE: when parallelizing, all fields must be shared except possibly
+# for "fns".
 struct NRSTProblem{TFuns,K<:AbstractFloat,A<:AbstractVector{K},TInt<:Int}
     fns::TFuns     # struct that contains at least V, Vref, and randref
     N::TInt        # number of states additional to reference (N+1 in total)
@@ -39,7 +41,7 @@ struct NRSTSampler{T,I<:Int,K<:AbstractFloat,B<:AbstractVector{<:ExplorationKern
     nexpl::I               # number of exploration steps
 end
 
-# raw output of a serial run
+# raw trace of a serial run
 struct SerialNRSTTrace{T,TInt<:Int}
     xtrace::Vector{T}
     iptrace::Vector{MVector{2,TInt}}
@@ -61,16 +63,17 @@ end
 ###############################################################################
 
 # constructor that also builds an NRSTProblem and does initial tuning
-function NRSTSampler(fns, betas, nexpl, use_mean)
-    np = NRSTProblem(fns,length(betas)-1, betas, similar(betas), use_mean)
-    x  = fns.randref()
-    explorers = init_explorers(fns, betas, x)
-    tune!(explorers, np, nsteps=10*nexpl) # tune explorations kernels and get initial c estimate
-    NRSTSampler(np, explorers, x, MVector(0,1), Ref(fns.V(x)), nexpl)
+function NRSTSampler(fns, betas, nexpl, use_mean; init=true)
+    np = NRSTProblem(fns, length(betas)-1, betas, similar(betas), use_mean)
+    x  = fns.randref()                 # draw an initial point
+    es = init_explorers(fns, betas, x) # instantiate a vector of N explorers
+    ns = NRSTSampler(np, es, x, MVector(0,1), Ref(fns.V(x)), nexpl)
+    init && initialize!(ns, nsteps = 10*nexpl) # tune explorers and get initial c estimate
+    return ns
 end
-function NRSTSampler(V, Vref, randref, betas, nexpl, use_mean)
+function NRSTSampler(V, Vref, randref, args...;kwargs...)
     fns = SimpleFuns(V, Vref, randref)
-    NRSTSampler(fns, betas, nexpl, use_mean)
+    NRSTSampler(fns,args...;kwargs...)
 end
 
 # copy-constructor, using a given NRSTSampler (usually already tuned)

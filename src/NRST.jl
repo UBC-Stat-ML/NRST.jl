@@ -23,7 +23,10 @@ export gen_randref,
     gen_V
 
 # NRSTSampler_tuning.jl
-export tune_c!
+export tune_explorers!,
+    initialize_c!,
+    initialize!,
+    tune_c!
 
 # declarations needed here to fix the fact that the "include"s are 
 # processed sequentially, so that things appear undefined even tho they exist

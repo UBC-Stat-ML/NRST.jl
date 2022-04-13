@@ -17,16 +17,13 @@ ns=NRSTSampler(
     50,      # nexpl
     true     # tune c using mean energy
 );
-@code_warntype run!(ns,nsteps=50000);
 res = post_process(run!(ns,nsteps=50000));
 plot(0:ns.np.N, vec(sum(res.visits,dims=2)))
-tune_c!(ns,res);
 
 # parallel
 samplers = copy_sampler(ns, nthreads = 4);
 par_res = run!(samplers, ntours = 5000);
 plot(0:ns.np.N, vec(sum(par_res.visits,dims=2)))
-ns.np.fns.viout
 [get_num_produce(s.np.fns.viout) for s in samplers] # they should be different
 par_res.toureff
 

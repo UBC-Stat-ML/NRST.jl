@@ -25,8 +25,8 @@ struct MHSampler{F,K<:AbstractFloat,A<:AbstractVector{K}} <: ExplorationKernel
     curU::Base.RefValue{K}  # current energy (stored as ref to make it mutable) 
 end
 
-# simple outer constructor
 MHSampler(U,xinit,sigma=1.0) = MHSampler(U,xinit,similar(xinit),Ref(sigma),Ref(U(xinit)))
+params(mh::MHSampler) = (sigma=mh.sigma[],) # namedtuple of parameters
 
 # # test
 # mhs = MHSampler(x->(0.5sum(abs2,x)),ones(2))
@@ -103,26 +103,27 @@ end
 # tracev = Vector{Float64}(undef, 1000)
 # nacc = run!(mhs,x->(0.5sum(abs2,x)),tracev)
 
-# tune sigma and return sample {V(xn)} for some function V
-# uses simplified SGD approach targetting 0.5(acc-target)^2 with R-M seq a_r = 10r^{-0.51}
+# tune sigma using a simplified SGD approach targetting
+# 0.5(acc-target)^2, where 
+#     - \der{acc}{sigma} is assumed constant
+#     - Robbins-Monroe step size sequence is a_r = 10r^{-0.51}
 function tune!(
-    mhs::MHSampler{F,K},
-    V,
-    traceV::AbstractVector{K};
+    mhs::MHSampler{F,K};
+    sigma0     = -one(K),
     target_acc = 0.234,
-    eps        = 0.03,
+    eps        = 0.05,
+    min_rounds = 2,
     max_rounds = 8,
+    nsteps     = 500,
     verbose    = true
     ) where {F,K}
-    nsteps   = length(traceV)
-    if nsteps < 1
-        return
-    end
+    nsteps < 1 && return
     minsigma = 1e-8
     err      = 10*eps
     r        = 0
+    (sigma0 > zero(K)) && (mhs.sigma[] = sigma0)
     verbose && @printf("Tuning initiated at sigma=%.1f\n", mhs.sigma[])
-    while err >= eps && r < max_rounds
+    while (r < min_rounds) || (err >= eps && r < max_rounds)
         r += 1
         nacc         = run!(mhs, nsteps)                # run and get number of acc proposals
         acc          = nacc / nsteps                    # compute acceptance ratio
@@ -133,10 +134,8 @@ function tune!(
             "Round %d: acc=%.3f, err=%.2f, new_sigma=%.1f\n",r, acc, err, mhs.sigma[]
         )
     end
-    # finally return a sample V(Xn) using the tuned sampler 
-    run!(mhs, V, traceV)
 end
-
+tune!(mhs::MHSampler,params::NamedTuple;kwargs...) = tune!(mhs::MHSampler;sigma0=params.sigma,kwargs...)
 # # test
 # # approximate V(x)=0.5||x||^2 (energy of N(0,I)) with mhs targetting N(0,b^2I). Then
 # # E[V] = (1/2)E[X1^2+X2^2] = (1/2) b^2 E[(X1/b)^2+(X2/b)^2] = b^2/2E[chi-sq(2)] = b^2

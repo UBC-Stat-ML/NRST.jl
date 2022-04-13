@@ -24,6 +24,8 @@ function TuringFuns(model::Model)
     TuringFuns(V, Vref, randref, model, spl, viout)
 end
 
+# copy a TuringFuns. it keeps model and spl common. Avoiding copying model is
+# especially important because it contains the dataset, which can be huge
 function Base.copy(fns::TuringFuns)
     @unpack model, spl = fns
     vinew = DynamicPPL.VarInfo(model)              # build a new TypedVarInfo
@@ -40,9 +42,9 @@ end
 # end
 
 # NRSTSampler constructor
-function NRSTSampler(model::Model, betas, nexpl, use_mean)
+function NRSTSampler(model::Model, args...;kwargs...)
     fns = TuringFuns(model)
-    NRSTSampler(fns, betas, nexpl, use_mean)
+    NRSTSampler(fns, args...;kwargs...)
 end
 
 #######################################
