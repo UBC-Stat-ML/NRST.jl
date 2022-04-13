@@ -30,7 +30,7 @@ end
 
 function initialize!(ns::NRSTSampler;nsteps::Int)
     tune_explorers!(ns;nsteps)
-    initialize_c!(ns;nsteps)
+    initialize_c!(ns;2nsteps)
 end
 
 # Tune the c params using the output of serial or parallel run
