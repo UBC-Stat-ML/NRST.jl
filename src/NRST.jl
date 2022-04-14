@@ -1,6 +1,6 @@
 module NRST
 
-using UnPack,Random,Distributions,Printf,StatsBase,Statistics,StaticArrays,DynamicPPL
+using UnPack,Random,Distributions,Printf,Plots,StatsBase,Statistics,StaticArrays,DynamicPPL
 using Interpolations: interpolate, SteffenMonotonicInterpolation
 using Roots: find_zero
 using DataFrames: DataFrame
@@ -29,7 +29,8 @@ export gen_randref,
 export tune_explorers!,
     initialize_c!,
     initialize!,
-    tune_c!
+    tune_c!,
+    tune_betas!
 
 # declarations needed here to fix the fact that the "include"s are 
 # processed sequentially, so that things appear undefined even tho they exist
