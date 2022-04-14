@@ -26,9 +26,10 @@ par_res = run!(samplers, ntours = 5000);
 oldTE = par_res.toureff
 
 # estimate
-at = [1, ns.np.N+1]
+at = 0:ns.np.N
 h=(x->x[1])
-inference(par_res, h=h, at=at)
+infdf = inference(par_res, h=h, at=at)
+show(infdf, allrows=true)
 
 # estimate Λ
 using Interpolations, Roots
