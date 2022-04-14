@@ -9,7 +9,7 @@ struct ParallelRunResults{T,TInt<:Int,TF<:AbstractFloat} <: RunResults
     rejecs::Matrix{TInt}                   # total rejections of swaps started from each (i,eps)
     toureff::Vector{TF}                    # tour effectiveness for each i ∈ 0:N
 end
-ntours(res::ParallelRunResults) = length(trvec)
+ntours(res::ParallelRunResults) = length(res.trvec)
 
 #######################################
 # initialization methods

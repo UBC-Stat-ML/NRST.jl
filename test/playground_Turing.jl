@@ -25,6 +25,11 @@ par_res = run!(samplers, ntours = 5000);
 # [get_num_produce(s.np.fns.viout) for s in samplers] # they should be different
 oldTE = par_res.toureff
 
+# estimate
+at = [1, ns.np.N+1]
+h=(x->x[1])
+inference(par_res, h=h, at=at)
+
 # estimate Λ
 using Interpolations, Roots
 
@@ -58,5 +63,3 @@ res = post_process(run!(ns,nsteps=50000));
 plot(0:ns.np.N, vec(sum(res.visits,dims=2)))
 par_res = run!(samplers, ntours = 5000);
 par_res.toureff
-
-

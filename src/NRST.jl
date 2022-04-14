@@ -1,6 +1,9 @@
 module NRST
 
-using UnPack,Random,Distributions,Printf,StatsBase,Statistics,StaticArrays,DynamicPPL,Interpolations,Roots
+using UnPack,Random,Distributions,Printf,StatsBase,Statistics,StaticArrays,DynamicPPL
+using Interpolations: interpolate, SteffenMonotonicInterpolation
+using Roots: find_zero
+using DataFrames: DataFrame
 using Turing: Turing
 
 # NRSTSampler.jl
@@ -13,9 +16,9 @@ export NRSTSampler,
 export copy_sampler,
     parallel_run
 
-# estimation.jl
+# inference.jl
 export point_estimate,
-    estimate
+    inference
 
 # Turing_interface.jl
 export gen_randref,
@@ -42,7 +45,7 @@ include("ExplorationKernels.jl")
 include("NRSTSampler.jl")
 include("ParallelNRST.jl")
 include("Turing_interface.jl")
-include("estimation.jl")
+include("inference.jl")
 include("NRSTSampler_tuning.jl")
 
 end
