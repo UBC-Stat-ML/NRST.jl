@@ -68,26 +68,34 @@ function tune_betas!(ns::NRSTSampler,res::RunResults; visualize=false)
         newbetas[i] = find_zero(β -> Λnorm(β)-targetΛ, (b1,b2), atol = 0.01*Δ) # set tolerance for |Λnorm(β)-target| 
     end
     newbetas[end] = 1.
-
-    # visualize the change
+    
     if visualize
-        p1 = plot_lambda(Λnorm, betas, "β")
-        p2 = plot_lambda(Λnorm, newbetas, "β'")
+        p1 = plot_lambda(Λnorm, betas, "βold")
+        p2 = plot_lambda(Λnorm, newbetas, "βnew")
         display(plot(p1, p2, layout = (2,1)))
+        copyto!(betas, newbetas)
+        return (p1,p2)
+    else
+        copyto!(betas, newbetas)
+        return
     end
 
-    # this propagates to other copies of ns since np.betas is shared
-    copyto!(betas, newbetas)
 end
 
 # utility for creating the Λ plot
 function plot_lambda(Λ,bs,lab)
-    p = plot(x->Λ(x), 0., 1., label = "Λ", legend = :topleft, xlim=(0.,1.), ylim=(0.,1.))
-    plot!(p, [0.,0.], [0.,0.], label=lab, color = :green)
+    c1 = DEFAULT_PALETTE[1]
+    c2 = DEFAULT_PALETTE[2]
+    p = plot(
+        x->Λ(x), 0., 1., label = "Λ", legend = :bottomright,
+        xlim=(0.,1.), ylim=(0.,1.), color = c1, grid = false
+    )
+    plot!(p, [0.,0.], [0.,0.], label=lab, color = c2)
     for (i,b) in enumerate(bs[2:end])
         y = Λ(b)
-        plot!(p, [b,b], [0.,y], label="", color = :green) # vertical
-        plot!(p, [0,b], [y,y], label="", color = :green, linestyle = :dot)  # horizontal
+        plot!(p, [b,b], [0.,y], label="", color = c2)                  # vertical segments
+        plot!(p, [0,b], [y,y], label="", color = c1, linestyle = :dot) # horizontal segments
     end
     p
 end
+
