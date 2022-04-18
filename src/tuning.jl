@@ -47,12 +47,14 @@ function tune!(
     init_ntours_per_thread::Int = 32,
     maxrounds::Int = 6,
     max_chng_thrsh::AbstractFloat = 0.03,
+    nsteps_expls::Int = 10*nss[1].nexpl,
     verbose::Bool = true
     )
     ns       = nss[1]
     ntours   = min(128, init_ntours_per_thread * length(nss))
     round    = 0
     max_chng = 1.
+    println("\nTuning an NRST sampler using exponentially longer runs.")
     while (max_chng > max_chng_thrsh) && (round < maxrounds)
         round += 1
         verbose && print("Round $round: running $ntours tours...")
@@ -61,16 +63,14 @@ function tune!(
 
         # tune betas
         oldbetas = copy(ns.np.betas)
-        _        = tune_betas!(ns, res)
+        tune_betas!(ns, res)
         max_chng = maximum(abs, ns.np.betas - oldbetas) # maximum change in the grid
         verbose && @printf(" Tuned betas, max change = %.2f.", max_chng)
 
-        # adjust explorers' parameters and recompute c
-        tune_explorers!(ns, nsteps = 10*ns.nexpl, verbose = false)
-        initialize_c!(ns, nsteps = 20*ns.nexpl)
+        # adjust explorers' parameters, recompute c, and double tours
+        tune_explorers!(ns, nsteps = nsteps_expls, verbose = false)
+        initialize_c!(ns, nsteps = (2^round)*nsteps_expls)
         verbose && println(" Adjusted explorers and c values.")
-        verbose && flush(stdout)
-
         ntours *= 2
     end
 end
@@ -85,15 +85,10 @@ end
 # end
 
 # tune betas using the equirejection approach
-function tune_betas!(ns::NRSTSampler,res::RunResults; visualize=false)
-    # estimate Λ at current betas using the rejections, normalize, and interpolate
-    rejrat    = res.rejecs ./ res.visits                   # note: this the only place where res is used
-    averej    = 0.5(rejrat[1:(end-1),1] + rejrat[2:end,2]) # average outgoing and incoming rejections
-    Λvals     = pushfirst!(cumsum(averej), 0.)
-    Λvalsnorm = Λvals/Λvals[end]
-    betas     = ns.np.betas
-    Λnorm     = interpolate(betas, Λvalsnorm, SteffenMonotonicInterpolation())
-    @assert sum(abs, Λnorm.(betas) - Λvalsnorm) < 10eps()
+function tune_betas!(ns::NRSTSampler,res::RunResults)
+    # estimate Λ at current betas using rejections rates, normalize, and interpolate
+    betas = ns.np.betas
+    Λnorm, Λvalsnorm = get_lambda(res, betas) # note: this the only place where res is used
 
     # find newbetas by inverting Λnorm with a uniform grid on the range
     Δ           = 1/ns.np.N      # step size of the grid
@@ -108,17 +103,17 @@ function tune_betas!(ns::NRSTSampler,res::RunResults; visualize=false)
     end
     newbetas[end] = 1.
     copyto!(betas, newbetas) # update betas
-    return Λnorm             # useful for plotting
-    # if visualize
-    #     p1 = plot_lambda(Λnorm, betas, "βold")
-    #     p2 = plot_lambda(Λnorm, newbetas, "βnew")
-    #     display(plot(p1, p2, layout = (2,1)))
-    #     copyto!(betas, newbetas)
-    #     return (p1,p2)
-    # else
-    #     copyto!(betas, newbetas)
-    #     return
-    # end
+end
+
+# estimate Λ at current betas using rejections rates, normalize, and interpolate
+function get_lambda(res::RunResults, betas::Vector{<:AbstractFloat})
+    rej_rates = res.rejecs ./ res.visits
+    averej    = 0.5(rej_rates[1:(end-1),1] + rej_rates[2:end,2]) # average outgoing and incoming rejections
+    Λvals     = pushfirst!(cumsum(averej), 0.)
+    Λvalsnorm = Λvals/Λvals[end]
+    Λnorm     = interpolate(betas, Λvalsnorm, SteffenMonotonicInterpolation())
+    @assert sum(abs, Λnorm.(betas) - Λvalsnorm) < 10eps()
+    return (Λnorm, Λvalsnorm)
 end
 
 # utility for creating the Λ plot

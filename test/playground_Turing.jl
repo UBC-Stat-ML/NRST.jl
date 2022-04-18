@@ -21,15 +21,10 @@ ns=NRSTSampler(
 
 # parallel
 samplers = copy_sampler(ns, nthreads = 4);
-tune!(samplers)
-par_res = run!(samplers, ntours = 1000);
+tune!(samplers);
+par_res = run!(samplers, ntours = 1024);
+Λnorm, _ = NRST.get_lambda(par_res, betas);
+NRST.plot_lambda(Λnorm,betas,"")
 # plot(0:ns.np.N, vec(sum(par_res.visits,dims=2)))
 # [get_num_produce(s.np.fns.viout) for s in samplers] # they should be different
 # oldTE = par_res.toureff
-
-# tune betas
-oldbetas = copy(betas)
-tune_betas!(ns,par_res,visualize=true)
-maximum(abs,betas-oldbetas) # note that change propagates to betas in main 
-NRST.tune_explorers!(ns,nsteps=500)
-NRST.initialize_c!(ns,nsteps=8*10*ns.nexpl) # should double in every iteration
