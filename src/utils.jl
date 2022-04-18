@@ -3,7 +3,7 @@
 # then c[0]=0, and for i>=1 use
 # c[i] ≈ sum_{j=1}^i 0.5(f(x_j) + f(x_{j-1}))(x_j - x_{j-1})
 # Or recursively,
-# c[i] = c[i-1] + 0.5(f(x_j) + f(x_{j-1}))(x_j - x_{j-1})
+# c[i] = c[i-1] + 0.5(f(x_i) + f(x_{i-1}))(x_i - x_{i-1})
 function trapez!(c::T,xs::T,ys::T) where {K<:AbstractFloat,T<:AbstractVector{K}}
     @assert length(c) == length(xs) == length(ys)
     c[1] = zero(K)
@@ -16,4 +16,9 @@ function trapez!(c::T,xs::T,ys::T) where {K<:AbstractFloat,T<:AbstractVector{K}}
         oldx = x
         oldy = y
     end
+end
+function trapez(xs,ys)
+    c = similar(ys)
+    trapez!(c, xs, ys)
+    return c
 end

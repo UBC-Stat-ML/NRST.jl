@@ -25,7 +25,8 @@ end
 function inference(
     res::ParallelRunResults{T,TInt,TF};
     h::Function,                            # a real-valued test function defined on x space
-    at::AbstractVector{<:Int} = [N(res)]    # indexes ⊂ 0:res.N at which to estimate E^{i}[h(x)]
+    at::AbstractVector{<:Int} = [N(res)],   # indexes ⊂ 0:res.N at which to estimate E^{i}[h(x)]
+    α::TF = 0.95                            # confidence level for asymptotic confidence intervals
     ) where {T,TInt,TF}
     means = point_estimate(res, h=h, at=at) # compute means using pre-processed res.xarray (fast)
     sumsq = zeros(TF, length(at))           # accumulate squared error accross tours
@@ -42,19 +43,49 @@ function inference(
         sumsq .+= tsum .* tsum
     end
     avars = sumsq ./ ntours(res)            # compute asymptotic variance
+
+    # compute half width of α-CI
+    qmult    = quantile(Normal(), (1+α)/2)
+    nsamples = vec(sum(res.visits[at .+ 1,:], dims=2))
+    hws      = qmult * sqrt.(avars ./ nsamples) # half-widths of interval
+
     # compute posterior variance and ESS
     pvars = similar(means)
     for (p,i) in enumerate(at)
         pvars[p] = point_estimate(res, h=(x->abs2(h(x)-means[p])), at=[i])[1]
     end
-    nsamples = vec(sum(res.visits[at .+ 1,:], dims=2))
     ESS      = nsamples .* (pvars ./ avars)
     return DataFrame(
         "Level"      => at,
         "Mean"       => means,
         "Asym. Var." => avars,
+        "C.I. Low"   => means .- hws,
+        "C.I. High"  => means .+ hws,
         "Post. Var." => pvars,
         "# Samples"  => nsamples,
         "ESS"        => ESS
     )
 end
+
+# estimate log-partition function, with a pesimistic asymptotic error bound
+# If I(n) is the cumulative integral approx at betas[n], then
+#    - sd(I(1)) = sd(mean(V[1]))
+#    - sd(I(n+1)) <= sd(I(n)) + sd(mean(V[n])) # when correlation = 1
+# Therefore, the upper and lower bounds can also be gotten using trapez!
+function log_partition(
+    ns::NRSTSampler{T,TInt,TF},
+    res::ParallelRunResults{T,TInt,TF};
+    α::TF = 0.95
+    ) where {T,TInt,TF}
+    # compute summary statistics for the potential function
+    infres = inference(res, h = ns.np.fns.V, at = 0:ns.np.N, α = α)
+    ms     = trapez(ns.np.betas, infres[:,"Mean"])      # integrate the mean
+    lbs    = trapez(ns.np.betas, infres[:,"C.I. Low"])  # integrate the lower bounds
+    ubs    = trapez(ns.np.betas, infres[:,"C.I. High"]) # integrate the upper bounds
+    return DataFrame(
+        "Mean"       => ms,
+        "C.I. Low"   => lbs,
+        "C.I. High"  => ubs
+    )
+end
+

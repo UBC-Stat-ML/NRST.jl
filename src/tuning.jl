@@ -45,9 +45,9 @@ end
 function tune!(
     nss::Vector{<:NRSTSampler};
     init_ntours_per_thread::Int = 32,
-    maxrounds::Int = 6,
+    max_rounds::Int = 6,
     max_chng_thrsh::AbstractFloat = 0.03,
-    nsteps_expls::Int = 10*nss[1].nexpl,
+    nsteps_expls::Int = max(500, 10*nss[1].nexpl),
     verbose::Bool = true
     )
     ns       = nss[1]
@@ -55,7 +55,7 @@ function tune!(
     round    = 0
     max_chng = 1.
     println("\nTuning an NRST sampler using exponentially longer runs.")
-    while (max_chng > max_chng_thrsh) && (round < maxrounds)
+    while (max_chng > max_chng_thrsh) && (round < max_rounds)
         round += 1
         verbose && print("Round $round: running $ntours tours...")
         res      = run!(nss, ntours = ntours)           # do a parallel run of ntours
@@ -74,15 +74,6 @@ function tune!(
         ntours *= 2
     end
 end
-
-# # Tune the c params using the output of serial or parallel run
-# function tune_c!(ns::NRSTSampler,res::RunResults)
-#     @unpack np = ns
-#     @unpack c, N, betas, fns, use_mean = np
-#     aggfun = use_mean ? mean : median
-#     aggV   = point_estimate(res, h=fns.V, at=1:(N+1), agg=aggfun)
-#     trapez!(c, betas, aggV) # use trapezoidal approx to estimate int_0^beta db aggV(b)
-# end
 
 # tune betas using the equirejection approach
 function tune_betas!(ns::NRSTSampler,res::RunResults)

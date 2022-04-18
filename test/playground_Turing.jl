@@ -3,7 +3,6 @@
 #########################################################################################
 
 using Random, Distributions, DynamicPPL, NRST, Plots, StatsBase
-using Interpolations, Roots
 
 # lognormal prior for variance, normal likelihood
 @model function Lnmodel(x)
@@ -23,8 +22,11 @@ ns=NRSTSampler(
 samplers = copy_sampler(ns, nthreads = 4);
 tune!(samplers);
 par_res = run!(samplers, ntours = 1024);
-Λnorm, _ = NRST.get_lambda(par_res, betas);
-NRST.plot_lambda(Λnorm,betas,"")
-# plot(0:ns.np.N, vec(sum(par_res.visits,dims=2)))
-# [get_num_produce(s.np.fns.viout) for s in samplers] # they should be different
-# oldTE = par_res.toureff
+# Λnorm, _ = NRST.get_lambda(par_res, betas);
+# NRST.plot_lambda(Λnorm,betas,"")
+
+lpdf = log_partition(ns, par_res)
+plot(
+    betas, lpdf[:,1], ribbon = 0.5*(lpdf[:,3]-lpdf[:,2]),
+    palette=NRST.DEFAULT_PALETTE, label = "log(Z(β))", legend = :bottomright
+)
