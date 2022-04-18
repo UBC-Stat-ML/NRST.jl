@@ -2,13 +2,17 @@
 # tuning routines
 ###############################################################################
 
+#######################################
+# initialization methods
+#######################################
+
 # tune the explorers' parameters
-function tune_explorers!(ns::NRSTSampler;nsteps::Int)
-    tune!(ns.explorers[1], nsteps = nsteps)
+function tune_explorers!(ns::NRSTSampler;nsteps::Int,verbose=true)
+    tune!(ns.explorers[1], nsteps = nsteps, verbose=verbose)
     for i in 2:ns.np.N
         # use previous explorer's params as warm start
         pars = params(ns.explorers[i-1])
-        tune!(ns.explorers[i], pars, nsteps = nsteps)
+        tune!(ns.explorers[i], pars, nsteps = nsteps, verbose=verbose)
     end
 end
 
@@ -33,19 +37,54 @@ function initialize!(ns::NRSTSampler;nsteps::Int)
     initialize_c!(ns;nsteps=2nsteps)
 end
 
-# Tune the c params using the output of serial or parallel run
-function tune_c!(ns::NRSTSampler,res::RunResults)
-    @unpack np = ns
-    @unpack c, N, betas, fns, use_mean = np
-    aggfun = use_mean ? mean : median
-    aggV   = point_estimate(res, h=fns.V, at=1:(N+1), agg=aggfun)
-    trapez!(c, betas, aggV) # use trapezoidal approx to estimate int_0^beta db aggV(b)
+#######################################
+# tuning using proper runs of the NRST sampler
+#######################################
+
+# full tuning
+function tune!(
+    nss::Vector{<:NRSTSampler};
+    init_ntours_per_thread::Int = 32,
+    maxrounds::Int = 6,
+    max_chng_thrsh::AbstractFloat = 0.03,
+    verbose::Bool = true
+    )
+    ns       = nss[1]
+    ntours   = min(128, init_ntours_per_thread * length(nss))
+    round    = 0
+    max_chng = 1.
+    while (max_chng > max_chng_thrsh) && (round < maxrounds)
+        round += 1
+        verbose && print("Round $round: running $ntours tours...")
+        res      = run!(nss, ntours = ntours)           # do a parallel run of ntours
+        verbose && print("done!")
+
+        # tune betas
+        oldbetas = copy(ns.np.betas)
+        _        = tune_betas!(ns, res)
+        max_chng = maximum(abs, ns.np.betas - oldbetas) # maximum change in the grid
+        verbose && @printf(" Tuned betas, max change = %.2f.", max_chng)
+
+        # adjust explorers' parameters and recompute c
+        tune_explorers!(ns, nsteps = 10*ns.nexpl, verbose = false)
+        initialize_c!(ns, nsteps = 20*ns.nexpl)
+        verbose && println(" Adjusted explorers and c values.")
+        verbose && flush(stdout)
+
+        ntours *= 2
+    end
 end
 
-#######################################
-# tune betas using the equirejection approach
-#######################################
+# # Tune the c params using the output of serial or parallel run
+# function tune_c!(ns::NRSTSampler,res::RunResults)
+#     @unpack np = ns
+#     @unpack c, N, betas, fns, use_mean = np
+#     aggfun = use_mean ? mean : median
+#     aggV   = point_estimate(res, h=fns.V, at=1:(N+1), agg=aggfun)
+#     trapez!(c, betas, aggV) # use trapezoidal approx to estimate int_0^beta db aggV(b)
+# end
 
+# tune betas using the equirejection approach
 function tune_betas!(ns::NRSTSampler,res::RunResults; visualize=false)
     # estimate Λ at current betas using the rejections, normalize, and interpolate
     rejrat    = res.rejecs ./ res.visits                   # note: this the only place where res is used
@@ -68,18 +107,18 @@ function tune_betas!(ns::NRSTSampler,res::RunResults; visualize=false)
         newbetas[i] = find_zero(β -> Λnorm(β)-targetΛ, (b1,b2), atol = 0.01*Δ) # set tolerance for |Λnorm(β)-target| 
     end
     newbetas[end] = 1.
-    
-    if visualize
-        p1 = plot_lambda(Λnorm, betas, "βold")
-        p2 = plot_lambda(Λnorm, newbetas, "βnew")
-        display(plot(p1, p2, layout = (2,1)))
-        copyto!(betas, newbetas)
-        return (p1,p2)
-    else
-        copyto!(betas, newbetas)
-        return
-    end
-
+    copyto!(betas, newbetas) # update betas
+    return Λnorm             # useful for plotting
+    # if visualize
+    #     p1 = plot_lambda(Λnorm, betas, "βold")
+    #     p2 = plot_lambda(Λnorm, newbetas, "βnew")
+    #     display(plot(p1, p2, layout = (2,1)))
+    #     copyto!(betas, newbetas)
+    #     return (p1,p2)
+    # else
+    #     copyto!(betas, newbetas)
+    #     return
+    # end
 end
 
 # utility for creating the Λ plot

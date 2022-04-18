@@ -21,6 +21,7 @@ ns=NRSTSampler(
 
 # parallel
 samplers = copy_sampler(ns, nthreads = 4);
+tune!(samplers)
 par_res = run!(samplers, ntours = 1000);
 # plot(0:ns.np.N, vec(sum(par_res.visits,dims=2)))
 # [get_num_produce(s.np.fns.viout) for s in samplers] # they should be different

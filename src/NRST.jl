@@ -28,11 +28,10 @@ export gen_randref,
     gen_Vref,
     gen_V
 
-# NRSTSampler_tuning.jl
+# tuning.jl
 export tune_explorers!,
     initialize_c!,
     initialize!,
-    tune_c!,
     tune_betas!
 
 # declarations needed here to fix the fact that the "include"s are 
@@ -50,6 +49,6 @@ include("NRSTSampler.jl")
 include("ParallelNRST.jl")
 include("Turing_interface.jl")
 include("inference.jl")
-include("NRSTSampler_tuning.jl")
+include("tuning.jl")
 
 end

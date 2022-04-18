@@ -128,8 +128,8 @@ function tune!(
         nacc         = run!(mhs, nsteps)                # run and get number of acc proposals
         acc          = nacc / nsteps                    # compute acceptance ratio
         err          = abs(acc - target_acc)            # absolute error
-        mhs.sigma[] += 10(r^(-0.51))*(acc - target_acc) # SGD step
-        mhs.sigma[]  = max(minsigma,mhs.sigma[])        # project back to >0
+        mhs.sigma[] += 10(r^(-0.51))*(acc - target_acc) # SGD step. "10" should work for most settings since scale is acc ratio, which is universal 
+        mhs.sigma[]  = max(minsigma, mhs.sigma[])       # project back to >0
         verbose && @printf(
             "Round %d: acc=%.3f, err=%.2f, new_sigma=%.1f\n",r, acc, err, mhs.sigma[]
         )
