@@ -46,16 +46,17 @@ function tune!(
     nss::Vector{<:NRSTSampler};
     init_ntours_per_thread::Int = 32,
     max_rounds::Int = 6,
-    max_chng_thrsh::AbstractFloat = 0.03,
+    med_chng_thrsh::AbstractFloat = 0.005,
+    max_chng_thrsh::AbstractFloat = 0.05,
     nsteps_expls::Int = max(500, 10*nss[1].nexpl),
     verbose::Bool = true
     )
     ns       = nss[1]
     ntours   = min(128, init_ntours_per_thread * length(nss))
     round    = 0
-    max_chng = 1.
+    med_chng = max_chng = 1.
     println("Tuning an NRST sampler using exponentially longer runs.")
-    while (max_chng > max_chng_thrsh) && (round < max_rounds)
+    while ((med_chng > med_chng_thrsh) || (max_chng > max_chng_thrsh)) && (round < max_rounds)
         round += 1
         verbose && print("Round $round: running $ntours tours...")
         res      = run!(nss, ntours = ntours)           # do a parallel run of ntours
@@ -64,8 +65,10 @@ function tune!(
         # tune betas
         oldbetas = copy(ns.np.betas)
         tune_betas!(ns, res)
-        max_chng = maximum(abs, ns.np.betas - oldbetas) # maximum change in the grid
-        verbose && @printf(" Tuned betas, max change = %.2f.", max_chng)
+        chngs    = abs.(ns.np.betas - oldbetas)
+        med_chng = median(chngs)
+        max_chng = maximum(chngs)
+        verbose && @printf(" Tuned grid, Δmed/Δmax = %.2f/%.2f.", med_chng, max_chng)
 
         # adjust explorers' parameters, recompute c, and double tours
         tune_explorers!(ns, nsteps = nsteps_expls, verbose = false)
