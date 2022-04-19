@@ -6,7 +6,7 @@ using Roots: find_zero
 using DataFrames: DataFrame
 using Turing: Turing
 using ColorSchemes: seaborn_colorblind
-const DEFAULT_PALETTE = seaborn_colorblind
+const DEF_PAL = seaborn_colorblind
 
 # NRSTSampler.jl
 export NRSTSampler,

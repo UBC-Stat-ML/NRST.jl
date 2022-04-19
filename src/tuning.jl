@@ -7,7 +7,7 @@
 #######################################
 
 # tune the explorers' parameters
-function tune_explorers!(ns::NRSTSampler;nsteps::Int,verbose=true)
+function tune_explorers!(ns::NRSTSampler;nsteps::Int,verbose=false)
     tune!(ns.explorers[1], nsteps = nsteps, verbose=verbose)
     for i in 2:ns.np.N
         # use previous explorer's params as warm start
@@ -32,8 +32,8 @@ function initialize_c!(ns::NRSTSampler;nsteps::Int)
     trapez!(c,betas,aggV) # trapezoidal approx of int_0^beta db aggV(b)
 end
 
-function initialize!(ns::NRSTSampler;nsteps::Int)
-    tune_explorers!(ns;nsteps)
+function initialize!(ns::NRSTSampler;nsteps::Int,verbose::Bool=false)
+    tune_explorers!(ns;nsteps,verbose)
     initialize_c!(ns;nsteps=2nsteps)
 end
 
@@ -46,7 +46,7 @@ function tune!(
     nss::Vector{<:NRSTSampler};
     init_ntours_per_thread::Int = 32,
     max_rounds::Int = 6,
-    max_chng_thrsh::AbstractFloat = 0.03,
+    max_chng_thrsh::AbstractFloat = 0.025,
     nsteps_expls::Int = max(500, 10*nss[1].nexpl),
     verbose::Bool = true
     )
@@ -69,7 +69,7 @@ function tune!(
 
         # adjust explorers' parameters, recompute c, and double tours
         tune_explorers!(ns, nsteps = nsteps_expls, verbose = false)
-        initialize_c!(ns, nsteps = (2^round)*nsteps_expls)
+        initialize_c!(ns, nsteps = min(4000, (2^round)*nsteps_expls))
         verbose && println(" Adjusted explorers and c values.")
         ntours *= 2
     end
@@ -109,8 +109,8 @@ end
 
 # utility for creating the Λ plot
 function plot_lambda(Λ,bs,lab)
-    c1 = DEFAULT_PALETTE[1]
-    c2 = DEFAULT_PALETTE[2]
+    c1 = DEF_PAL[1]
+    c2 = DEF_PAL[2]
     p = plot(
         x->Λ(x), 0., 1., label = "Λ", legend = :bottomright,
         xlim=(0.,1.), ylim=(0.,1.), color = c1, grid = false

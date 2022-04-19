@@ -68,14 +68,24 @@ end
 ###############################################################################
 
 # constructor that also builds an NRSTProblem and does initial tuning
-function NRSTSampler(fns, betas, nexpl, use_mean; init=true)
-    np = NRSTProblem(fns, length(betas)-1, betas, similar(betas), use_mean)
-    x  = fns.randref()                 # draw an initial point
-    es = init_explorers(fns, betas, x) # instantiate a vector of N explorers
-    ns = NRSTSampler(np, es, x, MVector(0,1), Ref(fns.V(x)), nexpl)
-    init && initialize!(ns, nsteps = 10*nexpl) # tune explorers and get initial c estimate
+function NRSTSampler(
+    fns::Funs;
+    N::Int         = 15,
+    nexpl::Int     = 50,
+    use_mean::Bool = true,
+    init::Bool     = true,
+    verbose::Bool  = false
+    )
+    betas = pushfirst!(2. .^ range(-min(8, N-1), 0, N), 0.)       # initialize with exponentially spaced grid
+    np    = NRSTProblem(fns, N, betas, similar(betas), use_mean)  # instantiate an NRSTProblem
+    x     = fns.randref()                                         # draw an initial point
+    es    = init_explorers(fns, betas, x)                         # instantiate a vector of N explorers
+    ns    = NRSTSampler(np, es, x, MVector(0,1), Ref(fns.V(x)), nexpl)
+    init && initialize!(ns, nsteps = 10*nexpl, verbose = verbose) # tune explorers and get initial c estimate
     return ns
 end
+
+# constructor for a given (V,Vref,randref) triplet
 function NRSTSampler(V, Vref, randref, args...;kwargs...)
     fns = SimpleFuns(V, Vref, randref)
     NRSTSampler(fns,args...;kwargs...)
