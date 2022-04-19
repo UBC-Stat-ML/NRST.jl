@@ -78,7 +78,9 @@ function log_partition(
     α::TF = 0.95
     ) where {T,TInt,TF}
     # compute summary statistics for the potential function
-    infres = inference(res, h = ns.np.fns.V, at = 0:ns.np.N, α = α)
+    # note: need Bonferroni adjustment because we need simultaneous coverage along
+    # the whole curve, not just marginally at every point.
+    infres = inference(res, h = ns.np.fns.V, at = 0:ns.np.N, α = 1-(1-α)/ns.np.N)
     ms     = trapez(ns.np.betas, infres[:,"Mean"])      # integrate the mean
     lbs    = trapez(ns.np.betas, infres[:,"C.I. Low"])  # integrate the lower bounds
     ubs    = trapez(ns.np.betas, infres[:,"C.I. High"]) # integrate the upper bounds

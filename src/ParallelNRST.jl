@@ -10,6 +10,7 @@ struct ParallelRunResults{T,TInt<:Int,TF<:AbstractFloat} <: RunResults
     toureff::Vector{TF}                    # tour effectiveness for each i ∈ 0:N
 end
 ntours(res::ParallelRunResults) = length(res.trvec)
+tourlengths(res::ParallelRunResults) = NRST.nsteps.(res.trvec)
 
 #######################################
 # initialization methods

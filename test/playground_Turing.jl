@@ -2,7 +2,7 @@
 # interfacing with the Turing.jl environment
 #########################################################################################
 
-using Random, Distributions, DynamicPPL, NRST, Plots, StatsBase
+using Random, Distributions, DynamicPPL, NRST, Plots, StatsBase, LinearAlgebra
 
 # lognormal prior for variance, normal likelihood
 @model function Lnmodel(x)
@@ -27,6 +27,17 @@ par_res = run!(samplers, ntours = 1024);
 
 lpdf = log_partition(ns, par_res)
 plot(
-    betas, lpdf[:,1], ribbon = 0.5*(lpdf[:,3]-lpdf[:,2]),
-    palette=NRST.DEFAULT_PALETTE, label = "log(Z(β))", legend = :bottomright
+    betas, lpdf[:,1], ribbon = (lpdf[:,1]-lpdf[:,2], lpdf[:,3]-lpdf[:,1]),
+    # xlims = (0.99,1), ylims = (0.8*lpdf[end,2],lpdf[end,3]),
+    color=NRST.DEFAULT_PALETTE[1], label = "log(Z(β))", legend = :bottomright
 )
+tourlengths = NRST.tourlengths(par_res)
+p = histogram(
+    tourlengths, normalize=true, bar_edges=true, palette = NRST.DEFAULT_PALETTE,
+    xlabel = "Tour length", ylabel = "Density", label = ""
+)
+vline!(
+    [2*(ns.np.N+1)], palette = NRST.DEFAULT_PALETTE, 
+    linewidth = 4, label = "2N+2=$(2*(ns.np.N+1))"
+)
+
