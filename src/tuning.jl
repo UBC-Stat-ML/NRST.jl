@@ -46,7 +46,7 @@ function tune!(
     nss::Vector{<:NRSTSampler};
     init_ntours_per_thread::Int = 32,
     max_rounds::Int = 6,
-    med_chng_thrsh::AbstractFloat = 0.005,
+    med_chng_thrsh::AbstractFloat = 0.01,
     max_chng_thrsh::AbstractFloat = 0.05,
     nsteps_expls::Int = max(500, 10*nss[1].nexpl),
     verbose::Bool = true
@@ -55,7 +55,7 @@ function tune!(
     ntours   = min(128, init_ntours_per_thread * length(nss))
     round    = 0
     med_chng = max_chng = 1.
-    println("Tuning an NRST sampler using exponentially longer runs.")
+    println("Tuning an NRST sampler using exponentially longer runs ($(length(nss)) threads).")
     while ((med_chng > med_chng_thrsh) || (max_chng > max_chng_thrsh)) && (round < max_rounds)
         round += 1
         verbose && print("Round $round: running $ntours tours...")
