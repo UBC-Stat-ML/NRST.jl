@@ -46,7 +46,7 @@ function tune!(
     nss::Vector{<:NRSTSampler};
     init_ntours_per_thread::Int = 32,
     max_rounds::Int = 6,
-    max_chng_thrsh::AbstractFloat = 0.025,
+    max_chng_thrsh::AbstractFloat = 0.03,
     nsteps_expls::Int = max(500, 10*nss[1].nexpl),
     verbose::Bool = true
     )
@@ -54,7 +54,7 @@ function tune!(
     ntours   = min(128, init_ntours_per_thread * length(nss))
     round    = 0
     max_chng = 1.
-    println("\nTuning an NRST sampler using exponentially longer runs.")
+    println("Tuning an NRST sampler using exponentially longer runs.")
     while (max_chng > max_chng_thrsh) && (round < max_rounds)
         round += 1
         verbose && print("Round $round: running $ntours tours...")
@@ -107,20 +107,4 @@ function get_lambda(res::RunResults, betas::Vector{<:AbstractFloat})
     return (Λnorm, Λvalsnorm)
 end
 
-# utility for creating the Λ plot
-function plot_lambda(Λ,bs,lab)
-    c1 = DEF_PAL[1]
-    c2 = DEF_PAL[2]
-    p = plot(
-        x->Λ(x), 0., 1., label = "Λ", legend = :bottomright,
-        xlim=(0.,1.), ylim=(0.,1.), color = c1, grid = false
-    )
-    plot!(p, [0.,0.], [0.,0.], label=lab, color = c2)
-    for (i,b) in enumerate(bs[2:end])
-        y = Λ(b)
-        plot!(p, [b,b], [0.,y], label="", color = c2)                  # vertical segments
-        plot!(p, [0,b], [y,y], label="", color = c1, linestyle = :dot) # horizontal segments
-    end
-    p
-end
 

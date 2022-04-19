@@ -1,12 +1,12 @@
 module NRST
 
 using UnPack,Random,Distributions,Printf,Plots,StatsBase,Statistics,StaticArrays,DynamicPPL
+using StatsPlots: density
 using Interpolations: interpolate, SteffenMonotonicInterpolation
 using Roots: find_zero
 using DataFrames: DataFrame
 using Turing: Turing
 using ColorSchemes: seaborn_colorblind
-const DEF_PAL = seaborn_colorblind
 
 # NRSTSampler.jl
 export NRSTSampler,
@@ -16,7 +16,9 @@ export NRSTSampler,
 
 # ParallelNRST.jl
 export copy_sampler,
-    parallel_run
+    parallel_run,
+    ntours,
+    tourlengths
 
 # inference.jl
 export point_estimate,
@@ -34,6 +36,9 @@ export tune_explorers!,
     initialize!,
     tune_betas!
 
+# diagnostics.jl
+export diagnostics
+
 # declarations needed here to fix the fact that the "include"s are 
 # processed sequentially, so that things appear undefined even tho they exist
 # in later "include"s
@@ -50,5 +55,6 @@ include("ParallelNRST.jl")
 include("Turing_interface.jl")
 include("inference.jl")
 include("tuning.jl")
+include("diagnostics.jl")
 
 end
