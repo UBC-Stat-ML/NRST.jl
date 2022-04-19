@@ -27,7 +27,7 @@ lnmodel = Lnmodel(randn(30))
 # - tune the samplers
 # - run a last round and capture the results
 ns = NRSTSampler(lnmodel);
-samplers = copy_sampler(ns, nthreads = 4);
+samplers = copy_sampler(ns, nthreads = Threads.nthreads());
 tune!(samplers);
 par_res = run!(samplers, ntours = 1024);
 
