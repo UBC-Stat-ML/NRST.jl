@@ -32,9 +32,9 @@ params(mh::MHSampler) = (sigma=mh.sigma[],) # namedtuple of parameters
 # mhs = MHSampler(x->(0.5sum(abs2,x)),ones(2))
 
 # set_state: change x and curU 
-function set_state!(mhs::MHSampler,xinit)
-    copyto!(mhs.x, xinit)
-    mhs.curU[] = mhs.U(xinit)
+function set_state!(mhs::MHSampler,x)
+    copyto!(mhs.x, x)
+    mhs.curU[] = mhs.U(x)
 end
 
 # set_state!(mhs,[0.2,0.5]) # test
@@ -48,21 +48,26 @@ function propose!(mhs::MHSampler)
     end
 end
 
+# basic Metropolis step (i.e, with symmetric proposal)
+# note: acc is sampled with the exponential r.v. approach
 # u < pi(q)/pi(p) <=> log(pi(u)) < log(pi(q)) -log(pi(p)) 
-# <=> Exp(1)=(dist) -log(u) > (-log(pi(q))) - (-log(pi(p))) = U(q) - U(p)
-function accrej(mhs::MHSampler)
-    @unpack U,xprop,curU = mhs
-    propU = U(xprop) # compute energy at proposed location
-    acc = (propU - curU[]) < rand(Exponential()) # twice as fast than -log(rand())
-    acc && (curU[] = propU) # update current energy if accepted
-    return acc
-end
-
+# <=> Exp(1)=(dist) -log(u) > (-log(pi(q))) - (-log(pi(p))) = U(q) - U(p) = ΔU
+# note: to get back the acceptance ratio
+# pi(q)/pi(p) = exp(log(pi(q)) - log(pi(p))) = exp(-[U(q) - U(p)]) = exp(-ΔU)
+# => min(1,pi(q)/pi(p)) = min(1,exp(-ΔU)) = exp[log(min(1,exp(-ΔU)))] 
+# = exp[min(0,-ΔU)] = exp[-max(0,ΔU)]
 function step!(mhs::MHSampler)
-    propose!(mhs)
-    acc = accrej(mhs)
-    acc && copyto!(mhs.x,mhs.xprop)
-    return acc
+    @unpack U,xprop,curU = mhs
+    propose!(mhs)                    # propose new state, stored at mhs.xprop
+    propU = U(xprop)                 # compute energy at proposed location
+    ΔU    = propU - curU[]
+    acc   = ΔU < rand(Exponential()) # twice as fast than -log(rand())
+    if acc
+        curU[] = propU               # update current energy if accepted
+        copyto!(mhs.x,mhs.xprop)     # update state
+    end
+    ap    = exp(-max(0., ΔU))        # acceptance probability
+    return ap
 end
 
 # # test
@@ -77,13 +82,13 @@ function explore!(mhs::MHSampler, nsteps::Int)
     end
 end
 
-# run sampler keeping track of accepted proposals
+# run sampler keeping track of accepted probabilities
 function run!(mhs::MHSampler, nsteps::Int)
-    nacc = 0
+    sum_ap = 0.
     for n in 1:nsteps
-        step!(mhs) && (nacc += 1)
+        sum_ap += step!(mhs)
     end
-    return nacc
+    return (sum_ap/nsteps)
 end
 
 # run sampler keeping track of real-valued function V and number of accepted proposals
@@ -92,12 +97,13 @@ function run!(
     V,
     tracev::AbstractVector{K}
     ) where {F,K}
-    nacc = 0
-    for n in 1:length(tracev)
-        step!(mhs) && (nacc += 1)
+    sum_ap = 0.
+    nsteps = length(tracev)
+    for n in 1:nsteps
+        sum_ap   += step!(mhs)
         tracev[n] = V(mhs.x)
     end
-    return nacc
+    return (sum_ap/nsteps)
 end
 # # test
 # tracev = Vector{Float64}(undef, 1000)
@@ -106,14 +112,15 @@ end
 # tune sigma using a simplified SGD approach targetting
 # 0.5(acc-target)^2, where 
 #     - \der{acc}{sigma} is assumed constant
-#     - Robbins-Monroe step size sequence is a_r = 10r^{-0.51}
+#     - Robbins-Monroe step size sequence is a_r = 10r^α for α<0
 function tune!(
     mhs::MHSampler{F,K};
     sigma0     = -one(K),
     target_acc = 0.234,
     eps        = 0.03,
+    α          = -1.0,
     min_rounds = 2,
-    max_rounds = 8,
+    max_rounds = 16,
     nsteps     = 500,
     verbose    = true
     ) where {F,K}
@@ -125,11 +132,10 @@ function tune!(
     verbose && @printf("Tuning initiated at sigma=%.1f\n", mhs.sigma[])
     while (r < min_rounds) || (err >= eps && r < max_rounds)
         r += 1
-        nacc         = run!(mhs, nsteps)                # run and get number of acc proposals
-        acc          = nacc / nsteps                    # compute acceptance ratio
-        err          = abs(acc - target_acc)            # absolute error
-        mhs.sigma[] += 10(r^(-0.51))*(acc - target_acc) # SGD step. "10" should work for most settings since scale is acc ratio, which is universal 
-        mhs.sigma[]  = max(minsigma, mhs.sigma[])       # project back to >0
+        acc          = run!(mhs, nsteps)          # run and get average acceptance probability
+        err          = abs(acc - target_acc)      # absolute error
+        mhs.sigma[] += 10(r^α)*(acc - target_acc) # SGD step. "10" should work for most settings since scale is acc ratio, which is universal 
+        mhs.sigma[]  = max(minsigma, mhs.sigma[]) # project back to >0
         verbose && @printf(
             "Round %d: acc=%.3f, err=%.2f, new_sigma=%.1f\n",r, acc, err, mhs.sigma[]
         )

@@ -70,13 +70,18 @@ end
 # constructor that also builds an NRSTProblem and does initial tuning
 function NRSTSampler(
     fns::Funs;
+    betas          = missing,
     N::Int         = 15,
     nexpl::Int     = 50,
     use_mean::Bool = true,
     init::Bool     = true,
     verbose::Bool  = false
     )
-    betas = pushfirst!(2. .^ range(-min(8, N-1), 0, N), 0.)       # initialize with exponentially spaced grid
+    if ismissing(betas)
+        betas = pushfirst!(2. .^ range(-min(23, N-1), 0, N), 0.)  # initialize with exponentially spaced grid
+    else
+        N = length(betas) - 1
+    end
     np    = NRSTProblem(fns, N, betas, similar(betas), use_mean)  # instantiate an NRSTProblem
     x     = fns.randref()                                         # draw an initial point
     es    = init_explorers(fns, betas, x)                         # instantiate a vector of N explorers
@@ -150,7 +155,7 @@ function expl_step!(ns::NRSTSampler)
         expl = explorers[ip[1]] # current explorer (recall that ip[1] is 0-based)
         set_state!(expl, x)     # pass current state to explorer
         explore!(expl, nexpl)   # explore for nexpl steps
-        copyto!(x, expl.x)      # update nrst's state with the explorer's
+        copyto!(x, expl.x)      # update ns' state with the explorer's
     end
     curV[] = np.fns.V(x)        # compute energy at new point
 end

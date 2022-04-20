@@ -7,12 +7,12 @@
 #######################################
 
 # tune the explorers' parameters
-function tune_explorers!(ns::NRSTSampler;nsteps::Int,verbose=false)
-    tune!(ns.explorers[1], nsteps = nsteps, verbose=verbose)
+function tune_explorers!(ns::NRSTSampler;kwargs...)
+    tune!(ns.explorers[1];kwargs...)
     for i in 2:ns.np.N
         # use previous explorer's params as warm start
         pars = params(ns.explorers[i-1])
-        tune!(ns.explorers[i], pars, nsteps = nsteps, verbose=verbose)
+        tune!(ns.explorers[i], pars;kwargs...)
     end
 end
 
@@ -34,7 +34,7 @@ end
 
 function initialize!(ns::NRSTSampler;nsteps::Int,verbose::Bool=false)
     tune_explorers!(ns;nsteps,verbose)
-    initialize_c!(ns;nsteps=2nsteps)
+    initialize_c!(ns;nsteps=4nsteps)
 end
 
 #######################################
@@ -72,7 +72,7 @@ function tune!(
 
         # adjust explorers' parameters, recompute c, and double tours
         tune_explorers!(ns, nsteps = nsteps_expls, verbose = false)
-        initialize_c!(ns, nsteps = min(4000, (2^round)*nsteps_expls))
+        initialize_c!(ns, nsteps = 4nsteps_expls)
         verbose && println(" Adjusted explorers and c values.")
         ntours *= 2
     end
