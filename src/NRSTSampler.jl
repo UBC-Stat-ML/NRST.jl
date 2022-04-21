@@ -135,7 +135,7 @@ function comm_step!(ns::NRSTSampler)
     else
         i = ip[1]                 # current index
         # note: U(0,1) =: U < p <=> log(U) < log(p) <=> Exp(1) > -log(p) =: neglaccpr
-        neglaccpr = (betas[iprop+1] - betas[i+1]) * curV[] - (c[iprop+1] - c[i+1])
+        neglaccpr = (betas[iprop+1] - betas[i+1])*curV[] - (c[iprop+1] - c[i+1])
         acc = (neglaccpr < rand(Exponential())) # accept?
         if acc
             ip[1] = iprop         # move

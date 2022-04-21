@@ -56,7 +56,7 @@ using Distributions, DynamicPPL, NRST, Plots, StatsBase
     τ² ~ InverseGamma(2.,3.)
     σ² ~ InverseGamma(2.,3.)
     μ  ~ Normal(0.,10.)                  # can't use improper prior in NRST
-    θ  = Vector{Float64}(undef, J)       # must explicitly declare for the loop to make sense
+    θ  = Vector{eltype(Y)}(undef, J)     # must explicitly declare it for the loop to make sense
     σ  = sqrt(σ²)
     τ  = sqrt(τ²)
     for j in 1:J
@@ -70,25 +70,18 @@ end
 using DelimitedFiles
 Y = readdlm("data/simulated8schools.csv", ',', Float64)
 hmodel = HierarchicalModel(Y);
-N = 30
-Nh = 30 ÷ 2 
-exp_grid = 2. .^ range(-min(23, Nh-1), -3, Nh)
-betas = vcat([0.], exp_grid, collect(range(exp_grid[end],1.,N-Nh+1))[2:end])
-plot(range(0,1,N+1),betas)
-ns = NRSTSampler(hmodel,betas=betas);
+# N = 30
+# Nh = 30 ÷ 2
+# exp_grid = 2. .^ range(-min(23, Nh-1), -3, Nh)
+# betas = vcat([0.], exp_grid, collect(range(exp_grid[end],1.,N-Nh+1))[2:end])
+# plot(range(0,1,N+1),betas)
+ns = NRSTSampler(hmodel,verbose=true);
 # tune_explorers!(ns,max_rounds=16)
 sigmas = [t[1] for t in NRST.params.(ns.explorers)];
 plot(sigmas)
-NRST.initialize_c!(ns,nsteps=20000)
+ns.np.c
+NRST.initialize_c!(ns,nsteps=4000)
 NRST.renew!(ns)
 res = post_process(NRST.run!(ns,nsteps=10000));
 plot(vec(sum(res.visits,dims=2)))
-
-
-# parallel
-samplers = copy_sampler(ns, nthreads = 4);
-tune!(samplers);
-par_res = run!(samplers, ntours = 1024);
-plots = diagnostics(ns,par_res);
-plot(plots..., layout = (3,2), size = (800,1000))
 

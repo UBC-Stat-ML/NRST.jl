@@ -92,11 +92,7 @@ function run!(mhs::MHSampler, nsteps::Int)
 end
 
 # run sampler keeping track of real-valued function V and number of accepted proposals
-function run!(
-    mhs::MHSampler{F,K},
-    V,
-    tracev::AbstractVector{K}
-    ) where {F,K}
+function run!(mhs::MHSampler{F,K}, V, tracev::AbstractVector{K}) where {F,K}
     sum_ap = 0.
     nsteps = length(tracev)
     for n in 1:nsteps
@@ -157,6 +153,9 @@ tune!(mhs::MHSampler,params::NamedTuple;kwargs...) = tune!(mhs::MHSampler;sigma0
 # create a vector of exploration kernels: continous case
 function init_explorers(fns::Funs,betas,xinit::AbstractVector{<:AbstractFloat})
     # copy(xinit) is necessary or all explorers end up sharing the same state x
-    [MHSampler(gen_Vβ(fns, i, betas), copy(xinit)) for i in 2:length(betas)]
+    # copy(fns) is necessary for threading when evaluating V,Vref,randref 
+    # changes something in their closures
+    # but "betas" is shared because for exploration this is read-only.
+    [MHSampler(gen_Vβ(copy(fns), i, betas), copy(xinit)) for i in 2:length(betas)]
 end
 

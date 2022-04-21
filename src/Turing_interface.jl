@@ -28,7 +28,7 @@ end
 # especially important because it contains the dataset, which can be huge
 function Base.copy(fns::TuringFuns)
     @unpack model, spl = fns
-    vinew = DynamicPPL.VarInfo(model)              # build a new TypedVarInfo
+    vinew   = DynamicPPL.VarInfo(model)            # build a new TypedVarInfo
     DynamicPPL.link!(vinew, spl)                   # link with old sampler to force transformation 𝕏 → ℝ
     randref = gen_randref(vinew, spl, model)
     V       = gen_V(vinew, spl, model)

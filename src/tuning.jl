@@ -8,6 +8,14 @@
 
 # tune the explorers' parameters
 function tune_explorers!(ns::NRSTSampler;kwargs...)
+    Threads.@threads for expl in ns.explorers
+        tune!(expl;kwargs...)
+    end
+end
+
+# tune the explorers' parameters serially. can use previous expl's params as
+# warm start for the next.
+function tune_explorers_serial!(ns::NRSTSampler;kwargs...)
     tune!(ns.explorers[1];kwargs...)
     for i in 2:ns.np.N
         # use previous explorer's params as warm start
@@ -18,6 +26,16 @@ end
 
 # Tune the c params using independent runs of the explorers
 # this is a safer way for initially tuning c
+# TODO BIG UPDATE:
+# - this function must replace the current tune!
+#    - main problem with current is that it uses tours which are garbage if not tuned
+# - IDEA: do the following for exponentially growing budget
+# - in parallel, assign each explorer to
+#    - gather estimates of V and
+#    - estimate up and down swap Metropolis ratio, sans the c portion
+# - after exploration, compute c from the V estimates
+# - add the c portion to the swap Metropolis ratios to obtain rej probs
+# - estimate Λ(β) and adjust the grid
 function initialize_c!(ns::NRSTSampler;nsteps::Int)
     @unpack c, betas, fns, use_mean = ns.np
     @unpack V, randref = fns

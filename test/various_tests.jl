@@ -1,37 +1,25 @@
+using Distributions, DynamicPPL, Plots
 using NRST
-using StatsBase
-using StatsPlots
-using Distributions
-using LinearAlgebra
 
-const d    = 2 # contour plots only for d==2 
-const s0   = 2.
-const m    = 4.
-const s0sq = s0*s0
-sbsq(b)    = 1/(1/s0sq + b)
-mu(b)      = b*m*sbsq(b)*ones(d)
+# ## Defining and instantiating a Turing model
 
-# true free energy function == -log(Z(b))
-function F(b)
-    ssq = sbsq(b)
-    -0.5*d*( log(2*pi*ssq) - b*m*m*(1-b*ssq) )
-end
+# Define a model using the DynamicPPL macro.
+@model function Lnmodel(x)
+    s  ~ LogNormal()
+    x .~ Normal(0.,s)
+end 
 
-# build an NRST sampler, tune exploration kernels, and do initial tuning of c
-ns=NRST.NRSTSampler(
-    x->(0.5sum(abs2,x .- m)),     # likelihood: N(m1, I)
-    x->(0.5sum(abs2,x)/s0sq),     # reference: N(0, s0^2I)
-    () -> s0*randn(d),            # reference: N(0, s0^2I)
-    collect(range(0,1,length=9)), # betas = uniform grid in [0,1]
-    50,                           # nexpl
-    true                          # tune c using mean energy
-);
+# Now we instantiate a Model by a passing a vector of observations.
+lnmodel = Lnmodel(randn(30))
+ns = NRSTSampler(lnmodel);
+samplers = copy_sampler(ns, nthreads = Threads.nthreads());
+tune!(samplers);
+par_res = run!(samplers, ntours = 1024);
 
-copyto!(ns.np.c, F.(ns.np.betas))
-par_res = parallel_run(ns,nthreads=4,ntours=50000);
-plot(0:ns.np.N, vec(sum(par_res.visits,dims=2)))
-par_res.toureff
+# ## Visual diagnostics
+plots = diagnostics(ns,par_res);
+plot(plots..., layout = (3,2), size = (800,1000))
 
-# means, vars = NRST.estimate(res, x -> all(x .> m))
-# plot(ns.np.betas, means, label="Estimate", seriestype=:scatter, yerror = 1.96sqrt.(vars/res.ntours))
-# all(vars .< (4 ./ res.toureff))
+# save cover image #src
+mkpath("assets") #src
+savefig(plots[end], "assets/basic_Turing_default.png") #src
