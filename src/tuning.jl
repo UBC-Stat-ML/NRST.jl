@@ -31,14 +31,14 @@ function tune!(
         # tune c and betas
         verbose && print("\tTuning c and grid using $nsteps steps per explorer...")
         trVs     = [similar(aggV, nsteps) for _ in 0:N]
-        chngs    = tune_c_betas!(ns, trVs, aggV)
-        max_chng = maximum(chngs)
+        max_chng = tune_c_betas!(ns, trVs, aggV)
         verbose && @printf("done!\n\t\tGrid change Δmax=%.3f.\n", max_chng)
         nsteps   = min(nsteps_max, 2nsteps)
     end
     # since betas changed the last, need to tune explorers and c one last time
     verbose && print(
-        (round<max_rounds ? "Grid converged!" : "max_rounds=$max_rounds reached.") *
+        (max_chng <= max_chng_thrsh ? "Grid converged!" : 
+                                      "max_rounds=$max_rounds reached.") *
         "\nFinal round:\n\tTuning explorers..."
     )
     tune_explorers!(ns, nsteps = nsteps_expl, verbose = false)
@@ -71,7 +71,7 @@ function tune_explorers_serial!(ns::NRSTSampler;kwargs...)
     end
 end
 
-# Tune the c params using independent runs of the explorers
+# Tune c and betas using independent runs of the explorers
 # note: explorers must be tuned already before running this
 # - idea:
 #    - in parallel, assign each explorer to
@@ -92,7 +92,7 @@ function tune_c_betas!(
     oldbetas = copy(betas)            # store old betas to check convergence
     optimize_betas!(betas, R)         # tune using the inverse of Λ(β)
     reset_explorers!(ns)              # since betas changed, the cached potentials are stale
-    return abs.(betas - oldbetas)     # for assessing convergence of the grid
+    return maximum(abs,betas-oldbetas)# for assessing convergence of the grid
 end
 
 # utility to reset caches in all explorers
