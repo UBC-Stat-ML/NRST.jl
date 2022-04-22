@@ -12,6 +12,5 @@ end
 # Now we instantiate a Model by a passing a vector of observations.
 lnmodel = Lnmodel(randn(30));
 ns = NRSTSampler(lnmodel,verbose=true);
-# res = post_process([NRST.tour!(ns) for _ in 1:1024]);
 res = parallel_run(ns, ntours=4096);
 plot(diagnostics(ns,res)..., layout = (3,2), size = (800,1000))

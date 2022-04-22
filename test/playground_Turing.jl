@@ -68,20 +68,15 @@ using Distributions, DynamicPPL, NRST, Plots, StatsBase
 end
 
 using DelimitedFiles
-Y = readdlm("data/simulated8schools.csv", ',', Float64)
+Y = readdlm(
+    joinpath(dirname(pathof(NRST)), "..", "data", "simulated8schools.csv"),
+     ',', Float64
+);
 hmodel = HierarchicalModel(Y);
-# N = 30
-# Nh = 30 ÷ 2
-# exp_grid = 2. .^ range(-min(23, Nh-1), -3, Nh)
-# betas = vcat([0.], exp_grid, collect(range(exp_grid[end],1.,N-Nh+1))[2:end])
-# plot(range(0,1,N+1),betas)
 ns = NRSTSampler(hmodel,verbose=true);
-# tune_explorers!(ns,max_rounds=16)
-sigmas = [t[1] for t in NRST.params.(ns.explorers)];
-plot(sigmas)
-ns.np.c
-NRST.initialize_c!(ns,nsteps=4000)
-NRST.renew!(ns)
-res = post_process(NRST.run!(ns,nsteps=10000));
-plot(vec(sum(res.visits,dims=2)))
-
+# ns = NRSTSampler(hmodel,betas=collect(range(0.,1.,20)),tune=false);
+# tune!(ns, med_chng_thrsh = 0.005, max_chng_thrsh = 0.01);
+res = parallel_run(ns, ntours=1024);
+plot(diagnostics(ns,res)..., layout = (3,2), size = (800,1000))
+# plot([NRST.params(e)[1] for e in ns.explorers])
+joinpath(dirname(pathof(NRST)), "..", "data")

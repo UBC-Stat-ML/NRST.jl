@@ -78,7 +78,7 @@ function NRSTSampler(
     verbose::Bool  = false
     )
     if ismissing(betas)
-        betas = pushfirst!(2. .^ range(-min(23, N-1), 0, N), 0.)  # initialize with exponentially spaced grid
+        betas = collect(range(0., 1., N+1))                       # initialize with uniformly spaced grid
     else
         N = length(betas) - 1
     end

@@ -9,9 +9,9 @@
 # full tuning
 function tune!(
     ns::NRSTSampler;
-    max_rounds::Int = 7,
-    med_chng_thrsh::AbstractFloat = 0.01,
-    max_chng_thrsh::AbstractFloat = 0.025,
+    max_rounds::Int = 8,
+    med_chng_thrsh::AbstractFloat = 0.005,
+    max_chng_thrsh::AbstractFloat = 0.01,
     nsteps_expl::Int = max(500, 10*ns.nexpl),
     verbose::Bool = true
     )
@@ -35,7 +35,7 @@ function tune!(
         med_chng = median(chngs)
         max_chng = maximum(chngs)
         verbose && @printf(
-            "done! Grid changes: Δmed=%.2f Δmax=%.2f.\n", med_chng, max_chng
+            "done!\n\t\tGrid changes: Δmed=%.2f Δmax=%.2f.\n", med_chng, max_chng
         )
         nsteps *= 2
     end
