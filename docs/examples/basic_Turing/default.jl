@@ -30,6 +30,7 @@ ns  = NRSTSampler(lnmodel, verbose = true);
 res = parallel_run(ns, ntours = 4096);
 
 # ## Visual diagnostics
+plots = diagnostics(ns,res);
 plot(diagnostics(ns,res)..., layout = (3,2), size = (800,1000))
 
 # save cover image #src
