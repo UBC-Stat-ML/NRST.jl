@@ -43,7 +43,7 @@ function tune!(
     verbose && print("Grid converged!\nFinal round:\n\tTuning explorers...")
     tune_explorers!(ns, nsteps = nsteps_expl, verbose = false)
     verbose && println("done!")
-    nsteps /= 2 # undo last doubling
+    nsteps ÷= 2 # undo last doubling
     verbose && print("\tTuning c using $nsteps steps...")
     collectVs!(ns, [similar(aggV, nsteps) for _ in 0:N], aggV)
     trapez!(ns.np.c, ns.np.betas, aggV)
