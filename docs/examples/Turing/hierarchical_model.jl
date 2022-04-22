@@ -3,18 +3,15 @@
 # title: Hierarchical model 
 # ---
 
-# This demo shows you the basics of performing Bayesian inference on Turing 
-# models using NRST.
-
-using Distributions, DynamicPPL, Plots, DelimitedFiles
-using NRST
-
 # This is a simplified version of the hierarchical model in 
 # [Yao et al. (2021, §6.3)](https://arxiv.org/abs/2006.12335).
 # The data was simulated by us from the true model, and is reminiscent of the classical
 # "Eight Schools Problem" posed by [Rubin (1981)](https://www.jstor.org/stable/1164617).
 
 # ## Defining and instantiating a Turing model
+
+using Distributions, DynamicPPL, Plots, DelimitedFiles
+using NRST
 
 # Define a model using the `DynamicPPL.@model` macro.
 @model function HierarchicalModel(Y)
@@ -38,15 +35,14 @@ Y = readdlm(
     joinpath(dirname(pathof(NRST)), "..", "data", "simulated8schools.csv"),
      ',', Float64
 );
-hmodel = HierarchicalModel(Y);
+model = HierarchicalModel(Y);
 
 # ## Building, tuning, and running NRST in parallel
-# We can now build an NRST sampler using the model. The following commands will
-# - instantiate an NRSTSampler
-# - tune the sampler
-# - run tours in parallel
-# - postprocess the results
-ns  = NRSTSampler(hmodel, N = 25, verbose = true);
+# We can now build an NRST sampler using the model. The following command will
+# instantiate an NRSTSampler and tune it.
+ns  = NRSTSampler(model, N = 25, verbose = true);
+
+# Using the tuned sampler, we run 1024 tours in parallel.
 res = parallel_run(ns, ntours = 1024);
 
 # ## Visual diagnostics

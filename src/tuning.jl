@@ -9,43 +9,40 @@
 # full tuning
 function tune!(
     ns::NRSTSampler;
-    max_rounds::Int = 8,
-    med_chng_thrsh::AbstractFloat = 0.005,
-    max_chng_thrsh::AbstractFloat = 0.01,
-    nsteps_expl::Int = max(500, 10*ns.nexpl),
-    verbose::Bool = true
+    max_rounds::Int      = 16,
+    max_chng_thrsh::Real = 0.01,
+    nsteps_expl::Int     = max(500, 10*ns.nexpl),
+    nsteps_max::Int      = 100_000,
+    verbose::Bool        = true
     )
     N        = ns.np.N
     round    = 0
     nsteps   = nsteps_expl
-    med_chng = max_chng = 1.
+    max_chng = 1.
     aggV     = similar(ns.np.c)
     
     verbose && println("Tuning started ($(Threads.nthreads()) threads).")
-    while ((med_chng > med_chng_thrsh) || (max_chng > max_chng_thrsh)) && (round < max_rounds)
+    while (max_chng > max_chng_thrsh) && (round < max_rounds)
         round += 1
         verbose && print("Round $round:\n\tTuning explorers...")
         tune_explorers!(ns, nsteps = nsteps_expl, verbose = false)
         verbose && println("done!")
         
         # tune c and betas
-        verbose && print("\tTuning c and grid using $nsteps steps...")
+        verbose && print("\tTuning c and grid using $nsteps steps per explorer...")
         trVs     = [similar(aggV, nsteps) for _ in 0:N]
         chngs    = tune_c_betas!(ns, trVs, aggV)
-        med_chng = median(chngs)
         max_chng = maximum(chngs)
-        verbose && @printf(
-            "done!\n\t\tGrid changes: Δmed=%.2f Δmax=%.2f.\n", med_chng, max_chng
-        )
-        nsteps *= 2
+        verbose && @printf("done!\n\t\tGrid change Δmax=%.3f.\n", max_chng)
+        nsteps   = min(nsteps_max, 2nsteps)
     end
     # since betas changed the last, need to tune explorers and c one last time
-    verbose && println(round < max_rounds ? "Grid converged!" : "Maximum number of rounds reached.")
-    verbose && print("Final round:\n\tTuning explorers...")
+    verbose && print(
+        (round<max_rounds ? "Grid converged!" : "max_rounds=$max_rounds reached.") *
+        "\nFinal round:\n\tTuning explorers..."
+    )
     tune_explorers!(ns, nsteps = nsteps_expl, verbose = false)
-    verbose && println("done!")
-    nsteps ÷= 2 # undo last doubling
-    verbose && print("\tTuning c using $nsteps steps...")
+    verbose && print("done!\n\tTuning c using $nsteps steps per explorer...")
     collectVs!(ns, [similar(aggV, nsteps) for _ in 0:N], aggV)
     trapez!(ns.np.c, ns.np.betas, aggV)
     verbose && println("done!\nTuning finished.")

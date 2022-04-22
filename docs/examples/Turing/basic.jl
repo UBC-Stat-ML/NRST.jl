@@ -18,15 +18,14 @@ using NRST
 end 
 
 # Now we instantiate a proper `DynamicPPL.Model` object by a passing a vector of observations.
-lnmodel = Lnmodel(randn(30))
+model = Lnmodel(randn(30))
 
 # ## Building, tuning, and running NRST in parallel
-# We can now build an NRST sampler using the model. The following commands will
-# - instantiate an NRSTSampler
-# - tune the sampler
-# - run tours in parallel
-# - postprocess the results
-ns  = NRSTSampler(lnmodel, verbose = true);
+# We can now build an NRST sampler using the model. The following command will
+# instantiate an NRSTSampler and tune it.
+ns  = NRSTSampler(model, verbose = true);
+
+# Using the tuned sampler, we run 1024 tours in parallel.
 res = parallel_run(ns, ntours = 1024);
 
 # ## Visual diagnostics

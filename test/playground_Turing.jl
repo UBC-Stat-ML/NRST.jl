@@ -51,12 +51,20 @@ using Distributions, DynamicPPL, NRST, Plots, StatsBase
 #######################################
 
 # hierarchical model (Yao et al. 2021, §6.3)
-# THIS FAILS BECAUSE THERMODYNAMIC INTEGRATION FAILS
+# THIS FAILS because of the integration at beta~0---it explodes---likely due
+# to E^{0}[V] = infty. Haven't proved it but the priors are heavy tailed
+# DETAILS: 
+# - since E^{0}[V] = infty, c becomes (0, ∞, ∞, ..., ∞)
+# - but E^{0}[V] = infty is caused by heavy tail, so actually most of the samples
+#   from the prior are reasonable. Therefore, the acceptance prob
+#       exp(-max(cero, dbs[i]*v - ∞))
+#   is 1 for all the samples except the few ∞, so the average is ~1, and so rejection is ~0.
+# - Because of this, Λ-tuning does not assign betas close to the origin :( .
 @model function HierarchicalModel(Y)
     N,J= size(Y)
     τ² ~ InverseGamma(.1,.1)
     σ² ~ InverseGamma(.1,.1)
-    μ  ~ TDist(3)                    # can't use improper prior in NRST
+    μ  ~ Cauchy()                    # can't use improper prior in NRST
     θ  = Vector{eltype(Y)}(undef, J) # must explicitly declare it for the loop to make sense
     σ  = sqrt(σ²)
     τ  = sqrt(τ²)
@@ -74,28 +82,6 @@ Y = readdlm(
      ',', Float64
 );
 hmodel = HierarchicalModel(Y);
-# ns = NRSTSampler(hmodel,verbose=true);
-N = 30;
-betas = vcat([0.], 2 .^ range(-200,0,N))
-ns = NRSTSampler(hmodel, betas=betas, tune = false);
-ns.np.c
-nsteps = 16000
-aggV = similar(ns.np.c)
-trVs = [similar(aggV, nsteps) for _ in 0:N];
-NRST.collectVs!(ns, trVs, aggV);
-NRST.trapez!(ns.np.c, ns.np.betas, aggV);
-R = NRST.est_rej_probs(trVs, ns.np.betas, ns.np.c) # compute average rejection probabilities
-Λnorm, Λvalsnorm = NRST.get_lambda(ns.np.betas, R);
-Λnorm.(ns.np.betas)
-
-plot(β -> Λnorm(β),0.,1.)
-oldbetas = copy(betas)            # store old betas to check convergence
-copyto!(ns.np.betas,oldbetas)
-
-NRST.optimize_betas!(betas, R)         # tune using the inverse of Λ(β)
-reset_explorers!(ns)              # since betas changed, the cached potentials are stale
-return abs.(betas - oldbetas) 
-
-res = parallel_run(ns, ntours=4);
+ns = NRSTSampler(hmodel, N = 30, use_mean = false, verbose = true);
 res = parallel_run(ns, ntours=1024);
 plot(diagnostics(ns,res)..., layout = (3,2), size = (800,1000))
