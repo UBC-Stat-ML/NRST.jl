@@ -40,7 +40,8 @@ function tune!(
         nsteps *= 2
     end
     # since betas changed the last, need to tune explorers and c one last time
-    verbose && print("Grid converged!\nFinal round:\n\tTuning explorers...")
+    verbose && println(round < max_rounds ? "Grid converged!" : "Maximum number of rounds reached.")
+    verbose && print("Final round:\n\tTuning explorers...")
     tune_explorers!(ns, nsteps = nsteps_expl, verbose = false)
     verbose && println("done!")
     nsteps ÷= 2 # undo last doubling

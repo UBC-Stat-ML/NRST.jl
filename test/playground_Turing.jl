@@ -51,12 +51,13 @@ using Distributions, DynamicPPL, NRST, Plots, StatsBase
 #######################################
 
 # hierarchical model (Yao et al. 2021, §6.3)
+# THIS FAILS BECAUSE THERMODYNAMIC INTEGRATION FAILS
 @model function HierarchicalModel(Y)
     N,J= size(Y)
-    τ² ~ InverseGamma(2.,3.)
-    σ² ~ InverseGamma(2.,3.)
-    μ  ~ Normal(0.,10.)                  # can't use improper prior in NRST
-    θ  = Vector{eltype(Y)}(undef, J)     # must explicitly declare it for the loop to make sense
+    τ² ~ InverseGamma(.1,.1)
+    σ² ~ InverseGamma(.1,.1)
+    μ  ~ TDist(3)                    # can't use improper prior in NRST
+    θ  = Vector{eltype(Y)}(undef, J) # must explicitly declare it for the loop to make sense
     σ  = sqrt(σ²)
     τ  = sqrt(τ²)
     for j in 1:J
@@ -73,10 +74,28 @@ Y = readdlm(
      ',', Float64
 );
 hmodel = HierarchicalModel(Y);
-ns = NRSTSampler(hmodel,verbose=true);
-# ns = NRSTSampler(hmodel,betas=collect(range(0.,1.,20)),tune=false);
-# tune!(ns, med_chng_thrsh = 0.005, max_chng_thrsh = 0.01);
+# ns = NRSTSampler(hmodel,verbose=true);
+N = 30;
+betas = vcat([0.], 2 .^ range(-200,0,N))
+ns = NRSTSampler(hmodel, betas=betas, tune = false);
+ns.np.c
+nsteps = 16000
+aggV = similar(ns.np.c)
+trVs = [similar(aggV, nsteps) for _ in 0:N];
+NRST.collectVs!(ns, trVs, aggV);
+NRST.trapez!(ns.np.c, ns.np.betas, aggV);
+R = NRST.est_rej_probs(trVs, ns.np.betas, ns.np.c) # compute average rejection probabilities
+Λnorm, Λvalsnorm = NRST.get_lambda(ns.np.betas, R);
+Λnorm.(ns.np.betas)
+
+plot(β -> Λnorm(β),0.,1.)
+oldbetas = copy(betas)            # store old betas to check convergence
+copyto!(ns.np.betas,oldbetas)
+
+NRST.optimize_betas!(betas, R)         # tune using the inverse of Λ(β)
+reset_explorers!(ns)              # since betas changed, the cached potentials are stale
+return abs.(betas - oldbetas) 
+
+res = parallel_run(ns, ntours=4);
 res = parallel_run(ns, ntours=1024);
 plot(diagnostics(ns,res)..., layout = (3,2), size = (800,1000))
-# plot([NRST.params(e)[1] for e in ns.explorers])
-joinpath(dirname(pathof(NRST)), "..", "data")
