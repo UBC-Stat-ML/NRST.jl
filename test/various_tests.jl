@@ -10,16 +10,8 @@ using NRST
 end 
 
 # Now we instantiate a Model by a passing a vector of observations.
-lnmodel = Lnmodel(randn(30))
-ns = NRSTSampler(lnmodel);
-samplers = copy_sampler(ns, nthreads = Threads.nthreads());
-tune!(samplers);
-par_res = run!(samplers, ntours = 1024);
-
-# ## Visual diagnostics
-plots = diagnostics(ns,par_res);
-plot(plots..., layout = (3,2), size = (800,1000))
-
-# save cover image #src
-mkpath("assets") #src
-savefig(plots[end], "assets/basic_Turing_default.png") #src
+lnmodel = Lnmodel(randn(30));
+ns = NRSTSampler(lnmodel,verbose=true);
+# res = post_process([NRST.tour!(ns) for _ in 1:1024]);
+res = parallel_run(ns, ntours=4096);
+plot(diagnostics(ns,res)..., layout = (3,2), size = (800,1000))

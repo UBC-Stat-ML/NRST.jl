@@ -41,10 +41,8 @@ end
 
 # MH proposal = isotropic normal
 function propose!(mhs::MHSampler)
-    @unpack x,xprop,sigma = mhs
-    s = sigma[]
-    for i in eachindex(xprop)
-        xprop[i] = x[i] + s*randn()
+    for i in eachindex(mhs.xprop)
+        mhs.xprop[i] = mhs.x[i] + mhs.sigma[]*randn()
     end
 end
 
@@ -154,7 +152,7 @@ tune!(mhs::MHSampler,params::NamedTuple;kwargs...) = tune!(mhs::MHSampler;sigma0
 function init_explorers(fns::Funs,betas,xinit::AbstractVector{<:AbstractFloat})
     # copy(xinit) is necessary or all explorers end up sharing the same state x
     # copy(fns) is necessary for threading when evaluating V,Vref,randref 
-    # changes something in their closures
+    # changes something in their closures (e.g., when fns isa TuringFuns)
     # but "betas" is shared because for exploration this is read-only.
     [MHSampler(gen_Vβ(copy(fns), i, betas), copy(xinit)) for i in 2:length(betas)]
 end

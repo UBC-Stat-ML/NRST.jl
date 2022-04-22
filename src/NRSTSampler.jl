@@ -74,7 +74,7 @@ function NRSTSampler(
     N::Int         = 15,
     nexpl::Int     = 50,
     use_mean::Bool = true,
-    init::Bool     = true,
+    tune::Bool     = true,
     verbose::Bool  = false
     )
     if ismissing(betas)
@@ -86,7 +86,7 @@ function NRSTSampler(
     x     = fns.randref()                                         # draw an initial point
     es    = init_explorers(fns, betas, x)                         # instantiate a vector of N explorers
     ns    = NRSTSampler(np, es, x, MVector(0,1), Ref(fns.V(x)), nexpl)
-    init && initialize!(ns, nsteps = 10*nexpl, verbose = verbose) # tune explorers and get initial c estimate
+    tune && tune!(ns, verbose = verbose)                          # tune explorers, c, and betas
     return ns
 end
 

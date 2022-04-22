@@ -22,12 +22,12 @@ function diagnostics(
     prrs = plot(
         0:ns.np.N, push!(rejrates[1:(end-1),1],NaN),
         ylims = (0., Inf), legend = :bottomright, linestyle = :dash,
-        palette=DEF_PAL, label = "Outgoing", xlabel = "Level", 
+        palette=DEF_PAL, label = "Up", xlabel = "Level", 
         ylabel = "Proportion of rejected proposals"
     )
     plot!(prrs,
         0:ns.np.N, pushfirst!(rejrates[2:end,2],NaN),
-        palette=DEF_PAL, label = "Incoming", linestyle = :dash
+        palette=DEF_PAL, label = "Down", linestyle = :dash
     )
     plot!(prrs,
         0.5:(ns.np.N-0.5), 0.5*(rejrates[1:(end-1),1]+rejrates[2:end,2]),
@@ -36,7 +36,7 @@ function diagnostics(
 
     # Lambda Plot
     betas = ns.np.betas;
-    Λnorm, _ = get_lambda(res, betas);
+    Λnorm, _ = get_lambda(betas, res.rejecs ./ res.visits);
     plam = plot_lambda(Λnorm,betas,"")
 
     # Plot of the log-partition function
