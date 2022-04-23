@@ -1,11 +1,12 @@
 # ---
 # cover: assets/hierarchical_model.png
-# title: Hierarchical model 
+# title: Hierarchical model
 # ---
 
-# This is a simplified version of the hierarchical model in 
-# [Yao et al. (2021, §6.3)](https://arxiv.org/abs/2006.12335).
-# The data was simulated by us from the true model, and is reminiscent of the classical
+# This is almost exactly the same model defined in 
+# [Yao et al. (2021, §6.3)](https://arxiv.org/abs/2006.12335), except for the
+# fact that---since we are restricted to proper priors---we put a Cauchy prior on ``\mu``.
+# The data was simulated by us from the same model, and is reminiscent of the classical
 # "Eight Schools Problem" posed by [Rubin (1981)](https://www.jstor.org/stable/1164617).
 
 # ## Defining and instantiating a Turing model
@@ -16,10 +17,10 @@ using NRST
 # Define a model using the `DynamicPPL.@model` macro.
 @model function HierarchicalModel(Y)
     N,J= size(Y)
-    τ² ~ InverseGamma(2.,3.)
-    σ² ~ InverseGamma(2.,3.)
-    μ  ~ Normal(0.,10.)                  # can't use improper prior in NRST
-    θ  = Vector{eltype(Y)}(undef, J)     # must explicitly declare it for the loop to make sense
+    τ² ~ InverseGamma(.1,.1)
+    σ² ~ InverseGamma(.1,.1)
+    μ  ~ Cauchy()                    # can't use improper prior in NRST
+    θ  = Vector{eltype(Y)}(undef, J) # must explicitly declare it for the loop to make sense
     σ  = sqrt(σ²)
     τ  = sqrt(τ²)
     for j in 1:J
@@ -38,9 +39,9 @@ Y = readdlm(
 model = HierarchicalModel(Y);
 
 # ## Building, tuning, and running NRST in parallel
-# We can now build an NRST sampler using the model. The following command will
+# We can now build an NRST sampler using the model. The following commands will
 # instantiate an NRSTSampler and tune it.
-ns  = NRSTSampler(model, N = 25, verbose = true);
+ns = NRSTSampler(model, N = 75, verbose = true);
 
 # Using the tuned sampler, we run 1024 tours in parallel.
 res = parallel_run(ns, ntours = 1024);

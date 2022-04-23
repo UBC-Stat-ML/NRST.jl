@@ -9,7 +9,7 @@
 # full tuning
 function tune!(
     ns::NRSTSampler;
-    max_rounds::Int      = 16,
+    max_rounds::Int      = 8,
     max_chng_thrsh::Real = 0.01,
     nsteps_expl::Int     = max(500, 10*ns.nexpl),
     nsteps_max::Int      = 1_048_576,
@@ -211,7 +211,12 @@ function get_lambda(betas::Vector{K}, R::Matrix{K}) where {K<:AbstractFloat}
     Λvals     = pushfirst!(cumsum(averej), 0.)
     Λvalsnorm = Λvals/Λvals[end]
     Λnorm     = interpolate(betas, Λvalsnorm, SteffenMonotonicInterpolation())
-    @assert sum(abs, Λnorm.(betas) - Λvalsnorm) < 10eps(K)
+    
+    # check error
+    err = maximum(abs, Λnorm.(betas) - Λvalsnorm)
+    if err > 10eps(K)
+        @warn "get_lambda: high interpolation error = " err 
+    end
     return (Λnorm, Λvalsnorm)
 end
 
