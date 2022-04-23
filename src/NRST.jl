@@ -50,7 +50,7 @@ abstract type RunResults end
 N(res::RunResults) = length(res.xarray)-1 # retrieve max tempering level
 
 # load files
-include("utils.jl")
+include("log_partition_utils.jl")
 include("ExplorationKernels.jl")
 include("NRSTSampler.jl")
 include("ParallelNRST.jl")

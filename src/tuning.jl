@@ -102,16 +102,13 @@ function tune_c!(
     trVs::Vector{Vector{K}},
     aggV::Vector{K}
     ) where {T,I,K}
-    @unpack c, betas, N = ns.np
-    trapez!(c, betas, aggV)           # store in c the trapezoidal approx of int_0^beta db aggV(b)
-    if !ns.np.use_mean                # if tuning c(b)=med^{b}(V), no other approximation is available
+    @unpack use_mean,c,betas,N = ns.np
+    trapez!(c, betas, aggV)             # store in c the trapezoidal approx of int_0^beta db aggV(b)
+    if !use_mean                        # if tuning c(b)=med^{b}(V), no other approximation is available
         return
-    elseif c[2] > 1e16
-        # @info "V likely not integrable under the reference. Using stepping stone."
-        dbs     = diff(betas)
-        lnsteps = log(length(trVs[1]))
-        newc    = cumsum(lnsteps .- [logsumexp(-dbs[i]*trVs[i]) for i in 1:N])
-        copyto!(c, 2:(N+1), newc, 1:N)
+    elseif c[2] > 1e16                  # V likely not integrable under the reference, using stepping stone
+        stepping_stone!(c, betas, trVs) # compute log(Z(b)/Z0) and store it in c
+        c .*= (-one(K))                 # c(b) = -log(Z(b)/Z0)
     end
     return
 end
