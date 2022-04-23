@@ -12,7 +12,7 @@ function tune!(
     max_rounds::Int      = 16,
     max_chng_thrsh::Real = 0.01,
     nsteps_expl::Int     = max(500, 10*ns.nexpl),
-    nsteps_max::Int      = 100_000,
+    nsteps_max::Int      = 1_048_576,
     verbose::Bool        = true
     )
     N        = ns.np.N
@@ -20,7 +20,7 @@ function tune!(
     nsteps   = nsteps_expl
     max_chng = 1.
     aggV     = similar(ns.np.c)
-    
+    trVs     = [similar(aggV, nsteps) for _ in 0:N]
     verbose && println("Tuning started ($(Threads.nthreads()) threads).")
     while (max_chng > max_chng_thrsh) && (round < max_rounds)
         round += 1
@@ -42,9 +42,10 @@ function tune!(
         "\nFinal round:\n\tTuning explorers..."
     )
     tune_explorers!(ns, nsteps = nsteps_expl, verbose = false)
-    verbose && print("done!\n\tTuning c using $nsteps steps per explorer...")
-    collectVs!(ns, [similar(aggV, nsteps) for _ in 0:N], aggV)
-    trapez!(ns.np.c, ns.np.betas, aggV)
+    verbose && print("done!\n\tTuning c using $(length(trVs[1])) steps per explorer...")
+    # trVs = [similar(aggV, nsteps) for _ in 0:N]
+    collectVs!(ns, trVs, aggV)
+    tune_c!(ns, trVs, aggV)
     verbose && println("done!\nTuning finished.")
 end
 
@@ -87,12 +88,32 @@ function tune_c_betas!(
     ) where {T,I,K}
     @unpack c, betas = ns.np
     collectVs!(ns, trVs, aggV)        # collect V samples and aggregate them
-    trapez!(c, betas, aggV)           # store in c the trapezoidal approx of int_0^beta db aggV(b)
+    tune_c!(ns, trVs, aggV)           # tune c using aggV and trVs if necessary
     R = est_rej_probs(trVs, betas, c) # compute average rejection probabilities
     oldbetas = copy(betas)            # store old betas to check convergence
     optimize_betas!(betas, R)         # tune using the inverse of Λ(β)
     reset_explorers!(ns)              # since betas changed, the cached potentials are stale
     return maximum(abs,betas-oldbetas)# for assessing convergence of the grid
+end
+
+# tune the c vector
+function tune_c!(
+    ns::NRSTSampler{T,I,K},
+    trVs::Vector{Vector{K}},
+    aggV::Vector{K}
+    ) where {T,I,K}
+    @unpack c, betas, N = ns.np
+    trapez!(c, betas, aggV)           # store in c the trapezoidal approx of int_0^beta db aggV(b)
+    if !ns.np.use_mean                # if tuning c(b)=med^{b}(V), no other approximation is available
+        return
+    elseif c[2] > 1e16
+        # @info "V likely not integrable under the reference. Using stepping stone."
+        dbs     = diff(betas)
+        lnsteps = log(length(trVs[1]))
+        newc    = cumsum(lnsteps .- [logsumexp(-dbs[i]*trVs[i]) for i in 1:N])
+        copyto!(c, 2:(N+1), newc, 1:N)
+    end
+    return
 end
 
 # utility to reset caches in all explorers

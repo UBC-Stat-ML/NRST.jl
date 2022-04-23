@@ -1,12 +1,14 @@
 module NRST
 
-using UnPack,Random,Distributions,Printf,Plots,StatsBase,Statistics,StaticArrays,DynamicPPL
+using UnPack,Random,Distributions,Printf,Plots,StatsBase,Statistics,DynamicPPL
+using StaticArrays: MVector
 using StatsPlots: density
 using Interpolations: interpolate, SteffenMonotonicInterpolation
 using Roots: find_zero
 using DataFrames: DataFrame
 using Turing: Turing
 using ColorSchemes: seaborn_colorblind
+using LogExpFunctions: logsumexp
 
 # NRSTSampler.jl
 export NRSTSampler,

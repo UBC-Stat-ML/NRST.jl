@@ -41,12 +41,7 @@ model = HierarchicalModel(Y);
 # ## Building, tuning, and running NRST in parallel
 # We can now build an NRST sampler using the model. The following commands will
 # instantiate an NRSTSampler and tune it.
-ns = NRSTSampler(model, N = 30, use_mean = false, verbose = true);
-
-#md # !!! note "Using median energy tuning strategy"
-#md #     The keyword argument `use_mean = false` tells NRST to tune using the
-#md #     median strategy ``c(\beta) = \text{median}^{(\beta)}(V)``. This is
-#md #     necessary to deal with the heavy tailed priors used.
+ns = NRSTSampler(model, N = 30, verbose = true);
 
 # Using the tuned sampler, we run 1024 tours in parallel.
 res = parallel_run(ns, ntours = 1024);
