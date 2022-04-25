@@ -2,7 +2,7 @@ module NRST
 
 using ColorSchemes: seaborn_colorblind
 using DataFrames: DataFrame
-using Distributions
+using Distributions: Exponential, Normal
 using DynamicPPL: DynamicPPL
 using Interpolations: interpolate, SteffenMonotonicInterpolation
 using LogExpFunctions: logsumexp

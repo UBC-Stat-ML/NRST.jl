@@ -18,7 +18,7 @@ using NRST
 end 
 
 # Now we instantiate a proper `DynamicPPL.Model` object by a passing a vector of observations.
-model = Lnmodel(randn(30))
+model = Lnmodel(randn(30));
 
 # ## Building, tuning, and running NRST in parallel
 # We can now build an NRST sampler using the model. The following command will
@@ -30,7 +30,7 @@ res = parallel_run(ns, ntours = 1024);
 
 # ## Visual diagnostics
 plots = diagnostics(ns,res);
-plot(diagnostics(ns,res)..., layout = (3,2), size = (800,1000))
+plot(plots..., layout = (3,2), size = (800,1000))
 
 # save cover image #src
 mkpath("assets") #src
