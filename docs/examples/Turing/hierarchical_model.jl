@@ -41,16 +41,16 @@ model = HierarchicalModel(Y);
 # ## Building, tuning, and running NRST in parallel
 # We can now build an NRST sampler using the model. The following commands will
 # instantiate an NRSTSampler and tune it.
-ns = NRSTSampler(model, N = 75, verbose = true);
+ns = NRSTSampler(model, N = 80, verbose = true);
 
 # Using the tuned sampler, we run 1024 tours in parallel.
 res = parallel_run(ns, ntours = 1024);
 
 # ## Visual diagnostics
 plots = diagnostics(ns,res);
-plot(diagnostics(ns,res)..., layout = (3,2), size = (800,1000))
+plot(plots..., layout = (3,2), size = (800,1000))
 
 # save cover image #src
 mkpath("assets") #src
-savefig(plots[end], "assets/hierarchical_model.png") #src
+savefig(plots[3], "assets/hierarchical_model.png") #src
 

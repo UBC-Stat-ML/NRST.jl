@@ -38,8 +38,8 @@ end
 # ≈ (1/S) sum_{n=1}^{S_{i-1}} e^{-(beta_i-beta_{i-1}) V(x_n)}, x_{1:S_{i-1}} ~ pi^{i-1}
 # <=> log(Z_i/Z_{i-1}) ≈ -log(S_{i-1}) + logsumexp(-(beta_i-beta_{i-1}) V(x_{1:S_{i-1}}))
 #  => log(Z_N/Z_0) = sum_{i=1}^N [-log(S_{i-1}) + logsumexp(-(beta_i-beta_{i-1}) V(x_{1:S_{i-1}}))]
-# Recipe for the paralell-explorers version
-# 1) collect samples V^{i}_{1:S_{i}}, for i ∈ 0:(N-1)
+# Recipe for the parallel version
+# 1) samples in parallel V^{i}_{1:S_{i}}, for i ∈ 0:(N-1)
 # 2) compute at each i ∈ (0,N-1): -log(S_{i-1}) + logsumexp(-(beta_i-beta_{i-1}) V(x_{1:S_{i-1}}))
 # 3) cumsum
 function stepping_stone!(
@@ -54,4 +54,9 @@ function stepping_stone!(
         acc    += logsumexp(-db*trVs[i]) - log(length(trVs[i]))
         zs[i+1] = acc
     end
+end
+function stepping_stone(bs, trVs)
+    zs = similar(bs)
+    stepping_stone!(zs, bs, trVs)
+    return zs
 end

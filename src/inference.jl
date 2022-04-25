@@ -80,10 +80,21 @@ function log_partition(
     # compute summary statistics for the potential function
     # note: need Bonferroni adjustment because we need simultaneous coverage along
     # the whole curve, not just marginally at every point.
-    infres = inference(res, h = ns.np.fns.V, at = 0:ns.np.N, α = 1-(1-α)/ns.np.N)
-    ms     = trapez(ns.np.betas, infres[:,"Mean"])      # integrate the mean
-    lbs    = trapez(ns.np.betas, infres[:,"C.I. Low"])  # integrate the lower bounds
-    ubs    = trapez(ns.np.betas, infres[:,"C.I. High"]) # integrate the upper bounds
+    @unpack fns, betas, N = ns.np
+    infres = inference(res, h = fns.V, at = 0:N, α = 1-(1-α)/N)
+    if infres[:,"Mean"][1] > 1e16
+        @info """
+            V likely not integrable under the reference; using stepping stone.
+            Confidence region will not be available.
+        """
+        trVs = [fns.V.(xs) for xs in res.xarray]
+        ms   = stepping_stone(betas, trVs)
+        lbs  = ubs = fill(convert(TF, NaN), N+1)    # no confidence region
+    else
+        ms   = -trapez(betas, infres[:,"Mean"])      # integrate the mean
+        lbs  = -trapez(betas, infres[:,"C.I. High"]) # integrate the upper bounds (Z decreases with V)
+        ubs  = -trapez(betas, infres[:,"C.I. Low"])  # integrate the lower bounds (Z decreases with V)
+    end
     return DataFrame(
         "Mean"       => ms,
         "C.I. Low"   => lbs,

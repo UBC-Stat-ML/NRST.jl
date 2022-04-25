@@ -1,14 +1,21 @@
 module NRST
 
-using UnPack,Random,Distributions,Printf,Plots,StatsBase,Statistics,DynamicPPL
-using StaticArrays: MVector
-using StatsPlots: density
-using Interpolations: interpolate, SteffenMonotonicInterpolation
-using Roots: find_zero
-using DataFrames: DataFrame
-using Turing: Turing
 using ColorSchemes: seaborn_colorblind
+using DataFrames: DataFrame
+using Distributions
+using DynamicPPL: DynamicPPL
+using Interpolations: interpolate, SteffenMonotonicInterpolation
 using LogExpFunctions: logsumexp
+using Plots
+using Printf
+using Random
+using Roots: find_zero
+using StaticArrays: MVector
+using Statistics
+using StatsPlots: density
+using Suppressor: @suppress_err
+using Turing: Turing
+using UnPack: @unpack
 
 # NRSTSampler.jl
 export NRSTSampler,

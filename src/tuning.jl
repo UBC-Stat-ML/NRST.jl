@@ -9,8 +9,8 @@
 # full tuning
 function tune!(
     ns::NRSTSampler;
-    max_rounds::Int      = 8,
-    max_chng_thrsh::Real = 0.01,
+    max_rounds::Int      = 12,
+    max_chng_thrsh::Real = 0.025,
     nsteps_expl::Int     = max(500, 10*ns.nexpl),
     nsteps_max::Int      = 1_048_576,
     verbose::Bool        = true
@@ -42,11 +42,11 @@ function tune!(
         "\nFinal round:\n\tTuning explorers..."
     )
     tune_explorers!(ns, nsteps = nsteps_expl, verbose = false)
-    verbose && print("done!\n\tTuning c using $(length(trVs[1])) steps per explorer...")
+    verbose && println("done!\n\tTuning c using $(length(trVs[1])) steps per explorer...")
     # trVs = [similar(aggV, nsteps) for _ in 0:N]
     collectVs!(ns, trVs, aggV)
     tune_c!(ns, trVs, aggV)
-    verbose && println("done!\nTuning finished.")
+    verbose && println("Tuning completed.")
 end
 
 
@@ -74,26 +74,19 @@ end
 
 # Tune c and betas using independent runs of the explorers
 # note: explorers must be tuned already before running this
-# - idea:
-#    - in parallel, assign each explorer to
-#       - gather estimates of V and
-#       - estimate up and down swap Metropolis ratio, sans the c portion
-#    - after exploration, compute c from the V estimates
-#    - add the c portion to the swap Metropolis ratios to obtain rej probs
-#    - estimate Λ(β) and adjust the grid
 function tune_c_betas!(
     ns::NRSTSampler{T,I,K},
     trVs::Vector{Vector{K}},
     aggV::Vector{K}
     ) where {T,I,K}
     @unpack c, betas = ns.np
-    collectVs!(ns, trVs, aggV)        # collect V samples and aggregate them
-    tune_c!(ns, trVs, aggV)           # tune c using aggV and trVs if necessary
-    R = est_rej_probs(trVs, betas, c) # compute average rejection probabilities
-    oldbetas = copy(betas)            # store old betas to check convergence
-    optimize_betas!(betas, R)         # tune using the inverse of Λ(β)
-    reset_explorers!(ns)              # since betas changed, the cached potentials are stale
-    return maximum(abs,betas-oldbetas)# for assessing convergence of the grid
+    collectVs!(ns, trVs, aggV)         # in parallel, collect V samples and aggregate them
+    @suppress_err tune_c!(ns,trVs,aggV)# tune c using aggV and trVs if necessary
+    R = est_rej_probs(trVs, betas, c)  # compute average rejection probabilities
+    oldbetas = copy(betas)             # store old betas to check convergence
+    optimize_betas!(betas, R)          # tune using the inverse of Λ(β)
+    reset_explorers!(ns)               # since betas changed, the cached potentials are stale
+    return maximum(abs,betas-oldbetas) # for assessing convergence of the grid
 end
 
 # tune the c vector
@@ -102,13 +95,13 @@ function tune_c!(
     trVs::Vector{Vector{K}},
     aggV::Vector{K}
     ) where {T,I,K}
-    @unpack use_mean,c,betas,N = ns.np
-    trapez!(c, betas, aggV)             # store in c the trapezoidal approx of int_0^beta db aggV(b)
-    if !use_mean                        # if tuning c(b)=med^{b}(V), no other approximation is available
-        return
-    elseif c[2] > 1e16                  # V likely not integrable under the reference, using stepping stone
+    @unpack use_mean, c, betas = ns.np
+    if use_mean && (abs(aggV[1])>1e16)
+        @info "V likely not integrable under the reference; using stepping stone."
         stepping_stone!(c, betas, trVs) # compute log(Z(b)/Z0) and store it in c
         c .*= (-one(K))                 # c(b) = -log(Z(b)/Z0)
+    else
+        trapez!(c, betas, aggV)         # trapezodial approximation of int_0^beta aggV(b)db
     end
     return
 end

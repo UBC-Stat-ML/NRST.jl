@@ -24,13 +24,28 @@ Y = readdlm(
      ',', Float64
 );
 model = HierarchicalModel(Y);
-ns  = NRSTSampler(model, N=75, verbose = true);
-plot(ns.np.betas, ns.np.c)
+ns  = NRSTSampler(model, N = 80, verbose = true);
+res = parallel_run(ns, ntours = 1024);
+plot(diagnostics(ns,res)..., layout = (3,2), size = (800,1000))
 
-# stepping stone
-α = 0.95
-infres = inference(res, h = ns.np.fns.V, at = 0:ns.np.N, α = 1-(1-α)/ns.np.N)
-ms     = trapez(ns.np.betas, infres[:,"Mean"])      # integrate the mean
-lbs    = trapez(ns.np.betas, infres[:,"C.I. Low"])  # integrate the lower bounds
-ubs    = trapez(ns.np.betas, infres[:,"C.I. High"]) # integrate the upper bounds
 
+using Distributions, DynamicPPL, Plots
+using NRST
+
+# ## Defining and instantiating a Turing model
+
+# Define a model using the `DynamicPPL.@model` macro.
+@model function Lnmodel(x)
+    s  ~ LogNormal()
+    x .~ Normal(0.,s)
+end 
+
+# Now we instantiate a proper `DynamicPPL.Model` object by a passing a vector of observations.
+model = Lnmodel(randn(30));
+
+# ## Building, tuning, and running NRST in parallel
+# We can now build an NRST sampler using the model. The following command will
+# instantiate an NRSTSampler and tune it.
+ns  = NRSTSampler(model, verbose = true);
+res = parallel_run(ns, ntours = 1024);
+plot(diagnostics(ns,res)..., layout = (3,2), size = (800,1000))
