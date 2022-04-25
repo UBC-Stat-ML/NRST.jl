@@ -10,9 +10,9 @@
 function tune!(
     ns::NRSTSampler;
     max_rounds::Int      = 16,
-    max_chng_thrsh::Real = 0.025,
+    max_chng_thrsh::Real = 0.02,
     nsteps_expl::Int     = max(500, 10*ns.nexpl),
-    nsteps_max::Int      = 65_536,
+    nsteps_max::Int      = 16_384,
     verbose::Bool        = true
     )
     N        = ns.np.N
