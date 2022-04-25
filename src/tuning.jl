@@ -9,7 +9,7 @@
 # full tuning
 function tune!(
     ns::NRSTSampler;
-    max_rounds::Int      = 32,
+    max_rounds::Int      = 10,
     max_chng_thrsh::Real = 0.03,
     nsteps_expl::Int     = max(500, 10*ns.nexpl),
     nsteps_max::Int      = 10_000,
@@ -33,6 +33,7 @@ function tune!(
         trVs     = [similar(aggV, nsteps) for _ in 0:N]
         max_chng = tune_c_betas!(ns, trVs, aggV)
         verbose && @printf("done!\n\t\tGrid change Δmax=%.3f.\n", max_chng)
+        verbose && @printf("\t\tlog(Z_N/Z_0)=%.1f.\n", -ns.np.c[N+1])
         nsteps   = min(nsteps_max, 2nsteps)
     end
     # since betas changed the last, need to tune explorers and c one last time

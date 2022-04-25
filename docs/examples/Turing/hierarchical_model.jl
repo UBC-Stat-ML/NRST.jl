@@ -4,10 +4,12 @@
 # ---
 
 # This is almost exactly the same model defined in 
-# [Yao et al. (2021, §6.3)](https://arxiv.org/abs/2006.12335), except for the
-# fact that---since we are restricted to proper priors---we put a Cauchy prior on ``\mu``.
-# The data was simulated by us from the same model, and is reminiscent of the classical
-# "Eight Schools Problem" posed by [Rubin (1981)](https://www.jstor.org/stable/1164617).
+# [Yao et al. (2021, §6.3)](https://arxiv.org/abs/2006.12335)
+# (code [here](https://github.com/yao-yl/Multimodal-stacking-code/blob/e698da0ccea048f526356822f423aebbacaf7c2f/code/Parametrization%20and%20zero%20avoiding%20priors/random_effect.stan)),
+# except for the fact that---since we are restricted to proper priors---we put
+# a Cauchy prior on ``\mu``. The data was simulated by us from the same model,
+# and is reminiscent of the classical "Eight Schools Problem" posed by 
+# [Rubin (1981)](https://www.jstor.org/stable/1164617).
 
 # ## Defining and instantiating a Turing model
 

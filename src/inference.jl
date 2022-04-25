@@ -83,13 +83,12 @@ function log_partition(
     @unpack fns, betas, N = ns.np
     infres = inference(res, h = fns.V, at = 0:N, α = 1-(1-α)/N)
     if infres[:,"Mean"][1] > 1e16
-        @info """
-            V likely not integrable under the reference; using stepping stone.
-            Confidence region will not be available.
+        @info """V likely not integrable under the reference; using stepping stone.
+                 Confidence region will not be available.
         """
         trVs = [fns.V.(xs) for xs in res.xarray]
         ms   = stepping_stone(betas, trVs)
-        lbs  = ubs = fill(convert(TF, NaN), N+1)    # no confidence region
+        lbs  = ubs = fill(convert(TF, NaN), N+1)     # no confidence region
     else
         ms   = -trapez(betas, infres[:,"Mean"])      # integrate the mean
         lbs  = -trapez(betas, infres[:,"C.I. High"]) # integrate the upper bounds (Z decreases with V)

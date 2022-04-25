@@ -40,7 +40,7 @@ end
 #  => log(Z_N/Z_0) = sum_{i=1}^N [-log(S_{i-1}) + logsumexp(-(beta_i-beta_{i-1}) V(x_{1:S_{i-1}}))]
 # Recipe for the parallel version
 # 1) samples in parallel V^{i}_{1:S_{i}}, for i ∈ 0:(N-1)
-# 2) compute at each i ∈ (0,N-1): -log(S_{i-1}) + logsumexp(-(beta_i-beta_{i-1}) V(x_{1:S_{i-1}}))
+# 2) compute at each i ∈ 1:N: -log(S_{i-1}) + logsumexp(-(beta_i-beta_{i-1}) V^{i-1}_{1:S_{i-1}})
 # 3) cumsum
 function stepping_stone!(
     zs::TV,
