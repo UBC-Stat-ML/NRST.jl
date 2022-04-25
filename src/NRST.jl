@@ -8,6 +8,7 @@ using Interpolations: interpolate, SteffenMonotonicInterpolation
 using LogExpFunctions: logsumexp
 using Plots
 using Printf
+using ProgressMeter: ProgressMeter
 using Random
 using Roots: find_zero
 using StaticArrays: MVector

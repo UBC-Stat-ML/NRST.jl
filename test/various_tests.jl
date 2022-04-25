@@ -24,9 +24,10 @@ Y = readdlm(
      ',', Float64
 );
 model = HierarchicalModel(Y);
-ns  = NRSTSampler(model, N = 80, verbose = true);
+ns  = NRSTSampler(model, N = 70, verbose = true);
 res = parallel_run(ns, ntours = 1024);
 plot(diagnostics(ns,res)..., layout = (3,2), size = (800,1000))
+
 
 
 using Distributions, DynamicPPL, Plots
@@ -46,6 +47,15 @@ model = Lnmodel(randn(30));
 # ## Building, tuning, and running NRST in parallel
 # We can now build an NRST sampler using the model. The following command will
 # instantiate an NRSTSampler and tune it.
-ns  = NRSTSampler(model, verbose = true);
+ns  = NRSTSampler(model, N=10, verbose = true);
+
+# Using the tuned sampler, we run 1024 tours in parallel.
 res = parallel_run(ns, ntours = 1024);
 plot(diagnostics(ns,res)..., layout = (3,2), size = (800,1000))
+ns.np.c
+310/44*10
+
+nsteps_expl= 500
+round = 18
+nsteps = 2^(min(round,8)-1)*nsteps_expl
+typeof(nsteps)

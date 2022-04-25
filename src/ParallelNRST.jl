@@ -44,13 +44,15 @@ function run!(
     trace_vec = [SerialNRSTTrace{T,I}[] for _ in eachindex(samplers)]
 
     # run tours in parallel
+    p = ProgressMeter.Progress(ntours)  # show progress
     Threads.@threads for tour in 1:ntours
         tid = Threads.threadid()
-        tr  = tour!(samplers[tid]) # run a full tour with the sampler corresponding to this thread, avoiding race conditions
-        push!(trace_vec[tid], tr)  # push results to this thread's own storage, avoiding race conditions
+        tr  = tour!(samplers[tid])      # run a full tour with the sampler corresponding to this thread, avoiding race conditions
+        push!(trace_vec[tid], tr)       # push results to this thread's own storage, avoiding race conditions
         verbose && println(
             "thread ", tid, ": completed tour ", tour
         )
+        ProgressMeter.next!(p)
     end
     
     trvec = vcat(trace_vec...) # collect into a single Vector{SerialNRSTTrace{T,I}}

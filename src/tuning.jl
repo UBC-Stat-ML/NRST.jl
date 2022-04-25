@@ -9,10 +9,10 @@
 # full tuning
 function tune!(
     ns::NRSTSampler;
-    max_rounds::Int      = 16,
-    max_chng_thrsh::Real = 0.02,
+    max_rounds::Int      = 32,
+    max_chng_thrsh::Real = 0.03,
     nsteps_expl::Int     = max(500, 10*ns.nexpl),
-    nsteps_max::Int      = 16_384,
+    nsteps_max::Int      = 10_000,
     verbose::Bool        = true
     )
     N        = ns.np.N
@@ -42,8 +42,9 @@ function tune!(
         "\nFinal round:\n\tTuning explorers..."
     )
     tune_explorers!(ns, nsteps = nsteps_expl, verbose = false)
-    verbose && println("done!\n\tTuning c using $(length(trVs[1])) steps per explorer...")
-    # trVs = [similar(aggV, nsteps) for _ in 0:N]
+    nsteps = max(nsteps_max, 2^7 * nsteps_expl) # need high accuracy for final c estimate 
+    trVs = [similar(aggV, nsteps) for _ in 0:N]
+    verbose && println("done!\n\tTuning c using $nsteps steps per explorer...")
     collectVs!(ns, trVs, aggV)
     tune_c!(ns, trVs, aggV)
     verbose && println("Tuning completed.")
