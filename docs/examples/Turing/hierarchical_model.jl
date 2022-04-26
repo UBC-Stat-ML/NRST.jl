@@ -43,7 +43,7 @@ model = HierarchicalModel(Y);
 # ## Building, tuning, and running NRST in parallel
 # We can now build an NRST sampler using the model. The following commands will
 # instantiate an NRSTSampler and tune it.
-ns = NRSTSampler(model, N = 70, verbose = true);
+ns = NRSTSampler(model, N = 100, verbose = true);
 
 # Using the tuned sampler, we run 1024 tours in parallel.
 res = parallel_run(ns, ntours = 1024);

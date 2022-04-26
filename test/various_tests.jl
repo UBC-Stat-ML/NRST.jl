@@ -4,6 +4,8 @@ using NRST
 const S   = 16;
 const Ssq = S*S;
 const sq  = Square(S,S);
+const βᶜ  = 1.1199 # critical temp for J=1: https://iopscience.iop.org/article/10.1088/0305-4470/38/26/003
+const J   = 2βᶜ    # coupling constant to force βᶜ = 0.5 in our parametrization 
 T(θ)      = logit((θ/pi + 1)/2)   # θ ∈ (-pi,pi) ↦ x ∈ ℝ
 Tinv(x)   = pi*(2logistic(x) - 1) # x ∈ ℝ ↦ θ ∈ (-pi,pi)
 function V(xs::Vector{TF}) where {TF<:AbstractFloat}
@@ -14,7 +16,7 @@ function V(xs::Vector{TF}) where {TF<:AbstractFloat}
         ib   = (b[1]-1)*S + b[2]
         acc -= cos(θs[ia] - θs[ib])
     end
-    return acc
+    return J*acc
 end
 # V(10randn(Ssq)) > V(fill(rand(),Ssq)) # minimal under perfect alignment
 
@@ -51,16 +53,22 @@ randref() = T.(rand(dunif, Ssq))
 Vref(x::AbstractFloat) = x + 2log1pexp(-x) # = log1pexp(x) + log1pexp(-x)
 Vref(xs::Vector{<:AbstractFloat}) = sum(Vref, xs)
 
-# check using Bijectors
+# # check using Bijectors
 # using Bijectors
 # all([Vref(x) ≈ -logpdf_with_trans(dunif,Tinv(x),true) for x in randn(100)])
+
+# # check that pX() is normalized
+# xs = range(-10,10,1000)
+# vs = [Vref(x) for x in xs]
+# lΔ = log(step(xs))
+# abs(logsumexp(lΔ .- vs)) < 1e-4
 
 # sample
 ns = NRSTSampler(
     V,
     Vref,
     randref,
-    N = 90,
+    N = 200,
     verbose = true
 );
 res = parallel_run(ns, ntours = 1024);

@@ -9,20 +9,21 @@
 # full tuning
 function tune!(
     ns::NRSTSampler;
-    max_rounds::Int      = 10,
-    max_chng_thrsh::Real = 0.03,
-    nsteps_expl::Int     = max(500, 10*ns.nexpl),
-    nsteps_max::Int      = 10_000,
-    verbose::Bool        = true
+    max_rounds::Int    = 8,
+    max_relΔlogZ::Real = 0.01,
+    max_Δβs::Real      = 0.01,
+    nsteps_expl::Int   = max(500, 10*ns.nexpl),
+    verbose::Bool      = true
     )
-    N        = ns.np.N
-    round    = 0
-    nsteps   = nsteps_expl
-    max_chng = 1.
-    aggV     = similar(ns.np.c)
-    trVs     = [similar(aggV, nsteps) for _ in 0:N]
+    N       = ns.np.N
+    round   = 0
+    nsteps  = nsteps_expl
+    oldlogZ = relΔlogZ = NaN # to assess convergence on the log(Z_N/Z_0) estimate
+    aggV    = similar(ns.np.c)
+    trVs    = [similar(aggV, nsteps) for _ in 0:N]
+    conv    = false
     verbose && println("Tuning started ($(Threads.nthreads()) threads).")
-    while (max_chng > max_chng_thrsh) && (round < max_rounds)
+    while !conv && (round < max_rounds)
         round += 1
         verbose && print("Round $round:\n\tTuning explorers...")
         tune_explorers!(ns, nsteps = nsteps_expl, verbose = false)
@@ -31,21 +32,28 @@ function tune!(
         # tune c and betas
         verbose && print("\tTuning c and grid using $nsteps steps per explorer...")
         trVs     = [similar(aggV, nsteps) for _ in 0:N]
-        max_chng = tune_c_betas!(ns, trVs, aggV)
-        verbose && @printf("done!\n\t\tGrid change Δmax=%.3f.\n", max_chng)
-        verbose && @printf("\t\tlog(Z_N/Z_0)=%.1f.\n", -ns.np.c[N+1])
-        nsteps   = min(nsteps_max, 2nsteps)
+        Δβs      = tune_c_betas!(ns, trVs, aggV)
+        relΔlogZ = abs(-ns.np.c[N+1] - oldlogZ) / abs(oldlogZ)
+        oldlogZ  = -ns.np.c[N+1]
+        verbose && @printf(
+            "done!\n\t\tmax(Δbetas)=%.3f.\n\t\tlog(Z_N/Z_0)=%.1f.\n\t\trelΔlogZ=%.1f%%\n", 
+            Δβs, -ns.np.c[N+1], 100*relΔlogZ
+        )
+
+        # check convergence
+        conv = !isnan(relΔlogZ) && (relΔlogZ<max_relΔlogZ) && (Δβs<max_Δβs)
+        nsteps  *= 2
     end
     # since betas changed the last, need to tune explorers and c one last time
     verbose && print(
-        (max_chng <= max_chng_thrsh ? "Grid converged!" : 
-                                      "max_rounds=$max_rounds reached.") *
+        (conv ? "Grid converged!" :
+                "max_rounds=$max_rounds reached.") *
         "\nFinal round:\n\tTuning explorers..."
     )
     tune_explorers!(ns, nsteps = nsteps_expl, verbose = false)
-    nsteps = max(nsteps_max, 2^7 * nsteps_expl) # need high accuracy for final c estimate 
-    trVs = [similar(aggV, nsteps) for _ in 0:N]
-    verbose && println("done!\n\tTuning c using $nsteps steps per explorer...")
+    # nsteps = max(nsteps_max, 2^7 * nsteps_expl) # need high accuracy for final c estimate 
+    # trVs = [similar(aggV, nsteps) for _ in 0:N]
+    verbose && println("done!\n\tTuning c using $(length(trVs[1])) steps per explorer...")
     collectVs!(ns, trVs, aggV)
     tune_c!(ns, trVs, aggV)
     verbose && println("Tuning completed.")
