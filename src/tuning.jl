@@ -235,7 +235,7 @@ function optimize_betas!(betas::Vector{K}, R::Matrix{K}) where {K<:AbstractFloat
         targetΛ    += Δ
         b1          = newbetas[i-1]
         b2          = betas[findfirst(u -> (u>targetΛ), Λvalsnorm)]            # Λnorm^{-1}(targetΛ) cannot exceed this
-        newbetas[i] = find_zero(β -> Λnorm(β)-targetΛ, (b1,b2), atol = 0.01*Δ) # set tolerance for |Λnorm(β)-target| 
+        newbetas[i] = find_zero(β -> Λnorm(β)-targetΛ, (b1,b2), atol = Δ*1e-4) # set tolerance for |Λnorm(β)-target| 
     end
     newbetas[end] = one(K)
     copyto!(betas, newbetas)

@@ -24,7 +24,7 @@ function trapez(xs,ys)
 end
 
 
-# stepping stone
+# forward stepping stone: does not use samples at i=N+1
 # Z_N/Z_0 = prod_{i=1}^N Z_i/Z_{i-1}
 # <=> log(Z_N/Z_0) = sum_{i=1}^N log(Z_i/Z_{i-1})
 # Now,
@@ -61,7 +61,7 @@ function stepping_stone(bs, trVs)
     return zs
 end
 
-# reverse stepping stone
+# reverse stepping stone: does not use samples at i=0
 # log(Z_N/Z_0) = -[log(Z_0/Z_N)] = - sum_{i=0}^{N-1} log(Z_i/Z_{i+1})
 # but now use,
 # Z_i = E^{0}[e^{-beta_i V}] 
@@ -77,3 +77,21 @@ end
 # 1) samples in parallel V^{i}_{1:S_{i}}, for i ∈ 1:N
 # 2) compute at each i ∈ 1:N: log(S_{i}) - logsumexp((beta_i-beta_{i-1}) V^{i}_{1:S_{i}})
 # 3) cumsum
+function stepping_stone_bwd!(
+    zs::TV,
+    bs::TV,
+    trVs::Vector{TV}
+    ) where {TF<:AbstractFloat, TV<:Vector{TF}}
+    zs[1] = zero(TF)
+    acc   = zero(TF)
+    for i in 2:length(zs)
+        db    = bs[i] - bs[i-1]
+        acc  += log(length(trVs[i])) - logsumexp(db*trVs[i])
+        zs[i] = acc
+    end
+end
+function stepping_stone_bwd(bs, trVs)
+    zs = similar(bs)
+    stepping_stone_bwd!(zs, bs, trVs)
+    return zs
+end
