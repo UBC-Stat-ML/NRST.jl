@@ -157,3 +157,19 @@ function init_explorers(fns::Funs,betas,xinit::AbstractVector{<:AbstractFloat})
     [MHSampler(gen_Vβ(copy(fns), i, betas), copy(xinit)) for i in 2:length(betas)]
 end
 
+###############################################################################
+# smoothing parameters from an ensemble
+###############################################################################
+
+# smooth_params!(explorers::Vector{<:ExplorationKernel},::Any) = ()
+function smooth_params!(
+    explorers::Vector{MHSampler{F,K,A}},
+    betas::A
+    ) where {F,K,A}
+    logσs     = [log(NRST.params(e)[1]) for e in explorers]
+    spl       = fit(SmoothingSpline, log.(betas[2:end]), logσs, 20.)
+    logσspred = predict(spl) # fitted vector
+    for (i,e) in enumerate(explorers)
+        e.sigma[] = exp(logσspred[i])
+    end
+end

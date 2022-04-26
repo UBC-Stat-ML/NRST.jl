@@ -60,3 +60,20 @@ function stepping_stone(bs, trVs)
     stepping_stone!(zs, bs, trVs)
     return zs
 end
+
+# reverse stepping stone
+# log(Z_N/Z_0) = -[log(Z_0/Z_N)] = - sum_{i=0}^{N-1} log(Z_i/Z_{i+1})
+# but now use,
+# Z_i = E^{0}[e^{-beta_i V}] 
+# = int [pi_0(dx) e^{-beta_{i+1} V(x)}] e^{-(beta_i-beta_{i+1}) V(x)}
+# = Z_{i+1} int pi^{i+1}(dx) e^{-(beta_i-beta_{i+1}) V(x)}
+# = Z_{i+1} E^{i+1}[e^{(beta_{i+1}-beta_i) V(x)}]
+# Hence
+# Z_i/Z_{i+1} = E^{i+1}[e^{(beta_{i+1}-beta_i) V(x)}]
+# ≈ (1/S_{i+1}) sum_{n=1}^{S_{i+1}} e^{(beta_{i+1}-beta_i) V_n},    V_{1:S_{i+1}} ~ pi^{i+1}
+# <=> log(Z_i/Z_{i+1}) ≈ -log(S_{i+1}) + logsumexp((beta_{i+1}-beta_i) V_{1:S_{i+1}})
+#  => log(Z_N/Z_0) = sum_{i=1}^N [log(S_{i+1}) - logsumexp((beta_{i+1}-beta_i) V_{1:S_{i+1}})]
+# Recipe for the parallel version
+# 1) samples in parallel V^{i}_{1:S_{i}}, for i ∈ 1:N
+# 2) compute at each i ∈ 1:N: log(S_{i}) - logsumexp((beta_i-beta_{i-1}) V^{i}_{1:S_{i}})
+# 3) cumsum

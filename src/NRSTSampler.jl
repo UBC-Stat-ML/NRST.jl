@@ -24,16 +24,17 @@ Base.copy(fns::SimpleFuns) = fns # dont do anything
 # NOTE: when parallelizing, all fields must be shared except possibly
 # for "fns".
 struct NRSTProblem{TFuns,K<:AbstractFloat,A<:AbstractVector{K},TInt<:Int}
-    fns::TFuns     # struct that contains at least V, Vref, and randref
-    N::TInt        # number of states additional to reference (N+1 in total)
-    betas::A       # vector of tempering parameters (length N+1)
-    c::A           # vector of parameters for the pseudoprior
-    use_mean::Bool # should we use "mean" (true) or "median" (false) for tuning c?
+    fns::TFuns           # struct that contains at least V, Vref, and randref
+    N::TInt              # number of states additional to reference (N+1 in total)
+    betas::A             # vector of tempering parameters (length N+1)
+    c::A                 # vector of parameters for the pseudoprior
+    use_mean::Bool       # should we use "mean" (true) or "median" (false) for tuning c?
+    nexpls::Vector{TInt} # number of exploration steps for each explorer
 end
 
 # copy constructor, allows replacing fns, but keeps everything else
 function NRSTProblem(oldnp::NRSTProblem, newfns)
-    NRSTProblem(newfns,oldnp.N,oldnp.betas,oldnp.c,oldnp.use_mean)
+    NRSTProblem(newfns,oldnp.N,oldnp.betas,oldnp.c,oldnp.use_mean,oldnp.nexpls)
 end
 
 # struct for the sampler
@@ -43,7 +44,6 @@ struct NRSTSampler{T,I<:Int,K<:AbstractFloat,B<:AbstractVector{<:ExplorationKern
     x::T                   # current state of target variable. no need to keep it in sync all the time with explorers. they are updated at exploration step
     ip::MVector{2,I}       # current state of the Index Process (i,eps). uses statically sized but mutable vector
     curV::Base.RefValue{K} # current energy V(x) (stored as ref to make it mutable)
-    nexpl::I               # number of exploration steps
 end
 
 # raw trace of a serial run
@@ -78,15 +78,15 @@ function NRSTSampler(
     verbose::Bool  = false
     )
     if ismissing(betas)
-        betas = collect(range(0., 1., N+1))                       # initialize with uniformly spaced grid
+        betas = push!(pushfirst!(sort(rand(N-1)),0.),1.)                        # initialize with uniformly sampled gridpoints
     else
         N = length(betas) - 1
     end
-    np    = NRSTProblem(fns, N, betas, similar(betas), use_mean)  # instantiate an NRSTProblem
-    x     = fns.randref()                                         # draw an initial point
-    es    = init_explorers(fns, betas, x)                         # instantiate a vector of N explorers
-    ns    = NRSTSampler(np, es, x, MVector(0,1), Ref(fns.V(x)), nexpl)
-    tune && tune!(ns, verbose = verbose)                          # tune explorers, c, and betas
+    np    = NRSTProblem(fns, N, betas, similar(betas), use_mean, fill(nexpl,N)) # instantiate an NRSTProblem
+    x     = fns.randref()                                                       # draw an initial point
+    es    = init_explorers(fns, betas, x)                                       # instantiate a vector of N explorers
+    ns    = NRSTSampler(np, es, x, MVector(0,1), Ref(fns.V(x)))
+    tune && tune!(ns, verbose = verbose)                                        # tune explorers, c, and betas
     return ns
 end
 
@@ -102,9 +102,7 @@ function NRSTSampler(ns::NRSTSampler)
     newnp     = NRSTProblem(ns.np, newfns) # build new Problem using new fns
     newx      = newfns.randref()
     explorers = init_explorers(newfns, newnp.betas, newx)
-    NRSTSampler(
-        newnp, explorers, newx, MVector(0,1), Ref(newfns.V(newx)), ns.nexpl
-    )
+    NRSTSampler(newnp, explorers, newx, MVector(0,1), Ref(newfns.V(newx)))
 end
 
 ###############################################################################
@@ -148,16 +146,17 @@ end
 
 # exploration step
 function expl_step!(ns::NRSTSampler)
-    @unpack x,np,explorers,ip,curV,nexpl = ns
+    @unpack x,np,explorers,ip,curV = ns
     if ip[1] == 0
         copyto!(x, np.fns.randref()) 
     else
-        expl = explorers[ip[1]] # current explorer (recall that ip[1] is 0-based)
-        set_state!(expl, x)     # pass current state to explorer
-        explore!(expl, nexpl)   # explore for nexpl steps
-        copyto!(x, expl.x)      # update ns' state with the explorer's
+        expl  = explorers[ip[1]] # current explorer (recall that ip[1] is 0-based)
+        nexpl = np.nexpls[ip[1]] # get the exporer's number of exploration steps
+        set_state!(expl, x)      # pass current state to explorer
+        explore!(expl, nexpl)    # explore for nexpl steps
+        copyto!(x, expl.x)       # update ns' state with the explorer's
     end
-    curV[] = np.fns.V(x)        # compute energy at new point
+    curV[] = np.fns.V(x)         # compute energy at new point
 end
 
 # NRST step = comm_step ∘ expl_step

@@ -9,15 +9,17 @@
 # full tuning
 function tune!(
     ns::NRSTSampler;
-    max_rounds::Int    = 8,
-    max_relΔlogZ::Real = 0.01,
+    max_rounds::Int    = 10,
+    max_relΔlogZ::Real = 0.001,
     max_Δβs::Real      = 0.01,
-    nsteps_expl::Int   = max(500, 10*ns.nexpl),
+    nsteps_init::Int   = 2000,
+    max_nsteps::Int    = 65_536,
+    nsteps_expl::Int   = 500,    # only used for tuning the explorers' params
     verbose::Bool      = true
     )
     N       = ns.np.N
     round   = 0
-    nsteps  = nsteps_expl
+    nsteps  = nsteps_init
     oldlogZ = relΔlogZ = NaN # to assess convergence on the log(Z_N/Z_0) estimate
     aggV    = similar(ns.np.c)
     trVs    = [similar(aggV, nsteps) for _ in 0:N]
@@ -42,7 +44,7 @@ function tune!(
 
         # check convergence
         conv = !isnan(relΔlogZ) && (relΔlogZ<max_relΔlogZ) && (Δβs<max_Δβs)
-        nsteps  *= 2
+        nsteps = min(max_nsteps,2nsteps)
     end
     # since betas changed the last, need to tune explorers and c one last time
     verbose && print(
@@ -53,9 +55,10 @@ function tune!(
     tune_explorers!(ns, nsteps = nsteps_expl, verbose = false)
     # nsteps = max(nsteps_max, 2^7 * nsteps_expl) # need high accuracy for final c estimate 
     # trVs = [similar(aggV, nsteps) for _ in 0:N]
-    verbose && println("done!\n\tTuning c using $(length(trVs[1])) steps per explorer...")
+    verbose && println("done!\n\tTuning c and nexpls using $(length(trVs[1])) steps per explorer...")
     collectVs!(ns, trVs, aggV)
     tune_c!(ns, trVs, aggV)
+    tune_nexpls!(ns.np.nexpls, trVs)              # tune nexpls by imposing a threshold on autocorrelation
     verbose && println("Tuning completed.")
 end
 
@@ -64,22 +67,55 @@ end
 # under the hood
 #######################################
 
+# tune nexpls by imposing a threshold on autocorrelation
+function tune_nexpls!(
+    nexpls::Vector{TI},
+    trVs::Vector{Vector{TF}};
+    cthrsh = 0.2
+    ) where {TI<:Int, TF<:AbstractFloat}
+    # compute autocorrelations and build design matrix
+    acs = [autocor(trV) for trV in trVs[2:end]];
+    X   = reshape(collect(0:(length(acs[1])-1)),(length(acs[1]),1))
+    L   = log(cthrsh)
+    for i in eachindex(nexpls)
+        ac  = acs[i]
+        idx = findfirst(x->isless(x,cthrsh), ac) # attempt to find cthrsh in acs
+        if !isnothing(idx)
+            nexpls[i] = idx - 1                  # acs starts at lag 0
+        else                                     # extrapolate with model ac[n]=exp(ρn)
+            y = log.(ac)
+            ρ = (X \ y)[1]                       # solve least-squares: Xρ ≈ y
+            nexpls[i] = ceil(L/ρ)                # x = e^{ρn} => log(x) = ρn => n = log(x)/ρ
+        end
+    end
+    # smooth the results
+    N          = length(nexpls)
+    lognxs     = log.(nexpls)
+    spl        = fit(SmoothingSpline, 1/N:1/N:1, lognxs, .0001)
+    lognxspred = predict(spl) # fitted vector
+    for i in eachindex(nexpls)
+        nexpls[i] = ceil(TI, exp(lognxspred[i]))
+    end
+end
+
 # tune the explorers' parameters
-function tune_explorers!(ns::NRSTSampler;kwargs...)
+function tune_explorers!(ns::NRSTSampler;smooth=true,kwargs...)
     Threads.@threads for expl in ns.explorers
         tune!(expl;kwargs...)
     end
+    smooth && smooth_params!(ns.explorers,ns.np.betas)
 end
 
 # tune the explorers' parameters serially. can use previous expl's params as
 # warm start for the next.
-function tune_explorers_serial!(ns::NRSTSampler;kwargs...)
+function tune_explorers_serial!(ns::NRSTSampler;smooth=true,kwargs...)
     tune!(ns.explorers[1];kwargs...)
     for i in 2:ns.np.N
         # use previous explorer's params as warm start
         pars = params(ns.explorers[i-1])
         tune!(ns.explorers[i], pars;kwargs...)
     end
+    smooth && smooth_params!(ns.explorers,ns.np.betas)
 end
 
 # Tune c and betas using independent runs of the explorers

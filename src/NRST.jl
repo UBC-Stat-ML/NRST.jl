@@ -11,8 +11,10 @@ using Printf
 using ProgressMeter: ProgressMeter
 using Random
 using Roots: find_zero
+using SmoothingSplines: SmoothingSpline, fit, predict
 using StaticArrays: MVector
 using Statistics
+using StatsBase: autocor
 using StatsPlots: density
 using Suppressor: @suppress_err
 using Turing: Turing
