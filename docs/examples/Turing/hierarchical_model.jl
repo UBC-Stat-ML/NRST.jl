@@ -1,17 +1,19 @@
 # ---
 # cover: assets/hierarchical_model.png
 # title: Hierarchical model
+# description: A random effects model coded in Turing.
 # ---
 
-# This is almost exactly the same model defined in 
+# This is almost exactly the same model defined in
 # [Yao et al. (2021, §6.3)](https://arxiv.org/abs/2006.12335)
 # (code [here](https://github.com/yao-yl/Multimodal-stacking-code/blob/e698da0ccea048f526356822f423aebbacaf7c2f/code/Parametrization%20and%20zero%20avoiding%20priors/random_effect.stan)),
 # except for the fact that---since we are restricted to proper priors---we put
-# a Cauchy prior on ``\mu``. The data was simulated by us from the same model,
-# and is reminiscent of the classical "Eight Schools Problem" posed by 
+# a Cauchy prior on ``\mu``. and is reminiscent of the classical 
+# "Eight Schools Problem" posed by
 # [Rubin (1981)](https://www.jstor.org/stable/1164617).
+# The data was simulated by us from the same model.
 
-# ## Defining and instantiating a Turing model
+# ## Implementation using NRST
 
 using Distributions, DynamicPPL, Plots, DelimitedFiles
 using NRST
@@ -33,26 +35,21 @@ using NRST
     end
 end
 
-# ## Loading the data and instantiating the model
+# Loading the data and instantiating the model
 Y = readdlm(
     joinpath(dirname(pathof(NRST)), "..", "data", "simulated8schools.csv"),
      ',', Float64
 );
 model = HierarchicalModel(Y);
 
-# ## Building, tuning, and running NRST in parallel
-# We can now build an NRST sampler using the model. The following commands will
-# instantiate an NRSTSampler and tune it.
-ns = NRSTSampler(model, N = 100, verbose = true);
-
-# Using the tuned sampler, we run 1024 tours in parallel.
+# Build an NRST sampler for the model, tune it, sample with it, and show diagnostics
+ns = NRSTSampler(model, N = 75, verbose = true);
 res = parallel_run(ns, ntours = 1024);
-
-# ## Visual diagnostics
 plots = diagnostics(ns,res);
 plot(plots..., layout = (3,2), size = (800,1000))
 
 # save cover image #src
 mkpath("assets") #src
 savefig(plots[3], "assets/hierarchical_model.png") #src
+
 

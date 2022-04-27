@@ -17,9 +17,9 @@ struct TuringFuns{TV,TVr,Tr,Tmod,Tspl,TVi} <: Funs
 end
 
 function TuringFuns(model::DPPL.Model)
-    viout   = DPPL.VarInfo(model)             # build a TypedVarInfo
-    spl     = DPPL.Sampler(Turing.HMC(0.1,5)) # build a dummy sampler that works in unconstrained space
-    DPPL.link!(viout, spl)                    # force transformation 𝕏 → ℝ
+    viout   = DPPL.VarInfo(model)            # build a TypedVarInfo
+    spl     = DPPL.SampleFromPrior()         # DPPL.Sampler(Turing.HMC(0.1,5)) # build a dummy sampler for using link!
+    DPPL.link!(viout, spl)                   # force transformation 𝕏 → ℝ
     randref = gen_randref(viout, spl, model)
     V       = gen_V(viout, spl, model)
     Vref    = gen_Vref(viout, spl, model)

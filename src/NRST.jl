@@ -17,7 +17,6 @@ using Statistics
 using StatsBase: autocor
 using StatsPlots: density
 using Suppressor: @suppress_err
-using Turing: Turing
 using UnPack: @unpack
 
 # NRSTSampler.jl

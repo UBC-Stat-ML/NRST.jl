@@ -23,6 +23,9 @@ function trapez(xs,ys)
     return c
 end
 
+#######################################
+# stepping stone
+#######################################
 
 # forward stepping stone: does not use samples at i=N+1
 # Z_N/Z_0 = prod_{i=1}^N Z_i/Z_{i-1}
@@ -42,24 +45,7 @@ end
 # 1) samples in parallel V^{i}_{1:S_{i}}, for i ∈ 0:(N-1)
 # 2) compute at each i ∈ 1:N: -log(S_{i-1}) + logsumexp(-(beta_i-beta_{i-1}) V^{i-1}_{1:S_{i-1}})
 # 3) cumsum
-function stepping_stone!(
-    zs::TV,
-    bs::TV,
-    trVs::Vector{TV}
-    ) where {TF<:AbstractFloat, TV<:Vector{TF}}
-    zs[1] = zero(TF)
-    acc   = zero(TF)
-    for i in 1:(length(zs)-1)
-        db      = bs[i+1] - bs[i]
-        acc    += logsumexp(-db*trVs[i]) - log(length(trVs[i]))
-        zs[i+1] = acc
-    end
-end
-function stepping_stone(bs, trVs)
-    zs = similar(bs)
-    stepping_stone!(zs, bs, trVs)
-    return zs
-end
+
 
 # reverse stepping stone: does not use samples at i=0
 # log(Z_N/Z_0) = -[log(Z_0/Z_N)] = - sum_{i=0}^{N-1} log(Z_i/Z_{i+1})
@@ -77,21 +63,46 @@ end
 # 1) samples in parallel V^{i}_{1:S_{i}}, for i ∈ 1:N
 # 2) compute at each i ∈ 1:N: log(S_{i}) - logsumexp((beta_i-beta_{i-1}) V^{i}_{1:S_{i}})
 # 3) cumsum
-function stepping_stone_bwd!(
+
+# this function uses both forward and backward estimators, taking the max of both
+function stepping_stone!(
     zs::TV,
     bs::TV,
     trVs::Vector{TV}
     ) where {TF<:AbstractFloat, TV<:Vector{TF}}
     zs[1] = zero(TF)
     acc   = zero(TF)
+    llen  = log(length(trVs[1]))
     for i in 2:length(zs)
         db    = bs[i] - bs[i-1]
-        acc  += log(length(trVs[i])) - logsumexp(db*trVs[i])
+        fwd   = logsumexp(-db*trVs[i-1]) - llen
+        llen  = log(length(trVs[i]))
+        bwd   = llen - logsumexp(db*trVs[i])
+        acc  += max(fwd, bwd)
         zs[i] = acc
     end
 end
-function stepping_stone_bwd(bs, trVs)
+function stepping_stone(bs, trVs)
     zs = similar(bs)
-    stepping_stone_bwd!(zs, bs, trVs)
+    stepping_stone!(zs, bs, trVs)
     return zs
 end
+
+# function stepping_stone_fwd!(
+#     zs::TV,
+#     bs::TV,
+#     trVs::Vector{TV}
+#     ) where {TF<:AbstractFloat, TV<:Vector{TF}}
+#     zs[1] = zero(TF)
+#     acc   = zero(TF)
+#     for i in 1:(length(zs)-1)
+#         db      = bs[i+1] - bs[i]
+#         acc    += logsumexp(-db*trVs[i]) - log(length(trVs[i]))
+#         zs[i+1] = acc
+#     end
+# end
+# function stepping_stone_fwd(bs, trVs)
+#     zs = similar(bs)
+#     stepping_stone_fwd!(zs, bs, trVs)
+#     return zs
+# end

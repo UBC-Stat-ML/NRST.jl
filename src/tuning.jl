@@ -15,6 +15,7 @@ function tune!(
     nsteps_init::Int   = 2000,
     max_nsteps::Int    = 65_536,
     nsteps_expl::Int   = 500,    # only used for tuning the explorers' params
+    maxcor::Real       = 0.1,
     verbose::Bool      = true
     )
     N       = ns.np.N
@@ -58,7 +59,7 @@ function tune!(
     verbose && println("done!\n\tTuning c and nexpls using $(length(trVs[1])) steps per explorer...")
     collectVs!(ns, trVs, aggV)
     tune_c!(ns, trVs, aggV)
-    tune_nexpls!(ns.np.nexpls, trVs)              # tune nexpls by imposing a threshold on autocorrelation
+    tune_nexpls!(ns.np.nexpls, trVs, maxcor=maxcor)
     verbose && println("Tuning completed.")
 end
 
@@ -71,15 +72,15 @@ end
 function tune_nexpls!(
     nexpls::Vector{TI},
     trVs::Vector{Vector{TF}};
-    cthrsh = 0.2
+    maxcor::AbstractFloat
     ) where {TI<:Int, TF<:AbstractFloat}
     # compute autocorrelations and build design matrix
     acs = [autocor(trV) for trV in trVs[2:end]];
     X   = reshape(collect(0:(length(acs[1])-1)),(length(acs[1]),1))
-    L   = log(cthrsh)
+    L   = log(maxcor)
     for i in eachindex(nexpls)
         ac  = acs[i]
-        idx = findfirst(x->isless(x,cthrsh), ac) # attempt to find cthrsh in acs
+        idx = findfirst(x->isless(x,maxcor), ac) # attempt to find maxcor in acs
         if !isnothing(idx)
             nexpls[i] = idx - 1                  # acs starts at lag 0
         else                                     # extrapolate with model ac[n]=exp(ρn)
@@ -226,7 +227,7 @@ function optimize_betas!(betas::Vector{K}, R::Matrix{K}) where {K<:AbstractFloat
     Λnorm, Λvalsnorm = get_lambda(betas, R) # note: this the only place where R is used
 
     # find newbetas by inverting Λnorm with a uniform grid on the range
-    N           = size(R, 1) - 1
+    N           = length(betas) - 1
     Δ           = convert(K,1/N) # step size of the grid
     targetΛ     = zero(K)
     newbetas    = similar(betas)
