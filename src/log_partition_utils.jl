@@ -41,10 +41,6 @@ end
 # ≈ (1/S) sum_{n=1}^{S_{i-1}} e^{-(beta_i-beta_{i-1}) V(x_n)}, x_{1:S_{i-1}} ~ pi^{i-1}
 # <=> log(Z_i/Z_{i-1}) ≈ -log(S_{i-1}) + logsumexp(-(beta_i-beta_{i-1}) V(x_{1:S_{i-1}}))
 #  => log(Z_N/Z_0) = sum_{i=1}^N [-log(S_{i-1}) + logsumexp(-(beta_i-beta_{i-1}) V(x_{1:S_{i-1}}))]
-# Recipe for the parallel version
-# 1) samples in parallel V^{i}_{1:S_{i}}, for i ∈ 0:(N-1)
-# 2) compute at each i ∈ 1:N: -log(S_{i-1}) + logsumexp(-(beta_i-beta_{i-1}) V^{i-1}_{1:S_{i-1}})
-# 3) cumsum
 
 
 # reverse stepping stone: does not use samples at i=0
@@ -59,17 +55,15 @@ end
 # ≈ (1/S_{i+1}) sum_{n=1}^{S_{i+1}} e^{(beta_{i+1}-beta_i) V_n},    V_{1:S_{i+1}} ~ pi^{i+1}
 # <=> log(Z_i/Z_{i+1}) ≈ -log(S_{i+1}) + logsumexp((beta_{i+1}-beta_i) V_{1:S_{i+1}})
 #  => log(Z_N/Z_0) = sum_{i=1}^N [log(S_{i+1}) - logsumexp((beta_{i+1}-beta_i) V_{1:S_{i+1}})]
-# Recipe for the parallel version
-# 1) samples in parallel V^{i}_{1:S_{i}}, for i ∈ 1:N
-# 2) compute at each i ∈ 1:N: log(S_{i}) - logsumexp((beta_i-beta_{i-1}) V^{i}_{1:S_{i}})
-# 3) cumsum
 
-# this function uses both forward and backward estimators, taking the max of both
+# this function uses both forward and backward estimators, taking their mean
+const STEPSTONE_FWD_WEIGHT = Ref(0.5)
 function stepping_stone!(
     zs::TV,
     bs::TV,
     trVs::Vector{TV}
     ) where {TF<:AbstractFloat, TV<:Vector{TF}}
+    w     = STEPSTONE_FWD_WEIGHT[]
     zs[1] = zero(TF)
     acc   = zero(TF)
     llen  = log(length(trVs[1]))
@@ -78,7 +72,7 @@ function stepping_stone!(
         fwd   = logsumexp(-db*trVs[i-1]) - llen
         llen  = log(length(trVs[i]))
         bwd   = llen - logsumexp(db*trVs[i])
-        acc  += max(fwd, bwd)
+        acc  += w*fwd + (1-w)*bwd
         zs[i] = acc
     end
 end

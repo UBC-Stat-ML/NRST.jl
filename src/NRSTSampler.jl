@@ -23,7 +23,7 @@ Base.copy(fns::SimpleFuns) = fns # dont do anything
 # encapsulates all the specifics of the tempered problem
 # NOTE: when parallelizing, all fields must be shared except possibly
 # for "fns".
-struct NRSTProblem{TFuns,K<:AbstractFloat,A<:AbstractVector{K},TInt<:Int}
+struct NRSTProblem{TFuns,K<:AbstractFloat,A<:Vector{K},TInt<:Int}
     fns::TFuns           # struct that contains at least V, Vref, and randref
     N::TInt              # number of states additional to reference (N+1 in total)
     betas::A             # vector of tempering parameters (length N+1)
@@ -78,16 +78,25 @@ function NRSTSampler(
     verbose::Bool  = false
     )
     if ismissing(betas)
-        betas = push!(pushfirst!(sort(rand(N-1)),0.),1.)                        # initialize with uniformly sampled gridpoints
+        betas = init_grid(N)
     else
         N = length(betas) - 1
     end
-    np    = NRSTProblem(fns, N, betas, similar(betas), use_mean, fill(nexpl,N)) # instantiate an NRSTProblem
-    x     = fns.randref()                                                       # draw an initial point
-    es    = init_explorers(fns, betas, x)                                       # instantiate a vector of N explorers
-    ns    = NRSTSampler(np, es, x, MVector(0,1), Ref(fns.V(x)))
-    tune && tune!(ns, verbose = verbose)                                        # tune explorers, c, and betas
+    np = NRSTProblem(fns, N, betas, similar(betas), use_mean, fill(nexpl,N)) # instantiate an NRSTProblem
+    x  = initx(fns.randref())                                                # draw an initial point
+    es = init_explorers(fns, betas, x)                                       # instantiate a vector of N explorers
+    ns = NRSTSampler(np, es, x, MVector(0,1), Ref(fns.V(x)))
+    tune && tune!(ns, verbose = verbose)                                     # tune explorers, c, and betas
     return ns
+end
+
+init_grid(N::Int) = collect(range(0,1,N+1))
+
+# safe initialization for arrays with entries in reals
+# robust against disruptions by heavy tailed reference distributions
+function initx(pre_x::AbstractArray{TR}) where {TR<:Real}
+    uno = one(TR)
+    rand(Uniform(-uno,uno), size(pre_x))
 end
 
 # constructor for a given (V,Vref,randref) triplet
@@ -98,11 +107,11 @@ end
 
 # copy-constructor, using a given NRSTSampler (usually already tuned)
 function NRSTSampler(ns::NRSTSampler)
-    newfns    = copy(ns.np.fns)            # the only element in np that we copy
-    newnp     = NRSTProblem(ns.np, newfns) # build new Problem using new fns
-    newx      = newfns.randref()
-    explorers = init_explorers(newfns, newnp.betas, newx)
-    NRSTSampler(newnp, explorers, newx, MVector(0,1), Ref(newfns.V(newx)))
+    newfns = copy(ns.np.fns)            # the only element in np that we copy
+    newnp  = NRSTProblem(ns.np, newfns) # build new Problem using new fns
+    newx   = newfns.randref()
+    expls  = init_explorers(newfns, newnp.betas, newx)
+    NRSTSampler(newnp, expls, newx, MVector(0,1), Ref(newfns.V(newx)))
 end
 
 ###############################################################################

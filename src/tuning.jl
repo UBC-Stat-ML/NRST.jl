@@ -12,7 +12,7 @@ function tune!(
     max_rounds::Int    = 10,
     max_relΔlogZ::Real = 0.001,
     max_Δβs::Real      = 0.01,
-    nsteps_init::Int   = 2000,
+    nsteps_init::Int   = 500,
     max_nsteps::Int    = 65_536,
     nsteps_expl::Int   = 500,    # only used for tuning the explorers' params
     maxcor::Real       = 0.1,
@@ -25,7 +25,8 @@ function tune!(
     aggV    = similar(ns.np.c)
     trVs    = [similar(aggV, nsteps) for _ in 0:N]
     conv    = false
-    verbose && println("Tuning started ($(Threads.nthreads()) threads).")
+    verbose && print(
+        "Tuning started ($(Threads.nthreads()) threads). Current grid:");plot_grid(ns.np.betas)
     while !conv && (round < max_rounds)
         round += 1
         verbose && print("Round $round:\n\tTuning explorers...")
@@ -41,7 +42,7 @@ function tune!(
         verbose && @printf(
             "done!\n\t\tmax(Δbetas)=%.3f.\n\t\tlog(Z_N/Z_0)=%.1f.\n\t\trelΔlogZ=%.1f%%\n", 
             Δβs, -ns.np.c[N+1], 100*relΔlogZ
-        )
+        ); plot_grid(ns.np.betas)
 
         # check convergence
         conv = !isnan(relΔlogZ) && (relΔlogZ<max_relΔlogZ) && (Δβs<max_Δβs)
@@ -156,7 +157,7 @@ end
 # utility to reset caches in all explorers
 function reset_explorers!(ns::NRSTSampler)
     for e in ns.explorers
-        set_state!(e, ns.x)
+        set_state!(e, ns.x) # note: ns.x is preserved during "tune!", so this should equal the initialization point
     end
 end
 
@@ -257,4 +258,20 @@ function get_lambda(betas::Vector{K}, R::Matrix{K}) where {K<:AbstractFloat}
     return (Λnorm, Λvalsnorm)
 end
 
-
+# plot grid using UnicodePlots, mimicking a rugplot
+function plot_grid(bs)
+    len = min(displaysize(stdout)[2], length(bs))
+    display(UnicodePlots.histogram(
+        bs,
+        stats   = false,
+        nbins   = len,
+        vertical=true,
+        width   = len,
+        height  = 1,
+        grid    = false,
+        border  = :none,
+        yticks  = false,
+        margin  = 0,
+        padding = 0
+    ))    
+end

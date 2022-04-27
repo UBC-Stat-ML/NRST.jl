@@ -1,3 +1,7 @@
+###############################################################################
+# Basic model
+###############################################################################
+
 using Distributions, DynamicPPL, Plots
 using NRST
 
@@ -11,12 +15,22 @@ end
 model = Lnmodel(randn(30));
 
 # Build an NRST sampler for the model, tune it, sample with it, and show diagnostics
-ns  = NRSTSampler(model, N=15, verbose = true);
-extrema(ns.np.nexpls)
-res = parallel_run(ns, ntours = 1024);
-plots = diagnostics(ns,res);
-plot(plots..., layout = (3,2), size = (800,1000))
+ns = NRSTSampler(model, N=75, verbose = true);
 
+# compare thermo v stepping stone
+N= ns.np.N
+nsteps = 16000
+aggV = similar(ns.np.c);
+trVs = [similar(aggV,nsteps) for _ in 0:N];
+NRST.collectVs!(ns,trVs,aggV);
+thrm = -NRST.trapez(ns.np.betas,aggV);
+sstn = NRST.stepping_stone(ns.np.betas, trVs);
+are = abs.(thrm[2:end]-sstn[2:end]) ./ abs.(thrm[2:end]);
+plot(ns.np.betas[2:end], are, label="err",palette=NRST.DEF_PAL)
+
+###############################################################################
+# Hierarchical model
+###############################################################################
 
 using Distributions, DynamicPPL, Plots, DelimitedFiles
 using NRST
@@ -46,14 +60,16 @@ Y = readdlm(
 model = HierarchicalModel(Y);
 
 # Build an NRST sampler for the model, tune it, sample with it, and show diagnostics
-ns = NRSTSampler(model, N = 50, verbose = true);
+ns = NRSTSampler(model, N=75, verbose=true);
 extrema(ns.np.nexpls)
-
 res = parallel_run(ns, ntours = 1024);
 plots = diagnostics(ns,res);
 plot(plots..., layout = (3,2), size = (800,1000))
 
 
+###############################################################################
+# XY model
+###############################################################################
 
 
 using Lattices, LogExpFunctions, Distributions, Plots

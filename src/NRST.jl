@@ -2,7 +2,7 @@ module NRST
 
 using ColorSchemes: seaborn_colorblind
 using DataFrames: DataFrame
-using Distributions: Exponential, Normal
+using Distributions: Exponential, Normal, Uniform
 using DynamicPPL: DynamicPPL
 using Interpolations: interpolate, SteffenMonotonicInterpolation
 using LogExpFunctions: logsumexp
@@ -17,6 +17,7 @@ using Statistics
 using StatsBase: autocor
 using StatsPlots: density
 using Suppressor: @suppress_err
+using UnicodePlots: UnicodePlots
 using UnPack: @unpack
 
 # NRSTSampler.jl
