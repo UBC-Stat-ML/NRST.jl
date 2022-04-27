@@ -12,10 +12,10 @@ function tune!(
     max_rounds::Int    = 10,
     max_relΔlogZ::Real = 0.001,
     max_Δβs::Real      = 0.01,
-    nsteps_init::Int   = 500,
+    nsteps_init::Int   = 256,
     max_nsteps::Int    = 65_536,
     nsteps_expl::Int   = 500,    # only used for tuning the explorers' params
-    maxcor::Real       = 0.1,
+    maxcor::Real       = 0.8,
     verbose::Bool      = true
     )
     N       = ns.np.N
@@ -60,10 +60,10 @@ function tune!(
     verbose && println("done!\n\tTuning c and nexpls using $(length(trVs[1])) steps per explorer...")
     collectVs!(ns, trVs, aggV)
     tune_c!(ns, trVs, aggV)
-    tune_nexpls!(ns.np.nexpls, trVs, maxcor=maxcor)
+    tune_nexpls!(ns.np.nexpls, trVs, maxcor)
     verbose && lineplot_term(
         ns.np.betas[2:end], ns.np.nexpls, xlabel = "β",
-        title="Exploration steps to reach autocor≤$maxcor"
+        title="Exploration steps needed to get correlation ≤ $maxcor"
     ); println("Tuning completed.")
 end
 
@@ -75,7 +75,7 @@ end
 # tune nexpls by imposing a threshold on autocorrelation
 function tune_nexpls!(
     nexpls::Vector{TI},
-    trVs::Vector{Vector{TF}};
+    trVs::Vector{Vector{TF}},
     maxcor::AbstractFloat
     ) where {TI<:Int, TF<:AbstractFloat}
     # compute autocorrelations and build design matrix
@@ -187,6 +187,15 @@ function collectVs!(
     end
 end
 
+# allocating version
+function collectVs(ns::NRSTSampler, nsteps::Int)
+    N    = ns.np.N
+    aggV = similar(ns.np.c)
+    trVs = [similar(aggV, nsteps) for _ in 0:N]
+    NRST.collectVs!(ns,trVs,aggV)
+    return (trVs = trVs,aggV = aggV)
+end
+
 # for each sample V(x) at each level, estimate the conditional rejection
 # probabilities in both directions. Recall that
 #   ap(x) = min{1,exp(-[(β' - β)*V(x) - (c' - c)])}
@@ -266,6 +275,7 @@ function plot_grid(bs)
     len = min(displaysize(stdout)[2], length(bs))
     display(UnicodePlots.histogram(
         bs,
+        xlabel  = "β",
         stats   = false,
         nbins   = len,
         vertical=true,

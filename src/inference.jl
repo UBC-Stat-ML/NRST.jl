@@ -83,11 +83,9 @@ function log_partition(
     @unpack fns, betas, N = ns.np
     infres = inference(res, h = fns.V, at = 0:N, α = 1-(1-α)/N)
     if infres[:,"Mean"][1] > 1e16
-        @info """
-        log_partition:
-        V likely not integrable under the reference; using stepping stone.
-        Confidence region not yet implemented for this method.
-        """
+        @info "log_partition: " *
+        "V likely not integrable under the reference; using stepping stone." *
+        "Confidence region not yet implemented for this method."
         trVs = [fns.V.(xs) for xs in res.xarray]
         ms   = stepping_stone(betas, trVs)
         lbs  = ubs = fill(convert(TF, NaN), N+1)     # no confidence region
