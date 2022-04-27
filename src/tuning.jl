@@ -61,7 +61,10 @@ function tune!(
     collectVs!(ns, trVs, aggV)
     tune_c!(ns, trVs, aggV)
     tune_nexpls!(ns.np.nexpls, trVs, maxcor=maxcor)
-    verbose && println("Tuning completed.")
+    verbose && lineplot_term(
+        ns.np.betas[2:end], ns.np.nexpls, xlabel = "β",
+        title="Exploration steps to reach autocor≤$maxcor"
+    ); println("Tuning completed.")
 end
 
 
@@ -274,4 +277,18 @@ function plot_grid(bs)
         margin  = 0,
         padding = 0
     ))    
+end
+
+function lineplot_term(xs,ys;kwargs...)
+    len = min(displaysize(stdout)[2], length(xs))
+    display(UnicodePlots.lineplot(
+        xs, ys;
+        width   = len,
+        height  = 7,
+        grid    = false,
+        border  = :none,
+        margin  = 0,
+        padding = 0,
+        kwargs...
+    ))
 end

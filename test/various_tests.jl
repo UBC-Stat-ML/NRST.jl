@@ -60,8 +60,12 @@ Y = readdlm(
 model = HierarchicalModel(Y);
 
 # Build an NRST sampler for the model, tune it, sample with it, and show diagnostics
-ns = NRSTSampler(model, N=75, verbose=true);
+ns = NRSTSampler(model, N=80, verbose=true, tune=false);
+tune!(ns, max_rounds=1)
 extrema(ns.np.nexpls)
+
+
+
 res = parallel_run(ns, ntours = 1024);
 plots = diagnostics(ns,res);
 plot(plots..., layout = (3,2), size = (800,1000))
