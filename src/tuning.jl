@@ -9,7 +9,7 @@
 # full tuning
 function tune!(
     ns::NRSTSampler;
-    max_rounds::Int    = 10,
+    max_rounds::Int    = 16,
     max_relΔlogZ::Real = 0.001,
     max_Δβs::Real      = 0.01,
     nsteps_init::Int   = 256,
@@ -272,8 +272,8 @@ end
 
 # plot grid using UnicodePlots, mimicking a rugplot
 function plot_grid(bs)
-    len = min(displaysize(stdout)[2], length(bs))
-    display(UnicodePlots.histogram(
+    len = min(displaysize(stdout)[2]-8, length(bs))
+    p = UnicodePlots.histogram(
         bs,
         xlabel  = "β",
         stats   = false,
@@ -286,12 +286,15 @@ function plot_grid(bs)
         yticks  = false,
         margin  = 0,
         padding = 0
-    ))    
+    )
+    display(p)
+    println()
+    p    
 end
 
 function lineplot_term(xs,ys;kwargs...)
-    len = min(displaysize(stdout)[2], length(xs))
-    display(UnicodePlots.lineplot(
+    len = min(displaysize(stdout)[2]-8, length(xs))
+    p=UnicodePlots.lineplot(
         xs, ys;
         width   = len,
         height  = 7,
@@ -300,5 +303,10 @@ function lineplot_term(xs,ys;kwargs...)
         margin  = 0,
         padding = 0,
         kwargs...
-    ))
+    )
+    display(p)
+    println()
+    p
 end
+
+

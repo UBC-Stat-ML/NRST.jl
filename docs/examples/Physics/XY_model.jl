@@ -23,7 +23,7 @@
 # ```math
 # \begin{aligned}
 # x_s = T(\theta_s) &= \text{logit}\left(\frac{\theta_s}{2\pi} + \frac{1}{2}\right) \\
-# \theta_s = T^{-1}(x_s) &= \pi(2\text{logistic}-1)
+# \theta_s = T^{-1}(x_s) &= \pi(2\text{logistic}(x_s)-1)
 # \end{aligned}
 # ```
 # Then, simulating from the transformed reference amounts to pushing samples of
@@ -82,7 +82,7 @@ ns = NRSTSampler(
     V,
     Vref,
     randref,
-    N = 100,
+    N = 200,
     verbose = true
 );
 res = parallel_run(ns, ntours = 1024);
