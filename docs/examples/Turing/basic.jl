@@ -1,5 +1,5 @@
 # ---
-# cover: assets/basic_Turing.svg
+# cover: assets/basic.svg
 # title: A simple LogNormal-Normal variance model
 # description: Using NRST with a basic Turing model.
 # ---

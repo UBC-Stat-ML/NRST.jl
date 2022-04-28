@@ -18,7 +18,7 @@ function diagnostics(
     )
 
     # rejection rates
-    rejrates=res.rejecs ./ res.visits
+    rejrates=res.rpacc ./ res.visits
     prrs = plot(
         0:ns.np.N, push!(rejrates[1:(end-1),1],NaN),
         ylims = (0., Inf), legend = :bottomright, linestyle = :dash,
@@ -36,7 +36,7 @@ function diagnostics(
 
     # Lambda Plot
     betas = ns.np.betas;
-    Λnorm, _ = get_lambda(betas, res.rejecs ./ res.visits);
+    Λnorm, _ = get_lambda(betas, rejrates);
     plam = plot_lambda(Λnorm,betas,"")
 
     # Plot of the log-partition function

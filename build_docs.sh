@@ -46,7 +46,7 @@ else
     echo "Compiling docs using $nthreads threads (takes a while)..."
 fi
 
-DEMOCARDS_BUILD_ASSETS=$build_assets DOCUMENTER_DEBUG=true JULIA_DEBUG=DemoCards GKSwstype=nul julia -t $nthreads --project=docs/ -e "include(popfirst!(ARGS))" docs/make.jl
+DEMOCARDS_BUILD_ASSETS=$build_assets DOCUMENTER_DEBUG=true JULIA_DEBUG=Documenter GKSwstype=nul julia -t $nthreads --project=docs/ -e "include(popfirst!(ARGS))" docs/make.jl
 
 # serve using LiveServer
 jlcode=$(cat << EOF

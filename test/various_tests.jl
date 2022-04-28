@@ -15,18 +15,10 @@ end
 model = Lnmodel(randn(30));
 
 # Build an NRST sampler for the model, tune it, sample with it, and show diagnostics
-ns = NRSTSampler(model, N=75, verbose = true);
-
-# compare thermo v stepping stone
-N= ns.np.N
-nsteps = 16000
-aggV = similar(ns.np.c);
-trVs = [similar(aggV,nsteps) for _ in 0:N];
-NRST.collectVs!(ns,trVs,aggV);
-thrm = -NRST.trapez(ns.np.betas,aggV);
-sstn = NRST.stepping_stone(ns.np.betas, trVs);
-are = abs.(thrm[2:end]-sstn[2:end]) ./ abs.(thrm[2:end]);
-plot(ns.np.betas[2:end], are, label="err",palette=NRST.DEF_PAL)
+ns = NRSTSampler(model, verbose = true);
+res = parallel_run(ns, ntours = 1024);
+plots = diagnostics(ns,res);
+plot(plots..., layout = (3,2), size = (800,1000))
 
 ###############################################################################
 # Hierarchical model
@@ -78,9 +70,9 @@ using NRST
 # Define the basics of the model
 const S   = 8;
 const Ssq = S*S;
-const sq  = Square(S,S);
+const sq  = Square(S,S);          # define a square lattice
 const βᶜ  = 1.1199;               # critical temp for J=1: https://iopscience.iop.org/article/10.1088/0305-4470/38/26/003
-const J   = 2βᶜ;                  # coupling constant to force βᶜ = 0.5 in our parametrization
+const J   = 2βᶜ;                  # coupling constant > 1 to force βᶜ < 1 in our parametrization
 T(θ)      = logit((θ/pi + 1)/2)   # θ ∈ (-pi,pi) ↦ x ∈ ℝ
 Tinv(x)   = pi*(2logistic(x) - 1) # x ∈ ℝ ↦ θ ∈ (-pi,pi)
 
@@ -107,10 +99,13 @@ ns = NRSTSampler(
     V,
     Vref,
     randref,
-    N = 100,
+    N = 200,
     verbose = true
 );
-extrema(ns.np.nexpls)
+println(extrema(ns.np.nexpls));
 res = parallel_run(ns, ntours = 1024);
 plots = diagnostics(ns,res);
 plot(plots..., layout = (3,2), size = (800,1000))
+
+
+NRST.tune_nexpls!(ns, res, 0.1)

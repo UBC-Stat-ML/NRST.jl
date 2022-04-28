@@ -25,8 +25,9 @@ function tune!(
     aggV    = similar(ns.np.c)
     trVs    = [similar(aggV, nsteps) for _ in 0:N]
     conv    = false
-    verbose && print(
-        "Tuning started ($(Threads.nthreads()) threads). Current grid:");plot_grid(ns.np.betas)
+    verbose && println(
+        "Tuning started ($(Threads.nthreads()) threads)."
+    ); plot_grid(ns.np.betas, title="Histogram of βs: initial grid")
     while !conv && (round < max_rounds)
         round += 1
         verbose && print("Round $round:\n\tTuning explorers...")
@@ -42,7 +43,7 @@ function tune!(
         verbose && @printf(
             "done!\n\t\tmax(Δbetas)=%.2f.\n\t\tlog(Z_N/Z_0)=%.1f.\n\t\trelΔlogZ=%.1f%%\n", 
             Δβs, -ns.np.c[N+1], 100*relΔlogZ
-        ); plot_grid(ns.np.betas)
+        ); plot_grid(ns.np.betas, title="Histogram of βs: round $round")
 
         # check convergence
         conv = !isnan(relΔlogZ) && (relΔlogZ<max_relΔlogZ) && (Δβs<max_Δβs)
@@ -71,37 +72,6 @@ end
 #######################################
 # under the hood
 #######################################
-
-# tune nexpls by imposing a threshold on autocorrelation
-function tune_nexpls!(
-    nexpls::Vector{TI},
-    trVs::Vector{Vector{TF}},
-    maxcor::AbstractFloat
-    ) where {TI<:Int, TF<:AbstractFloat}
-    # compute autocorrelations and build design matrix
-    acs = [autocor(trV) for trV in trVs[2:end]];
-    X   = reshape(collect(0:(length(acs[1])-1)),(length(acs[1]),1))
-    L   = log(maxcor)
-    for i in eachindex(nexpls)
-        ac  = acs[i]
-        idx = findfirst(x->isless(x,maxcor), ac) # attempt to find maxcor in acs
-        if !isnothing(idx)
-            nexpls[i] = idx - 1                  # acs starts at lag 0
-        else                                     # extrapolate with model ac[n]=exp(ρn)
-            y = log.(ac)
-            ρ = (X \ y)[1]                       # solve least-squares: Xρ ≈ y
-            nexpls[i] = ceil(L/ρ)                # x = e^{ρn} => log(x) = ρn => n = log(x)/ρ
-        end
-    end
-    # smooth the results
-    N          = length(nexpls)
-    lognxs     = log.(nexpls)
-    spl        = fit(SmoothingSpline, 1/N:1/N:1, lognxs, .0001)
-    lognxspred = predict(spl) # fitted vector
-    for i in eachindex(nexpls)
-        nexpls[i] = ceil(TI, exp(lognxspred[i]))
-    end
-end
 
 # tune the explorers' parameters
 function tune_explorers!(ns::NRSTSampler;smooth=true,kwargs...)
@@ -196,6 +166,11 @@ function collectVs(ns::NRSTSampler, nsteps::Int)
     return (trVs = trVs,aggV = aggV)
 end
 
+# version for proper runs of NRST
+function collectVs(ns::NRSTSampler, res::RunResults)
+    [ns.np.fns.V.(xs) for xs in res.xarray]
+end
+
 # for each sample V(x) at each level, estimate the conditional rejection
 # probabilities in both directions. Recall that
 #   ap(x) = min{1,exp(-[(β' - β)*V(x) - (c' - c)])}
@@ -270,11 +245,52 @@ function get_lambda(betas::Vector{K}, R::Matrix{K}) where {K<:AbstractFloat}
     return (Λnorm, Λvalsnorm)
 end
 
+# tune nexpls by imposing a threshold on autocorrelation
+function tune_nexpls!(
+    nexpls::Vector{TI},
+    trVs::Vector{Vector{TF}},
+    maxcor::TF
+    ) where {TI<:Int, TF<:AbstractFloat}
+    acs = [autocor(trV) for trV in trVs[2:end]]  # compute autocorrelations
+    L   = log(maxcor)
+    for i in eachindex(nexpls)
+        ac  = acs[i]
+        idx = findfirst(x->isless(x,maxcor), ac) # attempt to find maxcor in acs
+        if !isnothing(idx)
+            nexpls[i] = idx - 1                  # acs starts at lag 0
+        else                                     # extrapolate with model ac[n]=exp(ρn)
+            l = length(ac)
+            X = reshape(collect(0:(l-1)),(l,1))  # build design matrix
+            y = log.(ac)
+            ρ = (X \ y)[1]                       # solve least-squares: Xρ ≈ y
+            nexpls[i] = ceil(L/ρ)                # x = e^{ρn} => log(x) = ρn => n = log(x)/ρ
+        end
+    end
+    # smooth the results
+    N          = length(nexpls)
+    lognxs     = log.(nexpls)
+    spl        = fit(SmoothingSpline, 1/N:1/N:1, lognxs, .0001)
+    lognxspred = predict(spl) # fitted vector
+    for i in eachindex(nexpls)
+        nexpls[i] = ceil(TI, exp(lognxspred[i]))
+    end
+end
+
+# method for proper runs of NRST
+function tune_nexpls!(ns::NRSTSampler, res::RunResults, args...)
+    tune_nexpls!(ns.np.nexpls, collectVs(ns, res), args...)
+end
+
+
+#######################################
+# plotting utilities
+#######################################
+
 # plot grid using UnicodePlots, mimicking a rugplot
-function plot_grid(bs)
+function plot_grid(bs;kwargs...)
     len = min(displaysize(stdout)[2]-8, length(bs))
     p = UnicodePlots.histogram(
-        bs,
+        bs;
         xlabel  = "β",
         stats   = false,
         nbins   = len,
@@ -285,7 +301,8 @@ function plot_grid(bs)
         border  = :none,
         yticks  = false,
         margin  = 0,
-        padding = 0
+        padding = 0,
+        kwargs...
     )
     display(p)
     println()
