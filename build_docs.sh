@@ -3,7 +3,7 @@
 # read params
 nthreads='0'
 build_assets='false'
-usagestr="usage: $(basename $0) [-t nthreads] [-b]"
+usagestr="usage: $(basename $0) [-t nthreads]"
 while getopts 't:b' flag; do
   case "${flag}" in
     b) build_assets='true' ;;
