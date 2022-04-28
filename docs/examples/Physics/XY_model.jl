@@ -1,5 +1,5 @@
 # ---
-# cover: assets/XY_model.png
+# cover: assets/XY_model.svg
 # title: XY model
 # description: Simulating the classical XY lattice model.
 # ---
@@ -82,14 +82,13 @@ ns = NRSTSampler(
     V,
     Vref,
     randref,
-    N = 200,
+    N = 250,
     verbose = true
 );
 res = parallel_run(ns, ntours = 1024);
 plots = diagnostics(ns,res);
 plot(plots..., layout = (3,2), size = (800,1000))
 
-# save cover image #src
-mkpath("assets") #src
-savefig(plots[3], "assets/XY_model.png") #src
+# save cover image #hide
+savefig(plots[3], "../covers/XY_model.svg") #hide
 

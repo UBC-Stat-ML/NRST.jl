@@ -1,5 +1,5 @@
 # ---
-# cover: assets/hierarchical_model.png
+# cover: assets/hierarchical_model.svg
 # title: Hierarchical model
 # description: A random effects model coded in Turing.
 # ---
@@ -48,8 +48,8 @@ res = parallel_run(ns, ntours = 1024);
 plots = diagnostics(ns,res);
 plot(plots..., layout = (3,2), size = (800,1000))
 
-# save cover image #src
-mkpath("assets") #src
-savefig(plots[3], "assets/hierarchical_model.png") #src
+# save cover image #hide
+savefig(plots[3], "../covers/hierarchical_model.svg") #hide
+
 
 

@@ -1,5 +1,5 @@
 # ---
-# cover: assets/basic_Turing.png
+# cover: assets/basic_Turing.svg
 # title: A simple LogNormal-Normal variance model
 # description: Using NRST with a basic Turing model.
 # ---
@@ -27,6 +27,5 @@ res = parallel_run(ns, ntours = 1024);
 plots = diagnostics(ns,res);
 plot(plots..., layout = (3,2), size = (800,1000))
 
-# save cover image #src
-mkpath("assets") #src
-savefig(plots[end], "assets/basic_Turing.png") #src
+# save cover image #hide
+savefig(plots[3], "../covers/basic.svg") #hide

@@ -75,7 +75,8 @@ function NRSTSampler(
     nexpl::Int     = 50,
     use_mean::Bool = true,
     tune::Bool     = true,
-    verbose::Bool  = false
+    verbose::Bool  = false,
+    kwargs...
     )
     if ismissing(betas)
         betas = init_grid(N)
@@ -86,7 +87,7 @@ function NRSTSampler(
     x  = initx(fns.randref())                                                # draw an initial point
     es = init_explorers(fns, betas, x)                                       # instantiate a vector of N explorers
     ns = NRSTSampler(np, es, x, MVector(0,1), Ref(fns.V(x)))
-    tune && tune!(ns, verbose = verbose)                                     # tune explorers, c, and betas
+    tune && tune!(ns; verbose = verbose, kwargs...)                          # tune explorers, c, and betas
     return ns
 end
 

@@ -40,7 +40,7 @@ function tune!(
         relΔlogZ = abs(-ns.np.c[N+1] - oldlogZ) / abs(oldlogZ)
         oldlogZ  = -ns.np.c[N+1]
         verbose && @printf(
-            "done!\n\t\tmax(Δbetas)=%.3f.\n\t\tlog(Z_N/Z_0)=%.1f.\n\t\trelΔlogZ=%.1f%%\n", 
+            "done!\n\t\tmax(Δbetas)=%.2f.\n\t\tlog(Z_N/Z_0)=%.1f.\n\t\trelΔlogZ=%.1f%%\n", 
             Δβs, -ns.np.c[N+1], 100*relΔlogZ
         ); plot_grid(ns.np.betas)
 
