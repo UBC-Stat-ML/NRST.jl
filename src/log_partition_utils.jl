@@ -81,22 +81,3 @@ function stepping_stone(bs, trVs)
     stepping_stone!(zs, bs, trVs)
     return zs
 end
-
-# function stepping_stone_fwd!(
-#     zs::TV,
-#     bs::TV,
-#     trVs::Vector{TV}
-#     ) where {TF<:AbstractFloat, TV<:Vector{TF}}
-#     zs[1] = zero(TF)
-#     acc   = zero(TF)
-#     for i in 1:(length(zs)-1)
-#         db      = bs[i+1] - bs[i]
-#         acc    += logsumexp(-db*trVs[i]) - log(length(trVs[i]))
-#         zs[i+1] = acc
-#     end
-# end
-# function stepping_stone_fwd(bs, trVs)
-#     zs = similar(bs)
-#     stepping_stone_fwd!(zs, bs, trVs)
-#     return zs
-# end

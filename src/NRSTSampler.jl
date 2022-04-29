@@ -50,7 +50,7 @@ end
 struct SerialNRSTTrace{T,TI<:Int,TF<:AbstractFloat}
     xtrace::Vector{T}
     iptrace::Vector{MVector{2,TI}}
-    aptrace::Vector{TF}
+    rptrace::Vector{TF}
     N::TI
 end
 nsteps(tr::SerialNRSTTrace) = length(tr.xtrace) # recover nsteps
@@ -135,11 +135,11 @@ function comm_step!(ns::NRSTSampler{T,I,K}) where {T,I,K}
     if iprop < 0                  # bounce below
         ip[1] = zero(I)
         ip[2] = one(I)
-        return zero(K)
+        return one(K)
     elseif iprop > N              # bounce above
         ip[1] = N
         ip[2] = -one(I)
-        return zero(K)
+        return one(K)
     else
         i = ip[1]                 # current index
         # note: U(0,1) =: U < R <=> log(U) < log(R) <=> Exp(1) > -log(R) =: nlaccr
@@ -151,10 +151,16 @@ function comm_step!(ns::NRSTSampler{T,I,K}) where {T,I,K}
             ip[2] = -ip[2]        # flip direction
         end
     end
-    exp(-max(zero(K), nlaccr))    # ap = min(1.,exp(-nlaccr)) = exp(min(0.,-nlaccr)) = exp(-max(0.,nlaccr))
+    # return rejection probability
+    # ap = min(1.,exp(-nlaccr)) = exp(min(0.,-nlaccr)) = exp(-max(0.,nlaccr))
+    # => rp = 1-ap = 1-exp(-max(0.,nlaccr)) = -[exp(-max(0.,nlaccr))-1] = -expm1(-max(0.,nlaccr))
+    rp = -expm1(-max(zero(K), nlaccr))
+    return rp
 end
 
 # exploration step
+# TODO: when explorers get separate storage for Vβ, Vref, and V,
+# the last line can be replaced by just reading the explorers' field  
 function expl_step!(ns::NRSTSampler{T,I,K}) where {T,I,K}
     @unpack x,np,explorers,ip,curV = ns
     if ip[1] == zero(I)
@@ -170,23 +176,25 @@ function expl_step!(ns::NRSTSampler{T,I,K}) where {T,I,K}
 end
 
 # NRST step = comm_step ∘ expl_step
+# TODO: we are wasting the precious V computed inside expl_step!!
+# keep it as part of the trace
 function step!(ns::NRSTSampler)
-    ap = comm_step!(ns) # returns acceptance probability
+    rp = comm_step!(ns) # returns acceptance probability
     expl_step!(ns)
-    return ap    
+    return rp    
 end
 
 # run for fixed number of steps
 function run!(ns::NRSTSampler{T,I,K}; nsteps::Int) where {T,I,K}
     xtrace  = Vector{T}(undef, nsteps)
     iptrace = Vector{typeof(ns.ip)}(undef, nsteps)
-    aptrace = Vector{K}(undef, nsteps)
+    rptrace = Vector{K}(undef, nsteps)
     for n in 1:nsteps
         xtrace[n]  = copy(ns.x)  # needs copy o.w. pushes a ref to ns.x
         iptrace[n] = copy(ns.ip)
-        aptrace[n] = step!(ns)   # note: since iptrace[n] was stored before, aptrace[n] is acc prob of swap **initiated** from iptrace[n]
+        rptrace[n] = step!(ns)   # note: since iptrace[n] was stored before, rptrace[n] is rej prob of swap **initiated** from iptrace[n]
     end
-    return SerialNRSTTrace(xtrace, iptrace, aptrace, ns.np.N)
+    return SerialNRSTTrace(xtrace, iptrace, rptrace, ns.np.N)
 end
 
 # run a tour: run the sampler until we reach the atom ip=(0,-1)
@@ -196,16 +204,16 @@ function tour!(ns::NRSTSampler{T,I,K}) where {T,I,K}
     renew!(ns)
     xtrace  = T[]
     iptrace = typeof(ns.ip)[]
-    aptrace = K[]
+    rptrace = K[]
     while !(ns.ip[1] == 0 && ns.ip[2] == -1)
         push!(xtrace, copy(ns.x))   # needs copy o.w. pushes a ref to ns.x
         push!(iptrace, copy(ns.ip)) # same
-        push!(aptrace, step!(ns))
+        push!(rptrace, step!(ns))
     end
     push!(xtrace, copy(ns.x))
     push!(iptrace, copy(ns.ip))
-    push!(aptrace, step!(ns))
-    return SerialNRSTTrace(xtrace, iptrace, aptrace, ns.np.N)
+    push!(rptrace, step!(ns))
+    return SerialNRSTTrace(xtrace, iptrace, rptrace, ns.np.N)
 end
 
 ###############################################################################
@@ -222,7 +230,7 @@ function post_process(
         idx    = ip[1] + 1
         idxeps = (ip[2] == one(I) ? 1 : 2)
         visacc[idx, idxeps] += one(I)
-        rpacc[idx, idxeps]  += one(K) - tr.aptrace[n]
+        rpacc[idx, idxeps]  += tr.rptrace[n]
         push!(xarray[idx], tr.xtrace[n])
     end
 end

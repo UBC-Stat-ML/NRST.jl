@@ -94,18 +94,20 @@ randref() = T.(rand(dunif, Ssq))
 Vref(x::AbstractFloat) = x + 2log1pexp(-x) # = log1pexp(x) + log1pexp(-x)
 Vref(xs::Vector{<:AbstractFloat}) = sum(Vref, xs)
 
-# Build an NRST sampler for the model, tune it, sample with it, and show diagnostics
+# This
+# - builds an NRST sampler for the model
+# - initializes it, finding an optimal grid
+# - sample tours in parallel and uses them to get more accurate estimates of c(β)
+# - sample one last time to show diagnostics
 ns = NRSTSampler(
     V,
     Vref,
     randref,
-    N = 200,
+    N = 400,
     verbose = true
 );
-println(extrema(ns.np.nexpls));
 res = parallel_run(ns, ntours = 1024);
-plots = diagnostics(ns,res);
+NRST.tune_c!(ns, res); # final tuning that uses the more powerful NRST sampling
+res = parallel_run(ns, ntours = 1024);
+plots = diagnostics(ns, res);
 plot(plots..., layout = (3,2), size = (800,1000))
-
-
-NRST.tune_nexpls!(ns, res, 0.1)

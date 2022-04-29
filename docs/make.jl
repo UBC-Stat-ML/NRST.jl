@@ -1,10 +1,12 @@
 using Documenter
 using DemoCards
 using NRST
+using LiveServer: serve
 
-# only way to deal with annoying Literate.jl calling git
+# only way to deal with annoying Literate.jl call to git
 Sys.which(::String)=nothing
 
+# make DemoCards
 examples, examples_cb, examples_assets = makedemos(
     "examples", edit_branch = "main"
 )
@@ -25,5 +27,8 @@ makedocs(
     ]
 )
 
-# 3. postprocess after makedocs
+# postprocess after makedocs
 examples_cb()
+
+# serve the docs locally
+serve(dir="./docs/build", launch_browser=true)

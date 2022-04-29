@@ -9,13 +9,14 @@
 # full tuning
 function tune!(
     ns::NRSTSampler;
-    max_rounds::Int    = 16,
+    max_rounds::Int    = 12,
     max_relΔlogZ::Real = 0.001,
     max_Δβs::Real      = 0.01,
-    nsteps_init::Int   = 256,
+    nsteps_init::Int   = 64,
     max_nsteps::Int    = 65_536,
-    nsteps_expl::Int   = 500,    # only used for tuning the explorers' params
+    nsteps_expl::Int   = 500,   # only used for tuning the explorers' params
     maxcor::Real       = 0.8,
+    ntours::Int        = 8192,  # run ntours NRST tours in parallel at the very end to improve c estimates
     verbose::Bool      = true
     )
     N       = ns.np.N
@@ -26,8 +27,8 @@ function tune!(
     trVs    = [similar(aggV, nsteps) for _ in 0:N]
     conv    = false
     verbose && println(
-        "Tuning started ($(Threads.nthreads()) threads)."
-    ); plot_grid(ns.np.betas, title="Histogram of βs: initial grid")
+        "Tuning started ($(Threads.nthreads()) threads).\n"
+    ); show(plot_grid(ns.np.betas, title="Histogram of βs: initial grid")); println("\n")
     while !conv && (round < max_rounds)
         round += 1
         verbose && print("Round $round:\n\tTuning explorers...")
@@ -41,9 +42,9 @@ function tune!(
         relΔlogZ = abs(-ns.np.c[N+1] - oldlogZ) / abs(oldlogZ)
         oldlogZ  = -ns.np.c[N+1]
         verbose && @printf(
-            "done!\n\t\tmax(Δbetas)=%.2f.\n\t\tlog(Z_N/Z_0)=%.1f.\n\t\trelΔlogZ=%.1f%%\n", 
+            "done!\n\t\tmax(Δbetas)=%.2f.\n\t\tlog(Z_N/Z_0)=%.1f.\n\t\trelΔlogZ=%.1f%%\n\n", 
             Δβs, -ns.np.c[N+1], 100*relΔlogZ
-        ); plot_grid(ns.np.betas, title="Histogram of βs: round $round")
+        ); show(plot_grid(ns.np.betas, title="Histogram of βs: round $round")); println("\n")
 
         # check convergence
         conv = !isnan(relΔlogZ) && (relΔlogZ<max_relΔlogZ) && (Δβs<max_Δβs)
@@ -58,14 +59,17 @@ function tune!(
     tune_explorers!(ns, nsteps = nsteps_expl, verbose = false)
     # nsteps = max(nsteps_max, 2^7 * nsteps_expl) # need high accuracy for final c estimate 
     # trVs = [similar(aggV, nsteps) for _ in 0:N]
-    verbose && println("done!\n\tTuning c and nexpls using $(length(trVs[1])) steps per explorer...")
+    verbose && println("done!\n\tTuning c and nexpls using $(length(trVs[1])) steps per explorer...\n")
     collectVs!(ns, trVs, aggV)
     tune_c!(ns, trVs, aggV)
     tune_nexpls!(ns.np.nexpls, trVs, maxcor)
-    verbose && lineplot_term(
+    verbose && show(lineplot_term(
         ns.np.betas[2:end], ns.np.nexpls, xlabel = "β",
         title="Exploration steps needed to get correlation ≤ $maxcor"
-    ); println("Tuning completed.")
+    )); println("\n")
+    verbose && println("\n\tRunning $ntours NRST tours in parallel to improve c(β)...\n")
+    tune_c!(ns, parallel_run(ns, ntours = ntours))
+    println("\nTuning completed.\n")
 end
 
 
@@ -110,6 +114,13 @@ function tune_c_betas!(
     return maximum(abs,betas-oldbetas) # for assessing convergence of the grid
 end
 
+# utility to reset caches in all explorers
+function reset_explorers!(ns::NRSTSampler)
+    for e in ns.explorers
+        set_state!(e, ns.x) # note: ns.x is preserved during "tune!", so this should equal the initialization point
+    end
+end
+
 # tune the c vector
 function tune_c!(
     ns::NRSTSampler{T,I,K},
@@ -117,7 +128,7 @@ function tune_c!(
     aggV::Vector{K}
     ) where {T,I,K}
     @unpack use_mean, c, betas = ns.np
-    if use_mean && (abs(aggV[1])>1e16)
+    if use_mean && abs(aggV[1]) > 1e16
         @info "V likely not integrable under the reference; using stepping stone."
         stepping_stone!(c, betas, trVs) # compute log(Z(b)/Z0) and store it in c
         c .*= (-one(K))                 # c(b) = -log(Z(b)/Z0)
@@ -127,11 +138,11 @@ function tune_c!(
     return
 end
 
-# utility to reset caches in all explorers
-function reset_explorers!(ns::NRSTSampler)
-    for e in ns.explorers
-        set_state!(e, ns.x) # note: ns.x is preserved during "tune!", so this should equal the initialization point
-    end
+# method for proper runs of NRST
+function tune_c!(ns::NRSTSampler, res::RunResults)
+    trVs = collectVs(ns, res)
+    aggV = ns.np.use_mean ? mean.(trVs) : median.(trVs)
+    tune_c!(ns, trVs, aggV)
 end
 
 # collect samples of V(x) at each of the levels, storing in trVs
@@ -186,6 +197,8 @@ end
 #   dupβ[i] := β[i+1] - β[i]
 # we have
 #   ddnβ[i] := β[i-1] - β[i] = -(β[i]-β[i-1]) = -dupβ[i-1]
+# Finally, we use the expm1 identity for increased numerical stability
+#   1 - exp(u) = -(exp(u) - 1) = -expm1(u)
 function est_rej_probs(trVs, betas, c)
     N    = length(c)-1
     dbs  = diff(betas)          # betas[i+1] - betas[i] for i ∈ 1:(length(betas)-1)
@@ -198,12 +211,12 @@ function est_rej_probs(trVs, betas, c)
         if i > N
             R[i,1] = uno
         else
-            R[i,1] = uno - mean([exp(-max(cero, dbs[i]*v-dcs[i])) for v in trV])
+            R[i,1] = -mean([expm1(-max(cero, dbs[i]*v-dcs[i])) for v in trV])
         end
         if i <= 1
             R[i,2] = uno
         else
-            R[i,2] = uno - mean([exp(-max(cero, -dbs[i-1]*v+dcs[i-1])) for v in trV])
+            R[i,2] = -mean([expm1(-max(cero, -dbs[i-1]*v+dcs[i-1])) for v in trV])
         end
     end
     return R
@@ -286,10 +299,10 @@ end
 # plotting utilities
 #######################################
 
-# plot grid using UnicodePlots, mimicking a rugplot
+# histogram of the grid using UnicodePlots
 function plot_grid(bs;kwargs...)
-    len = min(displaysize(stdout)[2]-8, length(bs))
-    p = UnicodePlots.histogram(
+    len = min(displaysize(stdout)[2]-8, 70)
+    UnicodePlots.histogram(
         bs;
         xlabel  = "β",
         stats   = false,
@@ -299,31 +312,26 @@ function plot_grid(bs;kwargs...)
         height  = 1,
         grid    = false,
         border  = :none,
-        yticks  = false,
+        # yticks  = false,
         margin  = 0,
         padding = 0,
         kwargs...
-    )
-    display(p)
-    println()
-    p    
+    )    
 end
 
+# generic lineplot using UnicodePlots
 function lineplot_term(xs,ys;kwargs...)
-    len = min(displaysize(stdout)[2]-8, length(xs))
-    p=UnicodePlots.lineplot(
+    len = min(displaysize(stdout)[2]-8, 70)
+    UnicodePlots.lineplot(
         xs, ys;
         width   = len,
-        height  = 7,
+        height  = 6,
         grid    = false,
         border  = :none,
         margin  = 0,
         padding = 0,
         kwargs...
     )
-    display(p)
-    println()
-    p
 end
 
 

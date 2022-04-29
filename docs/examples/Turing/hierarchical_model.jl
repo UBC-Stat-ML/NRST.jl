@@ -40,16 +40,22 @@ Y = readdlm(
     joinpath(dirname(pathof(NRST)), "..", "data", "simulated8schools.csv"),
      ',', Float64
 );
-model = HierarchicalModel(Y);
+model = HierarchicalModel(Y)
 
-# Build an NRST sampler for the model, tune it, sample with it, and show diagnostics
-ns = NRSTSampler(model, N = 150, verbose = true);
-res = parallel_run(ns, ntours = 1024);
-plots = diagnostics(ns,res);
+# This
+# - builds an NRST sampler for the model
+# - tunes it
+# - runs tours in parallel
+# - shows diagnostics
+ns = NRSTSampler(model, N = 150, verbose = true)
+res = parallel_run(ns, ntours = 8192)
+plots = diagnostics(ns, res)
 plot(plots..., layout = (3,2), size = (800,1000))
 
-# save cover image #hide
-savefig(plots[3], "../covers/hierarchical_model.svg") #hide
+#md # ![Diagnostics plots](assets/hierarchical_model_diags.svg)
 
-
+# save diagnostics plot and cover image #src
+mkpath("assets") #src
+savefig("assets/hierarchical_model_diags.svg") #src
+savefig(plots[3], "assets/hierarchical_model.svg") #src
 
