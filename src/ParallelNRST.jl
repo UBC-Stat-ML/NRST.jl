@@ -2,17 +2,6 @@
 # run NRST in parallel exploiting regenerations
 ###############################################################################
 
-struct ParallelRunResults{T,TI<:Int,TF<:AbstractFloat} <: RunResults
-    trvec::Vector{SerialNRSTTrace{T,TI,TF}} # vector of raw traces from each tour
-    xarray::Vector{Vector{T}}               # length = N+1. i-th entry has samples at level i
-    trVs::Vector{Vector{TF}}                # length = N+1. i-th entry has Vs corresponding to xarray[i]
-    visits::Matrix{TI}                      # total number of visits to each (i,eps)
-    rpacc::Matrix{TF}                       # accumulates rejection probs of swaps started from each (i,eps)
-    toureff::Vector{TF}                     # tour effectiveness for each i ∈ 0:N
-end
-ntours(res::ParallelRunResults) = length(res.trvec)
-tourlengths(res::ParallelRunResults) = nsteps.(res.trvec)
-
 #######################################
 # initialization methods
 #######################################
@@ -57,7 +46,7 @@ function run!(
     end
     
     trvec = vcat(trace_vec...) # collect into a single Vector{SerialNRSTTrace{T,I}}
-    return post_process(trvec)
+    return ParallelRunResults(trvec)
 end
 
 # method for a single NRSTSampler that creates only temp copies
@@ -73,7 +62,19 @@ end
 # trace postprocessing
 #######################################
 
-function post_process(trvec::Vector{SerialNRSTTrace{T,I,K}}) where {T,I,K}
+struct ParallelRunResults{T,TI<:Int,TF<:AbstractFloat} <: RunResults
+    trvec::Vector{SerialNRSTTrace{T,TI,TF}} # vector of raw traces from each tour
+    xarray::Vector{Vector{T}}               # length = N+1. i-th entry has samples at level i
+    trVs::Vector{Vector{TF}}                # length = N+1. i-th entry has Vs corresponding to xarray[i]
+    visits::Matrix{TI}                      # total number of visits to each (i,eps)
+    rpacc::Matrix{TF}                       # accumulates rejection probs of swaps started from each (i,eps)
+    toureff::Vector{TF}                     # tour effectiveness for each i ∈ 0:N
+end
+ntours(res::ParallelRunResults) = length(res.trvec)
+tourlengths(res::ParallelRunResults) = nsteps.(res.trvec)
+
+# outer constructor that parses a vector of serial traces
+function ParallelRunResults(trvec::Vector{SerialNRSTTrace{T,I,K}}) where {T,I,K}
     # allocate storage
     ntours = length(trvec)
     N      = trvec[1].N

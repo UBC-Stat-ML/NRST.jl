@@ -15,8 +15,9 @@ end
 model = Lnmodel(randn(30));
 
 # Build an NRST sampler for the model, tune it, sample with it, and show diagnostics
-ns = NRSTSampler(model, verbose = true);
-res = parallel_run(ns, ntours = 1024);
+ns = NRSTSampler(model, N=30, verbose = true, tune=false);
+NRST.tune!(ns, maxcor=0.95)
+res = parallel_run(ns, ntours = 16348);
 plots = diagnostics(ns,res);
 hl = ceil(Int, length(plots)/2)
 plot(plots..., layout = (hl,2), size = (800,hl*333))
@@ -53,17 +54,23 @@ Y = readdlm(
 model = HierarchicalModel(Y);
 
 # Build an NRST sampler for the model, tune it, sample with it, and show diagnostics
-ns = NRSTSampler(model, N = 150, verbose = true)
-res = parallel_run(ns, ntours = 8192)
+ns = NRSTSampler(model, N = 200, verbose = true, tune=false);
+NRST.tune!(ns, maxcor=0.95);
+res = parallel_run(ns, ntours = 16348);
 plots = diagnostics(ns, res)
 hl = ceil(Int, length(plots)/2)
 plot(plots..., layout = (hl,2), size = (800,hl*333))
 
+# check nexpls
+plot(ns.np.nexpls)
+sigmas = [NRST.params(e)[1] for e in ns.explorers];
+plot(sigmas)
+
+NRST.tune_nexpls!(ns.np.nexpls,res.trVs,0.95)
 
 ###############################################################################
 # XY model
 ###############################################################################
-
 
 using Lattices, LogExpFunctions, Distributions, Plots
 using NRST
@@ -71,15 +78,12 @@ using NRST
 # Define the basics of the model
 const S   = 8;
 const Ssq = S*S;
-const sq  = Square(S,S);          # define a square lattice
-const J   = 2;                    # coupling constant to force βᶜ < 1 in our parametrization, since βᶜ = 1.1199 for J=1: https://iopscience.iop.org/article/10.1088/0305-4470/38/26/003
-T(θ)      = logit((θ/pi + 1)/2)   # θ ∈ (-pi,pi) ↦ x ∈ ℝ
-Tinv(x)   = pi*(2logistic(x) - 1) # x ∈ ℝ ↦ θ ∈ (-pi,pi)
+const sq  = Square(S,S); # define a square lattice
+const J   = 2;           # coupling constant to force βᶜ < 1 in our parametrization, since βᶜ = 1.1199 for J=1: https://iopscience.iop.org/article/10.1088/0305-4470/38/26/003
 
 # Define the potential function
-function V(xs::Vector{TF}) where {TF<:AbstractFloat}
+function V(θs::Vector{TF}) where {TF<:AbstractFloat}
     acc = zero(TF)
-    θs  = Tinv.(xs)
     for (a, b) in edges(sq)
         ia   = (a[1]-1)*S + a[2]
         ib   = (b[1]-1)*S + b[2]
@@ -88,11 +92,11 @@ function V(xs::Vector{TF}) where {TF<:AbstractFloat}
     return J*acc
 end
 
-# Define functions for the transformed reference
-const dunif = Uniform(-pi,pi);
-randref() = T.(rand(dunif, Ssq))
-Vref(x::AbstractFloat) = x + 2log1pexp(-x) # = log1pexp(x) + log1pexp(-x)
-Vref(xs::Vector{<:AbstractFloat}) = sum(Vref, xs)
+# Define functions for the reference
+const dunif = Uniform(-pi,pi)
+randref() = rand(dunif, Ssq)
+Vref(θ::AbstractFloat) = -logpdf(dunif, θ)
+Vref(θs::Vector{<:AbstractFloat}) = sum(Vref, θs)
 
 # This
 # - builds an NRST sampler for the model
@@ -103,11 +107,9 @@ ns = NRSTSampler(
     V,
     Vref,
     randref,
-    N = 400,
+    N = 200,
     verbose = true
 );
-res = parallel_run(ns, ntours = 1024);
-NRST.tune_c!(ns, res); # final tuning that uses the more powerful NRST sampling
-res = parallel_run(ns, ntours = 1024);
-plots = diagnostics(ns, res);
-plot(plots..., layout = (3,2), size = (800,1000))
+plot(ns.np.nexpls)
+sigmas = [NRST.params(e)[1] for e in ns.explorers]
+plot(sigmas)

@@ -23,7 +23,7 @@ function diagnostics(
         0:ns.np.N, push!(rejrates[1:(end-1),1],NaN),
         ylims = (0., Inf), legend = :bottomright, linestyle = :dash,
         palette=DEF_PAL, label = "Up", xlabel = "Level", 
-        ylabel = "Proportion of rejected proposals"
+        ylabel = "Rejection probability"
     )
     plot!(prrs,
         0:ns.np.N, pushfirst!(rejrates[2:end,2],NaN),

@@ -55,7 +55,7 @@ end
 function NRSTSampler(
     tm::TemperedModel;
     betas          = missing,
-    N::Int         = 15,
+    N::Int         = 30,
     nexpl::Int     = 50,
     use_mean::Bool = true,
     tune::Bool     = true,
@@ -206,6 +206,17 @@ end
 # trace postprocessing
 ###############################################################################
 
+# outer constructor that parses a trace
+function SerialRunResults(tr::SerialNRSTTrace{T,I,K}) where {T,I,K}
+    N      = tr.N
+    xarray = [T[] for _ in 0:N] # i-th entry has samples at state i
+    trVs   = [K[] for _ in 0:N] # i-th entry has Vs corresponding to xarray[i]
+    visacc = zeros(I, N+1, 2)   # accumulates visits
+    rpacc  = zeros(K, N+1, 2)   # accumulates rejection probs
+    post_process(tr, xarray, trVs, visacc, rpacc)
+    SerialRunResults(tr, xarray, trVs, visacc, rpacc)
+end
+
 function post_process(
     tr::SerialNRSTTrace{T,I,K},
     xarray::Vector{Vector{T}}, # length = N+1. i-th entry has samples at state i
@@ -222,13 +233,5 @@ function post_process(
         push!(trVs[idx], tr.trV[n])
     end
 end
-function post_process(tr::SerialNRSTTrace{T,I,K}) where {T,I,K}
-    N      = tr.N
-    xarray = [T[] for _ in 0:N] # i-th entry has samples at state i
-    trVs   = [K[] for _ in 0:N] # i-th entry has Vs corresponding to xarray[i]
-    visacc = zeros(I, N+1, 2)   # accumulates visits
-    rpacc  = zeros(K, N+1, 2)   # accumulates rejection probs
-    post_process(tr, xarray, trVs, visacc, rpacc)
-    SerialRunResults(tr, xarray, trVs, visacc, rpacc)
-end
+
 

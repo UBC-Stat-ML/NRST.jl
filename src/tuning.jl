@@ -9,20 +9,19 @@
 # full tuning
 function tune!(
     ns::NRSTSampler;
-    max_rounds::Int    = 12,
-    max_relΔlogZ::Real = 0.001,
+    max_rounds::Int    = 14,
+    max_relΔcone::Real = 0.001,
+    max_relΔΛ::Real    = 0.005,
     max_Δβs::Real      = 0.01,
     nsteps_init::Int   = 64,
-    max_nsteps::Int    = 131_072,
-    nsteps_expl::Int   = 500,   # only used for tuning the explorers' params
+    max_nsteps::Int    = 524_288,
     maxcor::Real       = 0.8,
-    ntours::Int        = 8_192, # run ntours NRST tours in parallel at the very end to improve c estimates
     verbose::Bool      = true
     )
     N       = ns.np.N
     round   = 0
     nsteps  = nsteps_init
-    oldlogZ = relΔlogZ = NaN # to assess convergence on the log(Z_N/Z_0) estimate
+    oldcone = relΔcone = oldΛ = relΔΛ = NaN # to assess convergence on c(1) and Λ=Λ(1)
     aggV    = similar(ns.np.c)
     trVs    = [similar(aggV, nsteps) for _ in 0:N]
     conv    = false
@@ -32,22 +31,26 @@ function tune!(
     while !conv && (round < max_rounds)
         round += 1
         verbose && print("Round $round:\n\tTuning explorers...")
-        tune_explorers!(ns, nsteps = nsteps_expl, verbose = false)
+        tune_explorers!(ns, verbose = false)
         verbose && println("done!")
         
         # tune c and betas
         verbose && print("\tTuning c and grid using $nsteps steps per explorer...")
         trVs     = [similar(aggV, nsteps) for _ in 0:N]
-        Δβs      = tune_c_betas!(ns, trVs, aggV)
-        relΔlogZ = abs(-ns.np.c[N+1] - oldlogZ) / abs(oldlogZ)
-        oldlogZ  = -ns.np.c[N+1]
+        res      = @timed tune_c_betas!(ns, trVs, aggV)
+        Δβs, Λ   = res.value
+        relΔcone = abs(ns.np.c[end] - oldcone) / abs(oldcone)
+        oldcone  = ns.np.c[end]
+        relΔΛ    = abs(Λ - oldΛ) / abs(oldΛ)
+        oldΛ     = Λ
         verbose && @printf(
-            "done!\n\t\tmax(Δbetas)=%.2f.\n\t\tlog(Z_N/Z_0)=%.1f.\n\t\trelΔlogZ=%.1f%%\n\n", 
-            Δβs, -ns.np.c[N+1], 100*relΔlogZ
+            "done!\n\t\tmax(Δbetas)=%.2f\n\t\tc(1)=%.3f (relΔ=%.1f%%)\n\t\tΛ=%.3f (relΔ=%.1f%%)\n\t\tElapsed: %.1fs\n\n", 
+            Δβs, ns.np.c[end], 100*relΔcone, Λ, 100*relΔΛ, res.time
         ); show(plot_grid(ns.np.betas, title="Histogram of βs: round $round")); println("\n")
 
         # check convergence
-        conv = !isnan(relΔlogZ) && (relΔlogZ<max_relΔlogZ) && (Δβs<max_Δβs)
+        conv = !isnan(relΔcone) && (relΔcone<max_relΔcone) && 
+            !isnan(relΔΛ) && (relΔΛ < max_relΔΛ) && (Δβs<max_Δβs)
         nsteps = min(max_nsteps,2nsteps)
     end
     # since betas changed the last, need to tune explorers and c one last time
@@ -56,10 +59,9 @@ function tune!(
                 "max_rounds=$max_rounds reached.") *
         "\nFinal round:\n\tTuning explorers..."
     )
-    tune_explorers!(ns, nsteps = nsteps_expl, verbose = false)
-    # nsteps = max(nsteps_max, 2^7 * nsteps_expl) # need high accuracy for final c estimate 
-    # trVs = [similar(aggV, nsteps) for _ in 0:N]
-    verbose && println("done!\n\tTuning c and nexpls using $(length(trVs[1])) steps per explorer...\n")
+    tune_explorers!(ns, verbose = false)
+    nsteps = length(trVs[1])
+    verbose && println("done!\n\tTuning c and nexpls using $nsteps steps per explorer...\n")
     collectVs!(ns, trVs, aggV)
     tune_c!(ns, trVs, aggV)
     tune_nexpls!(ns.np.nexpls, trVs, maxcor)
@@ -67,10 +69,14 @@ function tune!(
         ns.np.betas[2:end], ns.np.nexpls, xlabel = "β",
         title="Exploration steps needed to get correlation ≤ $maxcor"
     )); println("\n")
-    verbose && println("\n\tRunning $ntours NRST tours in parallel to improve c(β)...\n")
-    # Note: this is desirable particularly in multimodal settings, where the independent
+    # running NRST tours to do final tuning of c 
+    # Note: this is desirable particularly in multimodal settings, where independent
     # exploration can be stuck in one mode. In contrast, true NRST sampling is not bound
     # to get stuck in single modes due to the renewal property.
+    # want: use same computational budget as the last round. Then
+    # 2ntours*mean(nexpls) = nsteps => ntours = ceil(Int,nsteps/(2mean(nexpls)))
+    ntours = ceil(Int, 0.5*nsteps/mean(ns.np.nexpls))
+    verbose && println("\n\tRunning $ntours NRST tours in parallel to improve c(β)...\n")
     tune_c!(ns, parallel_run(ns, ntours = ntours))
     println("\nTuning completed.\n")
 end
@@ -108,13 +114,14 @@ function tune_c_betas!(
     aggV::Vector{K}
     ) where {T,I,K}
     @unpack c, betas = ns.np
-    collectVs!(ns, trVs, aggV)         # in parallel, collect V samples and aggregate them
-    @suppress_err tune_c!(ns,trVs,aggV)# tune c using aggV and trVs if necessary
-    R = est_rej_probs(trVs, betas, c)  # compute average rejection probabilities
-    oldbetas = copy(betas)             # store old betas to check convergence
-    optimize_betas!(betas, R)          # tune using the inverse of Λ(β)
-    refresh_explorers!(ns)             # since betas changed, the cached potentials are stale
-    return maximum(abs,betas-oldbetas) # for assessing convergence of the grid
+    collectVs!(ns, trVs, aggV)          # in parallel, collect V samples and aggregate them
+    @suppress_err tune_c!(ns,trVs,aggV) # tune c using aggV and trVs if necessary
+    R = est_rej_probs(trVs, betas, c)   # compute average rejection probabilities
+    oldbetas = copy(betas)              # store old betas to check convergence
+    _, _, Λs = optimize_betas!(betas,R) # tune using the inverse of Λ(β)
+    refresh_explorers!(ns)              # since betas changed, the cached potentials are stale
+    # return max change in grid and Λ=Λ(1) to check convergence
+    return (maximum(abs,betas-oldbetas), Λs[end])
 end
 
 # utility to reset Vβ caches in all explorers
@@ -220,11 +227,12 @@ function est_rej_probs(trVs, betas, c)
 end
 
 # optimize betas using the equirejection approach
+# returns estimates of Λ(β) at the grid locations
 function optimize_betas!(betas::Vector{K}, R::Matrix{K}) where {K<:AbstractFloat}
     # estimate Λ at current betas using rejections rates, normalize, and interpolate
-    Λnorm, Λvalsnorm = get_lambda(betas, R) # note: this the only place where R is used
+    f_Λnorm, Λsnorm, Λs = get_lambda(betas, R) # note: this the only place where R is used
 
-    # find newbetas by inverting Λnorm with a uniform grid on the range
+    # find newbetas by inverting f_Λnorm with a uniform grid on the range
     N           = length(betas) - 1
     Δ           = convert(K,1/N) # step size of the grid
     targetΛ     = zero(K)
@@ -233,29 +241,27 @@ function optimize_betas!(betas::Vector{K}, R::Matrix{K}) where {K<:AbstractFloat
     for i in 2:N
         targetΛ    += Δ
         b1          = newbetas[i-1]
-        b2          = betas[findfirst(u -> (u>targetΛ), Λvalsnorm)]            # Λnorm^{-1}(targetΛ) cannot exceed this
-        newbetas[i] = find_zero(β -> Λnorm(β)-targetΛ, (b1,b2), atol = Δ*1e-4) # set tolerance for |Λnorm(β)-target| 
+        b2          = betas[findfirst(u -> (u>targetΛ), Λsnorm)]            # f_Λnorm^{-1}(targetΛ) cannot exceed this
+        newbetas[i] = find_zero(β -> f_Λnorm(β)-targetΛ, (b1,b2), atol = Δ*1e-4) # set tolerance for |f_Λnorm(β)-target| 
     end
     newbetas[end] = one(K)
     copyto!(betas, newbetas)
+    return (f_Λnorm, Λsnorm, Λs)
 end
 
 # estimate Λ at current betas using rejections rates, normalize, and interpolate
 function get_lambda(betas::Vector{K}, R::Matrix{K}) where {K<:AbstractFloat}
-    averej    = (R[1:(end-1),1] + R[2:end,2])/2 # average up and down rejections
-    Λvals     = pushfirst!(cumsum(averej), 0.)
-    Λvalsnorm = Λvals/Λvals[end]
-    Λnorm     = interpolate(betas, Λvalsnorm, SteffenMonotonicInterpolation())
-    
-    # check error
-    err = maximum(abs, Λnorm.(betas) - Λvalsnorm)
-    if err > 10eps(K)
-        @warn "get_lambda: high interpolation error = " err 
-    end
-    return (Λnorm, Λvalsnorm)
+    averej  = (R[1:(end-1),1] + R[2:end,2])/2 # average up and down rejections
+    Λs      = pushfirst!(cumsum(averej), zero(K))
+    Λsnorm  = Λs/Λs[end]
+    f_Λnorm = interpolate(betas, Λsnorm, SteffenMonotonicInterpolation())
+    err     = maximum(abs, f_Λnorm.(betas) - Λsnorm)
+    err > 10eps(K) && @warn "get_lambda: high interpolation error = " err
+    return (f_Λnorm, Λsnorm, Λs)
 end
 
 # tune nexpls by imposing a threshold on autocorrelation
+# warning: do not use with trVs generated from NRST, since those include refreshments!
 function tune_nexpls!(
     nexpls::Vector{TI},
     trVs::Vector{Vector{TF}},
