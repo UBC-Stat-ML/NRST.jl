@@ -67,37 +67,56 @@ function inference(
     )
 end
 
-# estimate log-partition function, with a pesimistic asymptotic error bound
-# If I(n) is the cumulative integral approx at betas[n], then
-#    - sd(I(1)) = sd(mean(V[1]))
-#    - sd(I(n+1)) <= sd(I(n)) + sd(mean(V[n])) # when correlation = 1
-# Therefore, the upper and lower bounds can also be gotten using trapez!
+# estimate log-partition function: β ↦ log(Z(β)/Z(0))
 function log_partition(
     ns::NRSTSampler{T,TInt,TF},
     res::ParallelRunResults{T,TInt,TF};
     α::TF = 0.95
     ) where {T,TInt,TF}
-    # compute summary statistics for the potential function
-    # note: need Bonferroni adjustment because we need simultaneous coverage along
-    # the whole curve, not just marginally at every point.
-    @unpack fns, betas, N = ns.np
-    infres = inference(res, h = fns.V, at = 0:N, α = 1-(1-α)/N)
-    if infres[:,"Mean"][1] > 1e16
-        @info "log_partition: " *
-        "V likely not integrable under the reference; using stepping stone. " *
-        "Confidence region not yet implemented for this method."
-        trVs = [fns.V.(xs) for xs in res.xarray]
-        ms   = stepping_stone(betas, trVs)
-        lbs  = ubs = fill(convert(TF, NaN), N+1)     # no confidence region
-    else
-        ms   = -trapez(betas, infres[:,"Mean"])      # integrate the mean
-        lbs  = -trapez(betas, infres[:,"C.I. High"]) # integrate the upper bounds (Z decreases with V)
-        ubs  = -trapez(betas, infres[:,"C.I. Low"])  # integrate the lower bounds (Z decreases with V)
+    if ns.np.use_mean
+        return -ns.np.c
     end
-    return DataFrame(
-        "Mean"       => ms,
-        "C.I. Low"   => lbs,
-        "C.I. High"  => ubs
-    )
+    meanV = mean.(res.trVs)
+    if abs(meanV[1]) > 1e16
+        @info "log_partition: " *
+        "V likely not integrable under the reference; using stepping stone."
+        return stepping_stone(ns.np.betas, res.trVs)
+    else
+        return -trapez(ns.np.betas, meanV)
+    end
 end
+
+# TODO: revive this
+# # estimate log-partition function, with a pesimistic asymptotic error bound
+# # If I(n) is the cumulative integral approx at betas[n], then
+# #    - sd(I(1)) = sd(mean(V[1]))
+# #    - sd(I(n+1)) <= sd(I(n)) + sd(mean(V[n])) # when correlation = 1
+# # Therefore, the upper and lower bounds can also be gotten using trapez!
+# function log_partition(
+#     ns::NRSTSampler{T,TInt,TF},
+#     res::ParallelRunResults{T,TInt,TF};
+#     α::TF = 0.95
+#     ) where {T,TInt,TF}
+#     # compute summary statistics for the potential function
+#     # note: need Bonferroni adjustment because we need simultaneous coverage along
+#     # the whole curve, not just marginally at every point.
+#     @unpack fns, betas, N = ns.np
+#     infres = inference(res, h = fns.V, at = 0:N, α = 1-(1-α)/N)
+#     if infres[:,"Mean"][1] > 1e16
+#         @info "log_partition: " *
+#         "V likely not integrable under the reference; using stepping stone.\n" *
+#         "Confidence region not yet implemented for this method."
+#         trVs = [fns.V.(xs) for xs in res.xarray]
+#         ms   = stepping_stone(betas, trVs)
+#         lbs  = ubs = fill(convert(TF, NaN), N+1)     # no confidence region
+#     else
+#         ms   = -trapez(betas, infres[:,"Mean"])      # integrate the mean
+#         lbs  = -trapez(betas, infres[:,"C.I. High"]) # integrate the upper bounds (Z decreases with V)
+#         ubs  = -trapez(betas, infres[:,"C.I. Low"])  # integrate the lower bounds (Z decreases with V)
+#     end
+#     return (
+#         lpart = DataFrame("Mean" => ms, "C.I. Low" => lbs, "C.I. High"  => ubs),
+#         V     = infres
+#     ) 
+# end
 

@@ -54,8 +54,7 @@ using NRST
 const S   = 8;
 const Ssq = S*S;
 const sq  = Square(S,S);
-const βᶜ  = 1.1199;               # critical temp for J=1: https://iopscience.iop.org/article/10.1088/0305-4470/38/26/003
-const J   = 2βᶜ;                  # coupling constant to force βᶜ = 0.5 in our parametrization
+const J   = 2;                    # coupling constant to force βᶜ < 1 in our parametrization, since βᶜ = 1.1199>1 for J=1: https://iopscience.iop.org/article/10.1088/0305-4470/38/26/003
 T(θ)      = logit((θ/pi + 1)/2)   # θ ∈ (-pi,pi) ↦ x ∈ ℝ
 Tinv(x)   = pi*(2logistic(x) - 1) # x ∈ ℝ ↦ θ ∈ (-pi,pi)
 
@@ -89,9 +88,10 @@ ns = NRSTSampler(
     N = 400,
     verbose = true
 )
-res = parallel_run(ns, ntours = 8192)
+res = parallel_run(ns, ntours = 4096)
 plots = diagnostics(ns, res)
-plot(plots..., layout = (3,2), size = (800,1000))
+hl = ceil(Int, length(plots)/2)
+plot(plots..., layout = (hl,2), size = (800,hl*333))
 
 #md # ![Diagnostics plots](assets/XY_model_diags.svg)
 

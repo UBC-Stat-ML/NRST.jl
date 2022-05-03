@@ -40,11 +40,11 @@ function diagnostics(
     plam = plot_lambda(Λnorm,betas,"")
 
     # Plot of the log-partition function
-    lp_df = log_partition(ns, res);
+    lpart = log_partition(ns, res);
     plp = plot(
-        betas, lp_df[:,1], ribbon = (lp_df[:,1]-lp_df[:,2], lp_df[:,3]-lp_df[:,1]),
+        betas, lpart,# ribbon = (lp_df[:,1]-lp_df[:,2], lp_df[:,3]-lp_df[:,1]),
         palette=DEF_PAL, legend = :bottomright,
-        xlabel = "β", ylabel = "log(Z(β))", label = ""
+        xlabel = "β", ylabel = "log(Z(β)/Z(0))", label = ""
     )
 
     # Distribution of the tour lengths
@@ -71,7 +71,24 @@ function diagnostics(
         )
     end
 
-    return (pocc,prrs,plam,plp,ptlens,pdens)
+    # # line plot comparing cumsum(sort(tourlens)) v. sort(tourlens); i.e., the "cummax"
+    # stl   = sort(tourlens)
+    # csstl = cumsum(stl)
+    # pcs   = plot(
+    #     csstl, xlabel="Cumulative tours completed", ylabel="Number of NRST steps",
+    #     label = "Sum", palette = DEF_PAL, yaxis=:log
+    # )
+    # plot!(pcs, stl, label = "Max")
+
+    # # ESS/ntours for V versus toureff
+    # pvess = plot(
+    #     0:N, V_df[:,"ESS"] ./ ntours(res), xlabel="Level", label="ESS/#tours",
+    #     palette = DEF_PAL
+    # )
+    # plot!(pvess, 0:N, res.toureff, label="TE")
+    # hline!(pvess, [1.], linestyle = :dash, label="")
+
+    return (pocc,prrs,plam,plp,ptlens,pdens)#,pcs,pvess)
 end
 
 #######################################

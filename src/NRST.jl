@@ -9,7 +9,7 @@ using LogExpFunctions: logsumexp
 using Plots
 using Printf
 using ProgressMeter: ProgressMeter
-using Random
+using Random: Random
 using Roots: find_zero
 using SmoothingSplines: SmoothingSpline, fit, predict
 using StaticArrays: MVector
@@ -55,12 +55,12 @@ export diagnostics
 # processed sequentially, so that things appear undefined even tho they exist
 # in later "include"s
 # NRSTSampler.jl
-abstract type Funs end
 abstract type RunResults end
 N(res::RunResults) = length(res.xarray)-1 # retrieve max tempering level
 
 # load files
 include("log_partition_utils.jl")
+include("TemperedModel.jl")
 include("ExplorationKernels.jl")
 include("NRSTSampler.jl")
 include("ParallelNRST.jl")

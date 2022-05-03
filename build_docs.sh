@@ -41,5 +41,5 @@ julia --project=docs/ -e 'using Pkg; Pkg.develop(Pkg.PackageSpec(path=".")); Pkg
 # note: the "include(popfirst!(ARGS))" trick forces proper capturing of ctrl+c (as REPL does)
 # see: https://docs.julialang.org/en/v1/base/base/#Core.InterruptException
 echo "Compiling docs (takes a while)..."
-DEMOCARDS_BUILD_ASSETS=$build_assets DOCUMENTER_DEBUG=true JULIA_DEBUG=DemoCards GKSwstype=nul julia -t $nthreads --project=docs/ -e "include(popfirst!(ARGS))" docs/make.jl
+DOCUMENTER_DEBUG=true JULIA_DEBUG=DemoCards GKSwstype=nul julia -t $nthreads --project=docs/ -e "include(popfirst!(ARGS))" docs/make.jl
 

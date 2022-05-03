@@ -13,10 +13,10 @@ function tune!(
     max_relΔlogZ::Real = 0.001,
     max_Δβs::Real      = 0.01,
     nsteps_init::Int   = 64,
-    max_nsteps::Int    = 65_536,
+    max_nsteps::Int    = 131_072,
     nsteps_expl::Int   = 500,   # only used for tuning the explorers' params
     maxcor::Real       = 0.8,
-    ntours::Int        = 8192,  # run ntours NRST tours in parallel at the very end to improve c estimates
+    ntours::Int        = 8_192, # run ntours NRST tours in parallel at the very end to improve c estimates
     verbose::Bool      = true
     )
     N       = ns.np.N
@@ -68,6 +68,9 @@ function tune!(
         title="Exploration steps needed to get correlation ≤ $maxcor"
     )); println("\n")
     verbose && println("\n\tRunning $ntours NRST tours in parallel to improve c(β)...\n")
+    # Note: this is desirable particularly in multimodal settings, where the independent
+    # exploration can be stuck in one mode. In contrast, true NRST sampling is not bound
+    # to get stuck in single modes due to the renewal property.
     tune_c!(ns, parallel_run(ns, ntours = ntours))
     println("\nTuning completed.\n")
 end
@@ -82,7 +85,7 @@ function tune_explorers!(ns::NRSTSampler;smooth=true,kwargs...)
     Threads.@threads for expl in ns.explorers
         tune!(expl;kwargs...)
     end
-    smooth && smooth_params!(ns.explorers,ns.np.betas)
+    smooth && smooth_params!(ns.explorers)
 end
 
 # tune the explorers' parameters serially. can use previous expl's params as
@@ -94,7 +97,7 @@ function tune_explorers_serial!(ns::NRSTSampler;smooth=true,kwargs...)
         pars = params(ns.explorers[i-1])
         tune!(ns.explorers[i], pars;kwargs...)
     end
-    smooth && smooth_params!(ns.explorers,ns.np.betas)
+    smooth && smooth_params!(ns.explorers)
 end
 
 # Tune c and betas using independent runs of the explorers
@@ -110,14 +113,14 @@ function tune_c_betas!(
     R = est_rej_probs(trVs, betas, c)  # compute average rejection probabilities
     oldbetas = copy(betas)             # store old betas to check convergence
     optimize_betas!(betas, R)          # tune using the inverse of Λ(β)
-    reset_explorers!(ns)               # since betas changed, the cached potentials are stale
+    refresh_explorers!(ns)             # since betas changed, the cached potentials are stale
     return maximum(abs,betas-oldbetas) # for assessing convergence of the grid
 end
 
-# utility to reset caches in all explorers
-function reset_explorers!(ns::NRSTSampler)
+# utility to reset Vβ caches in all explorers
+function refresh_explorers!(ns::NRSTSampler)
     for e in ns.explorers
-        set_state!(e, ns.x) # note: ns.x is preserved during "tune!", so this should equal the initialization point
+        refresh_curVβ!(e)
     end
 end
 
@@ -140,30 +143,29 @@ end
 
 # method for proper runs of NRST
 function tune_c!(ns::NRSTSampler, res::RunResults)
-    trVs = collectVs(ns, res)
+    trVs = res.trVs
     aggV = ns.np.use_mean ? mean.(trVs) : median.(trVs)
     tune_c!(ns, trVs, aggV)
 end
 
-# collect samples of V(x) at each of the levels, storing in trVs
-# also compute V aggregate and store in aggV
+# collect samples of V(x) at each of the levels, running explorers independently
+# store results in trVs. also compute V aggregate and store in aggV
 function collectVs!(
     ns::NRSTSampler{T,I,K},
     trVs::Vector{Vector{K}},
     aggV::Vector{K}
     ) where {T,I,K}
-    @unpack fns, use_mean, N = ns.np
-    @unpack V, randref = fns
+    @unpack tm, use_mean, N = ns.np
     aggfun = use_mean ? mean : median
     nsteps = length(first(trVs)) 
     for i in 1:nsteps
-        trVs[1][i] = V(randref())
+        trVs[1][i] = V(tm, rand(tm))
     end
     aggV[1] = aggfun(trVs[1])
     Threads.@threads for i in 1:N         # "Threads.@threads for" does not work with enumerate(ns.explorers)
         ipone = i+1
         e = ns.explorers[i]
-        run!(e, e.U.fns.V, trVs[ipone])   # Note: cant use shared np.V when threading. TODO: remove the cheap fix "e.U.fns.V" while fns becomes a proper field for explorers
+        run!(e, trVs[ipone])              # run keeping track of V
         aggV[ipone] = aggfun(trVs[ipone])
     end
 end
@@ -175,11 +177,6 @@ function collectVs(ns::NRSTSampler, nsteps::Int)
     trVs = [similar(aggV, nsteps) for _ in 0:N]
     NRST.collectVs!(ns,trVs,aggV)
     return (trVs = trVs,aggV = aggV)
-end
-
-# version for proper runs of NRST
-function collectVs(ns::NRSTSampler, res::RunResults)
-    [ns.np.fns.V.(xs) for xs in res.xarray]
 end
 
 # for each sample V(x) at each level, estimate the conditional rejection
@@ -291,7 +288,7 @@ end
 
 # method for proper runs of NRST
 function tune_nexpls!(ns::NRSTSampler, res::RunResults, args...)
-    tune_nexpls!(ns.np.nexpls, collectVs(ns, res), args...)
+    tune_nexpls!(ns.np.nexpls, res.trVs, args...)
 end
 
 
