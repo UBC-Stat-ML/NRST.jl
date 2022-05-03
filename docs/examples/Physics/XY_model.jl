@@ -53,15 +53,12 @@ using NRST
 # Define the basics of the model
 const S   = 8;
 const Ssq = S*S;
-const sq  = Square(S,S);
-const J   = 2;                    # coupling constant to force βᶜ < 1 in our parametrization, since βᶜ = 1.1199>1 for J=1: https://iopscience.iop.org/article/10.1088/0305-4470/38/26/003
-T(θ)      = logit((θ/pi + 1)/2)   # θ ∈ (-pi,pi) ↦ x ∈ ℝ
-Tinv(x)   = pi*(2logistic(x) - 1) # x ∈ ℝ ↦ θ ∈ (-pi,pi)
+const sq  = Square(S,S); # define a square lattice
+const J   = 2;           # coupling constant to force βᶜ < 1 in our parametrization, since βᶜ = 1.1199 for J=1: https://iopscience.iop.org/article/10.1088/0305-4470/38/26/003
 
 # Define the potential function
-function V(xs::Vector{TF}) where {TF<:AbstractFloat}
+function V(θs::Vector{TF}) where {TF<:AbstractFloat}
     acc = zero(TF)
-    θs  = Tinv.(xs)
     for (a, b) in edges(sq)
         ia   = (a[1]-1)*S + a[2]
         ib   = (b[1]-1)*S + b[2]
@@ -70,22 +67,22 @@ function V(xs::Vector{TF}) where {TF<:AbstractFloat}
     return J*acc
 end
 
-# Define functions for the transformed reference
-const dunif = Uniform(-pi,pi);
-randref() = T.(rand(dunif, Ssq))
-Vref(x::AbstractFloat) = x + 2log1pexp(-x) # = log1pexp(x) + log1pexp(-x)
-Vref(xs::Vector{<:AbstractFloat}) = sum(Vref, xs)
+# Define functions for the reference
+const dunif = Uniform(-pi,pi)
+randref() = rand(dunif, Ssq)
+Vref(θ::AbstractFloat) = -logpdf(dunif, θ)
+Vref(θs::Vector{<:AbstractFloat}) = sum(Vref, θs)
 
 # This
 # - builds an NRST sampler for the model
-# - tunes it
-# - runs tours in parallel
-# - shows diagnostics
+# - initializes it, finding an optimal grid
+# - sample tours in parallel and uses them to get more accurate estimates of c(β)
+# - sample one last time to show diagnostics
 ns = NRSTSampler(
     V,
     Vref,
     randref,
-    N = 400,
+    N = 300,
     verbose = true
 )
 res = parallel_run(ns, ntours = 4096)

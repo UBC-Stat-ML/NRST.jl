@@ -15,7 +15,7 @@ function tune!(
     max_Δβs::Real      = 0.01,
     nsteps_init::Int   = 64,
     max_nsteps::Int    = 524_288,
-    maxcor::Real       = 0.8,
+    maxcor::Real       = 0.95,
     verbose::Bool      = true
     )
     N       = ns.np.N
