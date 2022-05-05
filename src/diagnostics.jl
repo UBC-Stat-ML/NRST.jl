@@ -21,7 +21,7 @@ function diagnostics(
     rejrates=res.rpacc ./ res.visits
     prrs = plot(
         0:ns.np.N, push!(rejrates[1:(end-1),1],NaN),
-        ylims = (0., Inf), legend = :bottomright, linestyle = :dash,
+        ylims = (0., Inf), legend = :topright, linestyle = :dash,
         palette=DEF_PAL, label = "Up", xlabel = "Level", 
         ylabel = "Rejection probability"
     )

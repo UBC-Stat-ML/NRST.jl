@@ -82,7 +82,7 @@ ns = NRSTSampler(
     V,
     Vref,
     randref,
-    N = 300,
+    N = 385,
     verbose = true
 )
 res = parallel_run(ns, ntours = 4096)

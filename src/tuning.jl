@@ -9,13 +9,13 @@
 # full tuning
 function tune!(
     ns::NRSTSampler;
-    max_rounds::Int    = 14,
-    max_relΔcone::Real = 0.001,
-    max_relΔΛ::Real    = 0.005,
+    max_rounds::Int    = 16,
     max_Δβs::Real      = 0.01,
-    nsteps_init::Int   = 64,
-    max_nsteps::Int    = 524_288,
-    maxcor::Real       = 0.95,
+    max_relΔcone::Real = 0.001,
+    max_relΔΛ::Real    = 0.01,
+    nsteps_init::Int   = 32,
+    max_nsteps::Int    = 1_048_576,
+    maxcor::Real       = 0.8,
     verbose::Bool      = true
     )
     N       = ns.np.N
@@ -73,9 +73,7 @@ function tune!(
     # Note: this is desirable particularly in multimodal settings, where independent
     # exploration can be stuck in one mode. In contrast, true NRST sampling is not bound
     # to get stuck in single modes due to the renewal property.
-    # want: use same computational budget as the last round. Then
-    # 2ntours*mean(nexpls) = nsteps => ntours = ceil(Int,nsteps/(2mean(nexpls)))
-    ntours = ceil(Int, 0.5*nsteps/mean(ns.np.nexpls))
+    ntours = max(4_096, min(8_192, nsteps÷8))
     verbose && println("\n\tRunning $ntours NRST tours in parallel to improve c(β)...\n")
     tune_c!(ns, parallel_run(ns, ntours = ntours))
     println("\nTuning completed.\n")
