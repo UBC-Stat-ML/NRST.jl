@@ -21,9 +21,9 @@ function diagnostics(
     rejrates=res.rpacc ./ res.visits
     prrs = plot(
         0:ns.np.N, push!(rejrates[1:(end-1),1],NaN),
-        ylims = (0., Inf), legend = :topright, linestyle = :dash,
+        ylims = (0., Inf), legend = :outertopright, linestyle = :dash,
         palette=DEF_PAL, label = "Up", xlabel = "Level", 
-        ylabel = "Rejection probability"
+        ylabel = "Rejection probability", legend_foreground_color = nothing
     )
     plot!(prrs,
         0:ns.np.N, pushfirst!(rejrates[2:end,2],NaN),
@@ -31,7 +31,7 @@ function diagnostics(
     )
     plot!(prrs,
         0.5:(ns.np.N-0.5), 0.5*(rejrates[1:(end-1),1]+rejrates[2:end,2]),
-        palette=DEF_PAL, label = "Average"
+        palette=DEF_PAL, label = "Mean"
     )
 
     # Lambda Plot
@@ -50,12 +50,12 @@ function diagnostics(
     # Distribution of the tour lengths
     tourlens = tourlengths(res);
     ptlens = histogram(
-        tourlens, normalize=true, palette = DEF_PAL,
+        tourlens, normalize=true, palette = DEF_PAL, #xaxis = :log10, xlims = extrema(tourlens),
         xlabel = "Tour length", ylabel = "Density", label = ""
     );
     N = ns.np.N
     vline!(ptlens,
-        [2*(N+1)], palette = DEF_PAL, 
+        [2*(N+1)], palette = DEF_PAL, linestyle = :dot,
         linewidth = 4, label = "2N+2=$(2*(N+1))"
     )
 

@@ -4,7 +4,7 @@ using ColorSchemes: seaborn_colorblind
 using DataFrames: DataFrame
 using Distributions: Exponential, Normal, Uniform
 using DynamicPPL: DynamicPPL
-using Interpolations: interpolate, SteffenMonotonicInterpolation
+using Interpolations: interpolate, SteffenMonotonicInterpolation, LinearInterpolation
 using LogExpFunctions: logsumexp
 using Plots
 using Printf

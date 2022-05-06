@@ -47,7 +47,7 @@ model = HierarchicalModel(Y)
 # - tunes it
 # - runs tours in parallel
 # - shows diagnostics
-ns = NRSTSampler(model, N = 350, verbose = true)
+ns = NRSTSampler(model, N = 500, verbose = true)
 res = parallel_run(ns, ntours = 4096)
 plots = diagnostics(ns, res)
 hl = ceil(Int, length(plots)/2)
@@ -59,3 +59,13 @@ plot(plots..., layout = (hl,2), size = (800,hl*333))
 mkpath("assets") #src
 savefig("assets/hierarchical_model_diags.svg") #src
 savefig(plots[3], "assets/hierarchical_model.svg") #src
+
+
+# ## Notes on the results
+#
+# - This model is a great example of why tuning only using independent runs of
+#   explorers is insufficient. When one does this, and then runs NRST tours,
+#   we obtain a peak in rejection rates close to the prior (~level 4). This is
+#   because the explorers are bound to get stuck in only one region of the space
+#   so that when we run proper NRST, we reach zones that exhibit dramatically
+#   different behavior. 

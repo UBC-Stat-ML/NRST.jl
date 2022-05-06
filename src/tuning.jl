@@ -2,86 +2,145 @@
 # tuning routines
 ###############################################################################
 
-#######################################
-# main method
-#######################################
-
 # full tuning
 function tune!(
-    ns::NRSTSampler;
-    max_rounds::Int    = 16,
+    ns::NRSTSampler{T,I,K};
+    max_s1_rounds::Int = 12,
+    max_s2_rounds::Int = 3,
     max_Δβs::Real      = 0.01,
     max_relΔcone::Real = 0.001,
-    max_relΔΛ::Real    = 0.01,
+    max_relΔΛ::Real    = 0.005,
     nsteps_init::Int   = 32,
-    max_nsteps::Int    = 1_048_576,
-    maxcor::Real       = 0.8,
+    max_nsteps::Int    = 65_536,
+    maxcor::Real       = 0.95,
+    ntours::Int        = 6_192,
     verbose::Bool      = true
-    )
-    N       = ns.np.N
-    round   = 0
-    nsteps  = nsteps_init
-    oldcone = relΔcone = oldΛ = relΔΛ = NaN # to assess convergence on c(1) and Λ=Λ(1)
-    aggV    = similar(ns.np.c)
-    trVs    = [similar(aggV, nsteps) for _ in 0:N]
-    conv    = false
+    ) where {T,I,K}
+    verbose && println("Tuning started ($(Threads.nthreads()) threads).\n")
+
+    #################################################################
+    # stage I: bootstrapping using independent runs from the explorers
+    #################################################################
+
     verbose && println(
-        "Tuning started ($(Threads.nthreads()) threads).\n"
+        "Stage I: Bootstrapping the sampler using independent runs from the explorers.\n"
     ); show(plot_grid(ns.np.betas, title="Histogram of βs: initial grid")); println("\n")
-    while !conv && (round < max_rounds)
-        round += 1
-        verbose && print("Round $round:\n\tTuning explorers...")
+    rnd   = 0
+    nsteps  = nsteps_init÷2                 # nsteps is doubled at the beginning of the loop
+    oldcone = relΔcone = oldΛ = relΔΛ = NaN # to assess convergence on c(1) and Λ=Λ(1)
+    conv    = false
+    while !conv && (rnd < max_s1_rounds)
+        rnd += 1
+        nsteps = min(max_nsteps,2nsteps)
+        verbose && print("Round $rnd:\n\tTuning explorers...")
         tune_explorers!(ns, verbose = false)
         verbose && println("done!")
         
         # tune c and betas
         verbose && print("\tTuning c and grid using $nsteps steps per explorer...")
-        trVs     = [similar(aggV, nsteps) for _ in 0:N]
-        res      = @timed tune_c_betas!(ns, trVs, aggV)
+        res      = @timed tune_c_betas!(ns, nsteps)
         Δβs, Λ   = res.value
         relΔcone = abs(ns.np.c[end] - oldcone) / abs(oldcone)
         oldcone  = ns.np.c[end]
         relΔΛ    = abs(Λ - oldΛ) / abs(oldΛ)
         oldΛ     = Λ
         verbose && @printf(
-            "done!\n\t\tmax(Δbetas)=%.2f\n\t\tc(1)=%.3f (relΔ=%.1f%%)\n\t\tΛ=%.3f (relΔ=%.1f%%)\n\t\tElapsed: %.1fs\n\n", 
+            "done!\n\t\tmax(Δbetas)=%.3f\n\t\tc(1)=%.2f (relΔ=%.2f%%)\n\t\tΛ=%.2f (relΔ=%.1f%%)\n\t\tElapsed: %.1fs\n\n", 
             Δβs, ns.np.c[end], 100*relΔcone, Λ, 100*relΔΛ, res.time
-        ); show(plot_grid(ns.np.betas, title="Histogram of βs: round $round")); println("\n")
+        ); show(plot_grid(ns.np.betas, title="Histogram of βs: round $rnd")); println("\n")
 
         # check convergence
         conv = !isnan(relΔcone) && (relΔcone<max_relΔcone) && 
             !isnan(relΔΛ) && (relΔΛ < max_relΔΛ) && (Δβs<max_Δβs)
-        nsteps = min(max_nsteps,2nsteps)
     end
-    # since betas changed the last, need to tune explorers and c one last time
+    
+    #################################################################
+    # final round of stage I: since betas changed the last, we need 
+    # to tune explorers and c one last time. We also set nexpls.
+    #################################################################
+
     verbose && print(
         (conv ? "Grid converged!" :
-                "max_rounds=$max_rounds reached.") *
-        "\nFinal round:\n\tTuning explorers..."
+                "max_rounds=$max_s1_rounds reached.") *
+        "\nFinal round of stage I: adjusting settings to new grid...\n" *
+        "\tTuning explorers..."
     )
     tune_explorers!(ns, verbose = false)
-    nsteps = length(trVs[1])
     verbose && println("done!\n\tTuning c and nexpls using $nsteps steps per explorer...\n")
-    collectVs!(ns, trVs, aggV)
-    tune_c!(ns, trVs, aggV)
+    trVs, _ = tune_c!(ns, nsteps)
     tune_nexpls!(ns.np.nexpls, trVs, maxcor)
     verbose && show(lineplot_term(
         ns.np.betas[2:end], ns.np.nexpls, xlabel = "β",
         title="Exploration steps needed to get correlation ≤ $maxcor"
     )); println("\n")
-    # running NRST tours to do final tuning of c 
+
+    # Note: at this point, ns is adequately (but not optimally) tuned,
+    # so we can always just finish here if we are in a hurry?
+
+    #################################################################
+    # Stage II: tuning using parallel runs of NRST tours
     # Note: this is desirable particularly in multimodal settings, where independent
     # exploration can be stuck in one mode. In contrast, true NRST sampling is not bound
     # to get stuck in single modes due to the renewal property.
-    ntours = max(4_096, min(8_192, nsteps÷8))
-    verbose && println("\n\tRunning $ntours NRST tours in parallel to improve c(β)...\n")
+    #################################################################
+    
+    verbose && println(
+        "\nStage II: tuning using NRST tours run in parallel.\n"
+    )
+    rnd  = 0
+    conv = false
+    while !conv && (rnd < max_s2_rounds)
+        rnd += 1
+        
+        # tune grid and then c
+        itp_c = LinearInterpolation(ns.np.betas, ns.np.c)
+        verbose && println(
+            "Round $rnd:\n\tTuning c and grid using $ntours tours...\n"
+        )
+        Δβs, Λ   = tune_c_betas!(ns, parallel_run(ns, ntours = ntours))
+        relΔcone = abs(ns.np.c[end] - oldcone) / abs(oldcone)
+        oldcone  = ns.np.c[end]
+        relΔΛ    = abs(Λ - oldΛ) / abs(oldΛ)
+        oldΛ     = Λ
+        verbose && @printf(
+            "\n\tdone!\n\t\tmax(Δbetas)=%.3f\n\t\tc(1)=%.2f (relΔ=%.2f%%)\n\t\tΛ=%.2f (relΔ=%.1f%%)\n", 
+            Δβs, ns.np.c[end], 100*relΔcone, Λ, 100*relΔΛ
+        ); show(plot_grid(ns.np.betas, title="Histogram of βs: round $rnd")); println("\n")
+        verbose && print("\tTuning explorers...")
+        tune_explorers!(ns, verbose = false)
+        verbose && println("done!\n\tTuning c and nexpls using $nsteps steps per explorer...\n")
+        trVs, _ = @suppress_err tune_c!(ns, nsteps)
+        tune_nexpls!(ns.np.nexpls, trVs, maxcor)
+        verbose && show(lineplot_term(
+            ns.np.betas[2:end], ns.np.nexpls, xlabel = "β",
+            title="Exploration steps needed to get correlation ≤ $maxcor"
+        )); println("\n")
+
+        # check convergence
+        conv = !isnan(relΔcone) && (relΔcone<max_relΔcone) && 
+            !isnan(relΔΛ) && (relΔΛ < max_relΔΛ) && (Δβs<max_Δβs)
+        ntours += 1_000
+        nsteps  = min(max_nsteps,2nsteps)
+    end
+
+    #################################################################
+    # Stage III: final c tuning using parallel runs of NRST tours
+    #################################################################
+    
+    verbose && println(
+        "\nStage III: final c tuning using parallel runs of NRST tours.\n"
+    )
     tune_c!(ns, parallel_run(ns, ntours = ntours))
     println("\nTuning completed.\n")
 end
 
 
-#######################################
+##############################################################################
 # under the hood
+##############################################################################
+
+#######################################
+# tune explorers
 #######################################
 
 # tune the explorers' parameters
@@ -104,32 +163,32 @@ function tune_explorers_serial!(ns::NRSTSampler;smooth=true,kwargs...)
     smooth && smooth_params!(ns.explorers)
 end
 
+#######################################
+# utilities for jointly tuning c and grid
+#######################################
+
 # Tune c and betas using independent runs of the explorers
 # note: explorers must be tuned already before running this
-function tune_c_betas!(
-    ns::NRSTSampler{T,I,K},
-    trVs::Vector{Vector{K}},
-    aggV::Vector{K}
-    ) where {T,I,K}
+# note: need to tune c first because this is used for estimating rejections (R)
+function tune_c_betas!(ns::NRSTSampler, nsteps::Int)
     @unpack c, betas = ns.np
-    collectVs!(ns, trVs, aggV)          # in parallel, collect V samples and aggregate them
-    @suppress_err tune_c!(ns,trVs,aggV) # tune c using aggV and trVs if necessary
-    R = est_rej_probs(trVs, betas, c)   # compute average rejection probabilities
-    oldbetas = copy(betas)              # store old betas to check convergence
-    _, _, Λs = optimize_betas!(betas,R) # tune using the inverse of Λ(β)
-    refresh_explorers!(ns)              # since betas changed, the cached potentials are stale
-    # return max change in grid and Λ=Λ(1) to check convergence
-    return (maximum(abs,betas-oldbetas), Λs[end])
+    trVs, _  = @suppress_err tune_c!(ns, nsteps) # tune c using aggV and trVs if necessary
+    R        = est_rej_probs(trVs, betas, c)     # compute average rejection probabilities
+    tune_betas!(ns, R)
 end
 
-# utility to reset Vβ caches in all explorers
-function refresh_explorers!(ns::NRSTSampler)
-    for e in ns.explorers
-        refresh_curVβ!(e)
-    end
+# method for proper runs of NRST
+# important: must do c first, because after changing betas "res" is stale
+function tune_c_betas!(ns::NRSTSampler, res::RunResults)
+    tune_c!(ns, res)
+    tune_betas!(ns, res)
 end
 
-# tune the c vector
+#######################################
+# tune c
+#######################################
+
+# tune the c vector using samples of the potential function
 function tune_c!(
     ns::NRSTSampler{T,I,K},
     trVs::Vector{Vector{K}},
@@ -146,12 +205,44 @@ function tune_c!(
     return
 end
 
+# method for collecting samples using just the explorers
+function tune_c!(ns::NRSTSampler, nsteps::Int)
+    @unpack c, betas = ns.np
+    trVs, aggV = collectVs(ns, nsteps)
+    tune_c!(ns, trVs, aggV)
+    return (trVs = trVs, aggV = aggV)
+end
+
 # method for proper runs of NRST
 function tune_c!(ns::NRSTSampler, res::RunResults)
     trVs = res.trVs
     aggV = ns.np.use_mean ? mean.(trVs) : median.(trVs)
     tune_c!(ns, trVs, aggV)
 end
+
+#######################################
+# tune betas
+#######################################
+
+function tune_betas!(ns::NRSTSampler, R::Matrix{<:Real})
+    betas    = ns.np.betas
+    oldbetas = copy(betas)                       # store old betas to check convergence
+    _, _, Λs = optimize_grid!(betas, R)         # tune using the inverse of Λ(β)
+    refresh_explorers!(ns)                       # since betas changed, the cached potentials are stale
+    return (maximum(abs,betas-oldbetas),Λs[end]) # return max change in grid and Λ=Λ(1) to check convergence
+end
+
+# utility to reset Vβ caches in all explorers
+function refresh_explorers!(ns::NRSTSampler)
+    for e in ns.explorers
+        refresh_curVβ!(e)
+    end
+end
+
+# Tune betas using the output of NRST
+# this has the advantage of getting a more accurate representation of the points
+# where rejections are higher
+tune_betas!(ns::NRSTSampler, res::RunResults) = tune_betas!(ns, res.rpacc ./ res.visits)
 
 # collect samples of V(x) at each of the levels, running explorers independently
 # store results in trVs. also compute V aggregate and store in aggV
@@ -181,7 +272,7 @@ function collectVs(ns::NRSTSampler, nsteps::Int)
     aggV = similar(ns.np.c)
     trVs = [similar(aggV, nsteps) for _ in 0:N]
     NRST.collectVs!(ns,trVs,aggV)
-    return (trVs = trVs,aggV = aggV)
+    return (trVs = trVs, aggV = aggV)
 end
 
 # for each sample V(x) at each level, estimate the conditional rejection
@@ -224,23 +315,23 @@ function est_rej_probs(trVs, betas, c)
     return R
 end
 
-# optimize betas using the equirejection approach
+# optimize the grid using the equirejection approach
 # returns estimates of Λ(β) at the grid locations
-function optimize_betas!(betas::Vector{K}, R::Matrix{K}) where {K<:AbstractFloat}
+function optimize_grid!(betas::Vector{K}, R::Matrix{K}) where {K<:AbstractFloat}
     # estimate Λ at current betas using rejections rates, normalize, and interpolate
     f_Λnorm, Λsnorm, Λs = get_lambda(betas, R) # note: this the only place where R is used
 
     # find newbetas by inverting f_Λnorm with a uniform grid on the range
-    N           = length(betas) - 1
-    Δ           = convert(K,1/N) # step size of the grid
-    targetΛ     = zero(K)
+    N           = length(betas)-1
+    Δ           = convert(K,1/N)   # step size of the grid
+    Λtargets    = zero(K):Δ:one(K)
     newbetas    = similar(betas)
-    newbetas[1] = betas[1]       # technically 0., but is safer this way against rounding errors
+    newbetas[1] = betas[1]         # technically 0., but is safer this way against rounding errors
     for i in 2:N
-        targetΛ    += Δ
+        targetΛ     = Λtargets[i]
         b1          = newbetas[i-1]
-        b2          = betas[findfirst(u -> (u>targetΛ), Λsnorm)]            # f_Λnorm^{-1}(targetΛ) cannot exceed this
-        newbetas[i] = find_zero(β -> f_Λnorm(β)-targetΛ, (b1,b2), atol = Δ*1e-4) # set tolerance for |f_Λnorm(β)-target| 
+        b2          = betas[findfirst(u -> (u>targetΛ), Λsnorm)]                 # f_Λnorm^{-1}(targetΛ) cannot exceed this
+        newbetas[i] = find_zero(β -> f_Λnorm(β)-targetΛ, (b1,b2), atol = Δ*1e-7) # set tolerance for |f_Λnorm(β)-target| 
     end
     newbetas[end] = one(K)
     copyto!(betas, newbetas)
@@ -277,7 +368,7 @@ function tune_nexpls!(
             X = reshape(collect(0:(l-1)),(l,1))  # build design matrix
             y = log.(ac)
             ρ = (X \ y)[1]                       # solve least-squares: Xρ ≈ y
-            nexpls[i] = ceil(L/ρ)                # x = e^{ρn} => log(x) = ρn => n = log(x)/ρ
+            nexpls[i] = ceil(TI, L/ρ)            # x = e^{ρn} => log(x) = ρn => n = log(x)/ρ
         end
     end
     # smooth the results
@@ -288,11 +379,6 @@ function tune_nexpls!(
     for i in eachindex(nexpls)
         nexpls[i] = ceil(TI, exp(lognxspred[i]))
     end
-end
-
-# method for proper runs of NRST
-function tune_nexpls!(ns::NRSTSampler, res::RunResults, args...)
-    tune_nexpls!(ns.np.nexpls, res.trVs, args...)
 end
 
 

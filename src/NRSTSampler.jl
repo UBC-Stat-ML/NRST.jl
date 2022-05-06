@@ -55,7 +55,7 @@ end
 function NRSTSampler(
     tm::TemperedModel;
     betas          = missing,
-    N::Int         = 70,
+    N::Int         = 100,
     nexpl::Int     = 50,
     use_mean::Bool = true,
     tune::Bool     = true,

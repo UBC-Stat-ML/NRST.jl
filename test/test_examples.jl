@@ -15,12 +15,12 @@ end
 model = Lnmodel(randn(30));
 
 # Build an NRST sampler for the model, tune it, sample with it, and show diagnostics
-ns = NRSTSampler(model, N=30, verbose = true, tune=false);
-NRST.tune!(ns, maxcor=0.95)
-res = parallel_run(ns, ntours = 16348);
+ns = NRSTSampler(model, N=60, verbose = true);
+res = parallel_run(ns, ntours = 4096);
 plots = diagnostics(ns,res);
 hl = ceil(Int, length(plots)/2)
 plot(plots..., layout = (hl,2), size = (800,hl*333))
+
 
 ###############################################################################
 # Hierarchical model
@@ -54,25 +54,17 @@ Y = readdlm(
 model = HierarchicalModel(Y);
 
 # Build an NRST sampler for the model, tune it, sample with it, and show diagnostics
-ns = NRSTSampler(model, N = 200, verbose = true, tune=false);
-NRST.tune!(ns, maxcor=0.95);
-res = parallel_run(ns, ntours = 16348);
-plots = diagnostics(ns, res)
+ns = NRSTSampler(model, N = 330, verbose = true);
+res = parallel_run(ns, ntours = 4096);
+plots = diagnostics(ns,res);
 hl = ceil(Int, length(plots)/2)
 plot(plots..., layout = (hl,2), size = (800,hl*333))
-
-# check nexpls
-plot(ns.np.nexpls)
-sigmas = [NRST.params(e)[1] for e in ns.explorers];
-plot(sigmas)
-
-NRST.tune_nexpls!(ns.np.nexpls,res.trVs,0.95)
 
 ###############################################################################
 # XY model
 ###############################################################################
 
-using Lattices, LogExpFunctions, Distributions, Plots
+using Lattices, Distributions, Plots
 using NRST
 
 # Define the basics of the model
@@ -107,9 +99,10 @@ ns = NRSTSampler(
     V,
     Vref,
     randref,
-    N = 200,
+    N = 440,
     verbose = true
 );
-plot(ns.np.nexpls)
-sigmas = [NRST.params(e)[1] for e in ns.explorers]
-plot(sigmas)
+res = parallel_run(ns, ntours = 4096);
+plots = diagnostics(ns,res);
+hl = ceil(Int, length(plots)/2)
+plot(plots..., layout = (hl,2), size = (800,hl*333))

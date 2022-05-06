@@ -17,37 +17,10 @@
 # for ``J>0``. This potential is minimal for perfectly aligned configurations.
 # Note that the reference distribution is uniform on ``(-\pi,\pi)^{S^2}``.
 
-# For working with this model in the current implementation of NRST, we must 
-# transform the state-space from ``(-\pi,\pi)^{S^2}`` to ``\mathbb{R}^{S^2}``.
-# To do this we use the logistic-logit pair of transformations
-# ```math
-# \begin{aligned}
-# x_s = T(\theta_s) &= \text{logit}\left(\frac{\theta_s}{2\pi} + \frac{1}{2}\right) \\
-# \theta_s = T^{-1}(x_s) &= \pi(2\text{logistic}(x_s)-1)
-# \end{aligned}
-# ```
-# Then, simulating from the transformed reference amounts to pushing samples of
-# ``\theta`` through ``T(\cdot)``
-# ```math
-# \begin{aligned}
-# \theta &\sim \text{U}(-\pi,\pi)^{S^2} \\
-# x &= T(\theta)
-# \end{aligned}
-# ```
-# It is not difficult to see that the reference density of the transformed variables
-# ``x_s = T(\theta_s)`` is given by
-# ```math
-# \pi_x^{(0)}(x_s) = \text{logistic}(x_s)(1-\text{logistic}(x_s))
-# ```
-# In turn, this implies that the reference potential is
-# ```math
-# V_{\text{ref}}(x_s) := -\log(\pi_x^{(0)}(x_s)) = x + 2\log(1+\exp(-x))
-# ```
-
 
 # ## Implementation using NRST
 
-using Lattices, LogExpFunctions, Distributions, Plots
+using Lattices, Distributions, Plots
 using NRST
 
 # Define the basics of the model
@@ -82,7 +55,7 @@ ns = NRSTSampler(
     V,
     Vref,
     randref,
-    N = 385,
+    N = 550,
     verbose = true
 )
 res = parallel_run(ns, ntours = 4096)
