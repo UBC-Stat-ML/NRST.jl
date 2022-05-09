@@ -12,7 +12,7 @@ using ProgressMeter: ProgressMeter
 using Random: Random
 using Roots: find_zero
 using SmoothingSplines: SmoothingSpline, fit, predict
-using StaticArrays: MVector
+using StaticArrays: MVector, SVector
 using Statistics
 using StatsBase: autocor
 using StatsPlots: density

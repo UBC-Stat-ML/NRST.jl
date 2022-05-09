@@ -2,8 +2,8 @@
 # Basic model
 ###############################################################################
 
-using NRST
 using Distributions, DynamicPPL, Plots
+using NRST
 
 # Define a model using the `DynamicPPL.@model` macro
 @model function Lnmodel(x)

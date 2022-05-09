@@ -87,10 +87,14 @@ function diagnostics(ns::NRSTSampler, res::ParallelRunResults)
         yticks=(10 .^ylticks, ["10^{$e}" for e in ylticks])
     )
     plot!(pcs, stl, res.toureff[end]*(1:ntours(res)), label = "NRST (par)")
-    times, nhits = run_tours!(Bouncy(Λs[end]), ntours(res))
+    # add BouncyPDMP
+    times, nhits = run_tours!(BouncyPDMP(Λs[end]), ntours(res))
     stl_bouncy   = 2(N*sort(times) .+ 1.) # scale times in [0,1] to make them comparable
-    plot!(pcs, stl_bouncy, toureff(nhits)*(1:ntours(res)), label = "PDMP")
-
+    plot!(pcs, stl_bouncy, toureff(nhits)*(1:ntours(res)), label = "Ideal-PDMP")
+    # add BouncyMC
+    times, nhits = run_tours!(BouncyMC(Λs[end]/N,N), ntours(res))
+    stl_bouncy   = sort(times)
+    plot!(pcs, stl_bouncy, toureff(nhits)*(1:ntours(res)), label = "Ideal-MC")
 
     # # ESS/ntours for V versus toureff
     # pvess = plot(

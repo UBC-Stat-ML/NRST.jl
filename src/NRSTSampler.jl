@@ -31,7 +31,7 @@ end
 # raw trace of a serial run
 struct SerialNRSTTrace{T,TI<:Int,TF<:AbstractFloat}
     trX::Vector{T}
-    trIP::Vector{MVector{2,TI}}
+    trIP::Vector{SVector{2,TI}}
     trV::Vector{TF}
     trRP::Vector{TF}
     N::TI
@@ -168,14 +168,14 @@ end
 # run for fixed number of steps
 function run!(ns::NRSTSampler{T,I,K}; nsteps::Int) where {T,I,K}
     trX  = Vector{T}(undef, nsteps)
-    trIP = Vector{typeof(ns.ip)}(undef, nsteps)
+    trIP = Vector{SVector{2,I}}(undef, nsteps) # can use a vector of SVectors since traces should not be modified
     trV  = Vector{K}(undef, nsteps)
     trRP = similar(trV)
     for n in 1:nsteps
-        trX[n]  = copy(ns.x)  # needs copy o.w. pushes a ref to ns.x
+        trX[n]  = copy(ns.x)                   # needs copy o.w. pushes a ref to ns.x
         trIP[n] = copy(ns.ip)
         trV[n]  = curV[]
-        trRP[n] = step!(ns)   # note: since trIP[n] was stored before, trRP[n] is rej prob of swap **initiated** from trIP[n]
+        trRP[n] = step!(ns)                    # note: since trIP[n] was stored before, trRP[n] is rej prob of swap **initiated** from trIP[n]
     end
     return SerialNRSTTrace(trX, trIP, trV, trRP, ns.np.N)
 end
@@ -185,11 +185,11 @@ end
 # repeatedly calling this function is equivalent to standard sequential sampling 
 function tour!(
     ns::NRSTSampler{T,I,K};
-    keep_xs::Bool = true    # set to false if xs can be forgotten (useful for tuning to lower mem usage) 
+    keep_xs::Bool = true,                 # set to false if xs can be forgotten (useful for tuning to lower mem usage) 
     ) where {T,I,K}
     renew!(ns)
     trX  = T[]
-    trIP = typeof(ns.ip)[]
+    trIP = SVector{2,I}[]                 # can use a vector of SVectors since traces should not be modified
     trV  = K[]
     trRP = K[]
     while !(ns.ip[1] == 0 && ns.ip[2] == -1)
@@ -225,7 +225,7 @@ function post_process(
     xarray::Vector{Vector{T}}, # length = N+1. i-th entry has samples at state i
     trVs::Vector{Vector{K}},   # length = N+1. i-th entry has Vs corresponding to xarray[i]
     visacc::Matrix{I},         # size (N+1) × 2. accumulates visits
-    rpacc::Matrix{K}          # size (N+1) × 2. accumulates rejection probs
+    rpacc::Matrix{K}           # size (N+1) × 2. accumulates rejection probs
     ) where {T,I,K}
     for (n, ip) in enumerate(tr.trIP)
         idx    = ip[1] + 1
