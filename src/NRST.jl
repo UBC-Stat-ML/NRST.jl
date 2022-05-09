@@ -58,7 +58,7 @@ export diagnostics
 abstract type RunResults end
 N(res::RunResults) = length(res.xarray)-1 # retrieve max tempering level
 
-# load files
+# load core files
 include("log_partition_utils.jl")
 include("TemperedModel.jl")
 include("ExplorationKernels.jl")
@@ -67,6 +67,12 @@ include("ParallelNRST.jl")
 include("Turing_interface.jl")
 include("inference.jl")
 include("tuning.jl")
+
+# sub-modules
+include("IdealIndexProcesses/IdealIndexProcesses.jl")
+using .IdealIndexProcesses
+
+# load remaining files
 include("diagnostics.jl")
 
 end

@@ -72,14 +72,25 @@ function diagnostics(ns::NRSTSampler, res::ParallelRunResults)
     end
 
 
-    # # line plot comparing cumsum(sort(tourlens)) v. sort(tourlens); i.e., the "cummax"
-    # stl   = sort(tourlens)
-    # csstl = cumsum(stl)
-    # pcs   = plot(
-    #     csstl, xlabel="Cumulative tours completed", ylabel="Number of NRST steps",
-    #     label = "Sum", palette = DEF_PAL, yaxis=:log
-    # )
-    # plot!(pcs, stl, label = "Max")
+    # ESS versus computational cost
+    # compares serial v. parallel NRST and against idealizations of the index process
+    stl     = sort(tourlengths(res))
+    csstl   = cumsum(stl)
+    ESSlb   = res.toureff[end]*(1:ntours(res))   # assumes tour effectiveness is the same for every single tour
+    xlticks = make_log_ticks(log10.(csstl)) # TODO: if adding more methods, make sure to add them here too
+    ylticks = make_log_ticks(log10.(ESSlb))
+    pcs     = plot(
+        csstl, ESSlb, xlabel="Computational time",
+        ylabel="ESS lower bound", label = "NRST (ser)", palette = DEF_PAL, 
+        xaxis=:log10, yaxis=:log10, legend = :bottomright,
+        xticks=(10 .^xlticks, ["10^{$e}" for e in xlticks]),
+        yticks=(10 .^ylticks, ["10^{$e}" for e in ylticks])
+    )
+    plot!(pcs, stl, res.toureff[end]*(1:ntours(res)), label = "NRST (par)")
+    times, nhits = run_tours!(Bouncy(Λs[end]), ntours(res))
+    stl_bouncy   = 2(N*sort(times) .+ 1.) # scale times in [0,1] to make them comparable
+    plot!(pcs, stl_bouncy, toureff(nhits)*(1:ntours(res)), label = "PDMP")
+
 
     # # ESS/ntours for V versus toureff
     # pvess = plot(
@@ -89,7 +100,7 @@ function diagnostics(ns::NRSTSampler, res::ParallelRunResults)
     # plot!(pvess, 0:N, res.toureff, label="TE")
     # hline!(pvess, [1.], linestyle = :dash, label="")
 
-    return (pocc,prrs,plam,plp,ptlens,pdens)#,pcs,pvess)
+    return (pocc,prrs,plam,plp,ptlens,pdens, pcs, plot())
 end
 
 #######################################
@@ -120,6 +131,6 @@ function make_log_ticks(lxs)
     width        = tlmax-tlmin
     candidates   = 1:width 
     divisors     = candidates[findall([width % c == 0 for c in candidates])]
-    bestdiv      = divisors[argmin(abs.(divisors.-5))]
+    bestdiv      = divisors[argmin(abs.(divisors.-4))] # ideal div implies div+1 actual ticks
     return tlmin:(width÷bestdiv):tlmax
 end

@@ -2,8 +2,8 @@
 # Basic model
 ###############################################################################
 
-using Distributions, DynamicPPL, Plots
 using NRST
+using Distributions, DynamicPPL, Plots
 
 # Define a model using the `DynamicPPL.@model` macro
 @model function Lnmodel(x)
@@ -16,12 +16,10 @@ model = Lnmodel(randn(30));
 
 # Build an NRST sampler for the model, tune it, sample with it, and show diagnostics
 ns = NRSTSampler(model, verbose = true);
-plots = diagnostics(ns, parallel_run(ns, ntours = 524_288, keep_xs = false));
+res = parallel_run(ns, ntours = 524_288, keep_xs = false);
+plots = diagnostics(ns, res);
 hl = ceil(Int, length(plots)/2)
 plot(plots..., layout = (hl,2), size = (800,hl*333))
-
-
-
 
 ###############################################################################
 # Hierarchical model
