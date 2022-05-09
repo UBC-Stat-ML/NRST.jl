@@ -5,15 +5,15 @@
 # full tuning
 function tune!(
     ns::NRSTSampler{T,I,K};
-    max_s1_rounds::Int = 12,
-    max_s2_rounds::Int = 3,
+    max_s1_rounds::Int = 16,
+    max_s2_rounds::Int = 1,
     max_Δβs::Real      = 0.01,
-    max_relΔcone::Real = 0.001,
-    max_relΔΛ::Real    = 0.005,
+    max_relΔcone::Real = 0.005,
+    max_relΔΛ::Real    = 0.01,
     nsteps_init::Int   = 32,
-    max_nsteps::Int    = 65_536,
-    maxcor::Real       = 0.95,
-    ntours::Int        = 6_192,
+    max_nsteps::Int    = 1_048_576,
+    maxcor::Real       = 0.99,
+    max_ntours::Int    = 524_288,
     verbose::Bool      = true
     ) where {T,I,K}
     verbose && println("Tuning started ($(Threads.nthreads()) threads).\n")
@@ -53,29 +53,14 @@ function tune!(
         conv = !isnan(relΔcone) && (relΔcone<max_relΔcone) && 
             !isnan(relΔΛ) && (relΔΛ < max_relΔΛ) && (Δβs<max_Δβs)
     end
-    
-    #################################################################
-    # final round of stage I: since betas changed the last, we need 
-    # to tune explorers and c one last time. We also set nexpls.
-    #################################################################
 
     verbose && print(
         (conv ? "Grid converged!" :
                 "max_rounds=$max_s1_rounds reached.") *
-        "\nFinal round of stage I: adjusting settings to new grid...\n" *
-        "\tTuning explorers..."
+        # "\nFinal round of stage I: adjusting settings to new grid...\n" *
+        # "\tTuning explorers..."
+        "\n"
     )
-    tune_explorers!(ns, verbose = false)
-    verbose && println("done!\n\tTuning c and nexpls using $nsteps steps per explorer...\n")
-    trVs, _ = tune_c!(ns, nsteps)
-    tune_nexpls!(ns.np.nexpls, trVs, maxcor)
-    verbose && show(lineplot_term(
-        ns.np.betas[2:end], ns.np.nexpls, xlabel = "β",
-        title="Exploration steps needed to get correlation ≤ $maxcor"
-    )); println("\n")
-
-    # Note: at this point, ns is adequately (but not optimally) tuned,
-    # so we can always just finish here if we are in a hurry?
 
     #################################################################
     # Stage II: tuning using parallel runs of NRST tours
@@ -87,17 +72,34 @@ function tune!(
     verbose && println(
         "\nStage II: tuning using NRST tours run in parallel.\n"
     )
-    rnd  = 0
-    conv = false
+    rnd    = 0
+    conv   = false
+    ntours = nsteps
     while !conv && (rnd < max_s2_rounds)
-        rnd += 1
-        
-        # tune grid and then c
-        itp_c = LinearInterpolation(ns.np.betas, ns.np.c)
+        rnd   += 1
+        nsteps = min(max_nsteps,2nsteps)
+        ntours = min(max_ntours,2ntours)
+
+        # at this point, ns has a fresh new grid, so explorers params, c, and  
+        # nexpls are stale, so we tune them
+        verbose && print("Round $rnd:\n\tTuning explorers...")
+        tune_explorers!(ns, verbose = false)
+        verbose && print("done!\n\tTuning c and nexpls using $nsteps steps per explorer...")
+        res     = @timed @suppress_err tune_c!(ns, nsteps)
+        trVs, _ = res.value 
+        tune_nexpls!(ns.np.nexpls, trVs, maxcor)
+        verbose && @printf("done!\n\t\tElapsed: %.1fs\n\n", res.time)
+        verbose && show(lineplot_term(
+            ns.np.betas[2:end], ns.np.nexpls, xlabel = "β",
+            title="Exploration steps needed to get correlation ≤ $maxcor"
+        )); println("\n")
+        # after these steps, NRST is coherently tuned and can be used to sample
+
+        # run NRST tours in parallel to tune the grid
         verbose && println(
-            "Round $rnd:\n\tTuning c and grid using $ntours tours...\n"
+            "\tTuning the grid using $ntours tours...\n"
         )
-        Δβs, Λ   = tune_c_betas!(ns, parallel_run(ns, ntours = ntours))
+        Δβs, Λ   = tune_betas!(ns, parallel_run(ns, ntours = ntours, keep_xs = false))
         relΔcone = abs(ns.np.c[end] - oldcone) / abs(oldcone)
         oldcone  = ns.np.c[end]
         relΔΛ    = abs(Λ - oldΛ) / abs(oldΛ)
@@ -106,31 +108,35 @@ function tune!(
             "\n\tdone!\n\t\tmax(Δbetas)=%.3f\n\t\tc(1)=%.2f (relΔ=%.2f%%)\n\t\tΛ=%.2f (relΔ=%.1f%%)\n", 
             Δβs, ns.np.c[end], 100*relΔcone, Λ, 100*relΔΛ
         ); show(plot_grid(ns.np.betas, title="Histogram of βs: round $rnd")); println("\n")
-        verbose && print("\tTuning explorers...")
-        tune_explorers!(ns, verbose = false)
-        verbose && println("done!\n\tTuning c and nexpls using $nsteps steps per explorer...\n")
-        trVs, _ = @suppress_err tune_c!(ns, nsteps)
-        tune_nexpls!(ns.np.nexpls, trVs, maxcor)
-        verbose && show(lineplot_term(
-            ns.np.betas[2:end], ns.np.nexpls, xlabel = "β",
-            title="Exploration steps needed to get correlation ≤ $maxcor"
-        )); println("\n")
-
+        
         # check convergence
-        conv = !isnan(relΔcone) && (relΔcone<max_relΔcone) && 
-            !isnan(relΔΛ) && (relΔΛ < max_relΔΛ) && (Δβs<max_Δβs)
-        ntours += 1_000
-        nsteps  = min(max_nsteps,2nsteps)
+        conv = !isnan(relΔcone) && (relΔcone < max_relΔcone) && 
+            !isnan(relΔΛ) && (relΔΛ < max_relΔΛ) && (Δβs < max_Δβs)
     end
+    verbose && print(
+        "\nFinal round of stage II: adjusting settings to new grid...\n" *
+        "\tTuning explorers..."
+    )
+    tune_explorers!(ns, verbose = false)
+    verbose && print("done!\n\tTuning c and nexpls using $nsteps steps per explorer...")
+    res     = @timed @suppress_err tune_c!(ns, nsteps)
+    trVs, _ = res.value 
+    tune_nexpls!(ns.np.nexpls, trVs, maxcor)
+    verbose && @printf("done!\n\t\tElapsed: %.1fs\n\n", res.time)
+    verbose && show(lineplot_term(
+        ns.np.betas[2:end], ns.np.nexpls, xlabel = "β",
+        title="Exploration steps needed to get correlation ≤ $maxcor"
+    )); println("\n")
+    # after these steps, NRST is coherently tuned and can be used to sample
 
     #################################################################
     # Stage III: final c tuning using parallel runs of NRST tours
     #################################################################
     
     verbose && println(
-        "\nStage III: final c tuning using parallel runs of NRST tours.\n"
+        "\nStage III: final c tuning using $ntours NRST tours.\n"
     )
-    tune_c!(ns, parallel_run(ns, ntours = ntours))
+    tune_c!(ns, parallel_run(ns, ntours = ntours, keep_xs = false))
     println("\nTuning completed.\n")
 end
 
@@ -242,7 +248,8 @@ end
 # Tune betas using the output of NRST
 # this has the advantage of getting a more accurate representation of the points
 # where rejections are higher
-tune_betas!(ns::NRSTSampler, res::RunResults) = tune_betas!(ns, res.rpacc ./ res.visits)
+tune_betas!(ns::NRSTSampler, res::RunResults) = 
+    tune_betas!(ns, res.rpacc ./ res.visits)
 
 # collect samples of V(x) at each of the levels, running explorers independently
 # store results in trVs. also compute V aggregate and store in aggV

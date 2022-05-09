@@ -55,11 +55,10 @@ ns = NRSTSampler(
     V,
     Vref,
     randref,
-    N = 550,
+    N = 57,
     verbose = true
 )
-res = parallel_run(ns, ntours = 4096)
-plots = diagnostics(ns, res)
+plots = diagnostics(ns, parallel_run(ns, ntours = 524_288, keep_xs = false))
 hl = ceil(Int, length(plots)/2)
 plot(plots..., layout = (hl,2), size = (800,hl*333))
 

@@ -36,7 +36,7 @@ struct SerialNRSTTrace{T,TI<:Int,TF<:AbstractFloat}
     trRP::Vector{TF}
     N::TI
 end
-nsteps(tr::SerialNRSTTrace) = length(tr.trX) # recover nsteps
+nsteps(tr::SerialNRSTTrace) = length(tr.trV) # recover nsteps
 
 # processed output
 struct SerialRunResults{T,TI<:Int,TF<:AbstractFloat} <: RunResults
@@ -55,8 +55,8 @@ end
 function NRSTSampler(
     tm::TemperedModel;
     betas          = missing,
-    N::Int         = 100,
-    nexpl::Int     = 50,
+    N::Int         = 10, # good performance for Λ=1, scales linearly with Λ
+    nexpl::Int     = 50, 
     use_mean::Bool = true,
     tune::Bool     = true,
     verbose::Bool  = false,
@@ -183,15 +183,18 @@ end
 # run a tour: run the sampler until we reach the atom ip=(0,-1)
 # note: by finishing at the atom (0,-1) and restarting using the renewal measure,
 # repeatedly calling this function is equivalent to standard sequential sampling 
-function tour!(ns::NRSTSampler{T,I,K}) where {T,I,K}
+function tour!(
+    ns::NRSTSampler{T,I,K};
+    keep_xs::Bool = true    # set to false if xs can be forgotten (useful for tuning to lower mem usage) 
+    ) where {T,I,K}
     renew!(ns)
     trX  = T[]
     trIP = typeof(ns.ip)[]
     trV  = K[]
     trRP = K[]
     while !(ns.ip[1] == 0 && ns.ip[2] == -1)
-        push!(trX, copy(ns.x))   # needs copy o.w. pushes a ref to ns.x
-        push!(trIP, copy(ns.ip)) # same
+        keep_xs && push!(trX, copy(ns.x)) # needs copy o.w. pushes a ref to ns.x
+        push!(trIP, copy(ns.ip))          # same
         push!(trV, ns.curV[])
         push!(trRP, step!(ns))
     end
@@ -222,14 +225,14 @@ function post_process(
     xarray::Vector{Vector{T}}, # length = N+1. i-th entry has samples at state i
     trVs::Vector{Vector{K}},   # length = N+1. i-th entry has Vs corresponding to xarray[i]
     visacc::Matrix{I},         # size (N+1) × 2. accumulates visits
-    rpacc::Matrix{K}           # size (N+1) × 2. accumulates rejection probs
+    rpacc::Matrix{K}          # size (N+1) × 2. accumulates rejection probs
     ) where {T,I,K}
     for (n, ip) in enumerate(tr.trIP)
         idx    = ip[1] + 1
         idxeps = (ip[2] == one(I) ? 1 : 2)
         visacc[idx, idxeps] += one(I)
         rpacc[idx, idxeps]  += tr.trRP[n]
-        push!(xarray[idx], tr.trX[n])
+        length(tr.trX) >= n && push!(xarray[idx], tr.trX[n]) # handle case keep_xs=false
         push!(trVs[idx], tr.trV[n])
     end
 end

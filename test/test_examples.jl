@@ -15,12 +15,10 @@ end
 model = Lnmodel(randn(30));
 
 # Build an NRST sampler for the model, tune it, sample with it, and show diagnostics
-ns = NRSTSampler(model, N=60, verbose = true);
-res = parallel_run(ns, ntours = 4096);
-plots = diagnostics(ns,res);
+ns = NRSTSampler(model, verbose = true);
+plots = diagnostics(ns, parallel_run(ns, ntours = 524_288, keep_xs = false));
 hl = ceil(Int, length(plots)/2)
 plot(plots..., layout = (hl,2), size = (800,hl*333))
-
 
 ###############################################################################
 # Hierarchical model
@@ -54,11 +52,11 @@ Y = readdlm(
 model = HierarchicalModel(Y);
 
 # Build an NRST sampler for the model, tune it, sample with it, and show diagnostics
-ns = NRSTSampler(model, N = 330, verbose = true);
-res = parallel_run(ns, ntours = 4096);
-plots = diagnostics(ns,res);
+ns = NRSTSampler(model, N = 53, verbose = true);
+plots = diagnostics(ns, parallel_run(ns, ntours = 524_288, keep_xs = false));
 hl = ceil(Int, length(plots)/2)
 plot(plots..., layout = (hl,2), size = (800,hl*333))
+
 
 ###############################################################################
 # XY model
@@ -99,10 +97,9 @@ ns = NRSTSampler(
     V,
     Vref,
     randref,
-    N = 440,
+    N = 62,
     verbose = true
 );
-res = parallel_run(ns, ntours = 4096);
-plots = diagnostics(ns,res);
+plots = diagnostics(ns, parallel_run(ns, ntours = 524_288, keep_xs = false));
 hl = ceil(Int, length(plots)/2)
 plot(plots..., layout = (hl,2), size = (800,hl*333))

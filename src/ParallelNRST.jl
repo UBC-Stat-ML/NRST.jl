@@ -27,7 +27,8 @@ end
 function run!(
     samplers::Vector{TS}; # contains nthreads (deep)copies of an NRSTSampler object 
     ntours::Int,          # total number of tours to run
-    verbose::Bool = false
+    verbose::Bool = false,
+    kwargs...
 ) where {T,TI,TF,TS<:NRSTSampler{T,TI,TF}}
     # need separate storage for each threadid because push! is not atomic!!!
     # each thread gets a vector of traces to push! results to
@@ -37,8 +38,8 @@ function run!(
     p = ProgressMeter.Progress(ntours, "Sampling: ")
     Threads.@threads for tour in 1:ntours
         tid = Threads.threadid()
-        tr  = tour!(samplers[tid])      # run a full tour with the sampler corresponding to this thread, avoiding race conditions
-        push!(trace_vec[tid], tr)       # push results to this thread's own storage, avoiding race conditions
+        tr  = tour!(samplers[tid]; kwargs...) # run a full tour with the sampler corresponding to this thread, avoiding race conditions
+        push!(trace_vec[tid], tr)             # push results to this thread's own storage, avoiding race conditions
         verbose && println(
             "thread ", tid, ": completed tour ", tour
         )
@@ -53,9 +54,10 @@ end
 function parallel_run(
     ns::NRSTSampler; 
     ntours::Int,
-    nthreads::Int = Threads.nthreads()
+    nthreads::Int = Threads.nthreads(),
+    kwargs...
     )
-    run!(copy_sampler(ns, nthreads=nthreads), ntours=ntours)
+    run!(copy_sampler(ns, nthreads=nthreads); ntours=ntours, kwargs...)
 end
 
 #######################################

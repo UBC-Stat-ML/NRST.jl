@@ -146,11 +146,11 @@ function tune!(
     mhs::MHSampler{F,K};
     sigma0     = -one(K),
     target_acc = 0.234,
-    eps        = 0.03,
+    eps        = 0.05,
     α          = -1.0,
     min_rounds = 2,
     max_rounds = 16,
-    nsteps     = 500,
+    nsteps     = 400,
     verbose    = true
     ) where {F,K}
     nsteps < 1 && return

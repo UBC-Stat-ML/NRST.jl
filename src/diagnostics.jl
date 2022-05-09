@@ -35,9 +35,9 @@ function diagnostics(
     )
 
     # Lambda Plot
-    betas = ns.np.betas;
-    Λnorm, _ = get_lambda(betas, rejrates);
-    plam = plot_lambda(Λnorm,betas,"")
+    betas = ns.np.betas
+    f_Λnorm, Λsnorm, Λs = NRST.get_lambda(betas, rejrates)
+    plam = plot_lambda(β->Λs[end]*f_Λnorm(β),betas,"")
 
     # Plot of the log-partition function
     lpart = log_partition(ns, res);
@@ -48,27 +48,28 @@ function diagnostics(
     )
 
     # Distribution of the tour lengths
-    tourlens = tourlengths(res);
-    ptlens = histogram(
-        tourlens, normalize=true, palette = DEF_PAL, #xaxis = :log10, xlims = extrema(tourlens),
-        xlabel = "Tour length", ylabel = "Density", label = ""
+    ltlns     = log10.(tourlengths(res))
+    lmin,lmax = extrema(ltlns)
+    lrng      = ceil(Int,lmin):floor(Int,lmax)
+    ptlens    = histogram(
+        ltlns, normalize=true, palette = DEF_PAL, #xaxis = :log10, xlims = extrema(tourlens),
+        xlabel = "Tour length", ylabel = "Density", label = "",
+        xticks = (collect(lrng), ["10^{$e}" for e in lrng])
     );
     N = ns.np.N
     vline!(ptlens,
-        [2*(N+1)], palette = DEF_PAL, linestyle = :dot,
+        [log10(2*(N+1))], palette = DEF_PAL, linestyle = :dot,
         linewidth = 4, label = "2N+2=$(2*(N+1))"
     )
 
-    # Density plots for x[1]
+    # Density plots for V
     colorgrad = cgrad([DEF_PAL[1], DEF_PAL[2]], range(0.,1.,N+1));
     pdens = density(
-        [x[1] for x in res.xarray[1]],color=colorgrad[1],label="",
-        xlabel = "x[1]", ylabel = "Density"
+        res.trVs[1],color=colorgrad[1],label="",
+        xlabel = "V", ylabel = "Density"
     )
     for i in 2:(N+1)
-        density!(pdens,
-            [x[1] for x in res.xarray[i]], color = colorgrad[i], label=""
-        )
+        density!(pdens,res.trVs[i], color = colorgrad[i], label="")
     end
 
     # # line plot comparing cumsum(sort(tourlens)) v. sort(tourlens); i.e., the "cummax"
@@ -101,7 +102,7 @@ function plot_lambda(Λ,bs,lab)
     c2 = DEF_PAL[2]
     p = plot(
         x->Λ(x), 0., 1., label = "", legend = :bottomright,
-        xlim=(0.,1.), ylim=(0.,1.), color = c1, grid = false,
+        xlim=(0.,1.), color = c1, grid = false, ylim=(0., Λ(bs[end])),
         xlabel = "β", ylabel = "Λ(β)"
     )
     plot!(p, [0.,0.], [0.,0.], label=lab, color = c2)
