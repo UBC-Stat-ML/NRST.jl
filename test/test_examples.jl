@@ -20,6 +20,9 @@ plots = diagnostics(ns, parallel_run(ns, ntours = 524_288, keep_xs = false));
 hl = ceil(Int, length(plots)/2)
 plot(plots..., layout = (hl,2), size = (800,hl*333))
 
+
+
+
 ###############################################################################
 # Hierarchical model
 ###############################################################################
@@ -97,7 +100,7 @@ ns = NRSTSampler(
     V,
     Vref,
     randref,
-    N = 62,
+    N = 57,
     verbose = true
 );
 plots = diagnostics(ns, parallel_run(ns, ntours = 524_288, keep_xs = false));
