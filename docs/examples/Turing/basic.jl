@@ -29,7 +29,7 @@ model = Lnmodel(randn(30))
 ns  = NRSTSampler(model, verbose = true)
 plots = diagnostics(ns, parallel_run(ns, ntours = 524_288, keep_xs = false))
 hl = ceil(Int, length(plots)/2)
-plot(plots..., layout = (hl,2), size = (800,hl*333))
+plot(plots..., layout = (hl,2), size = (900,hl*333))
 
 #md # ![Diagnostics plots](assets/basic_diags.svg)
 

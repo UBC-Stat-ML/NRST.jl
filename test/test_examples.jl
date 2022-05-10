@@ -19,48 +19,7 @@ ns = NRSTSampler(model, verbose = true);
 res = parallel_run(ns, ntours = 524_288, keep_xs = false);
 plots = diagnostics(ns, res);
 hl = ceil(Int, length(plots)/2)
-plot(plots..., layout = (hl,2), size = (800,hl*333))
-
-# ESS versus computational cost
-# compares serial v. parallel NRST and against idealizations of the index process
-using NRST.IdealIndexProcesses
-N = ns.np.N
-DEF_PAL = NRST.DEF_PAL
-make_log_ticks=NRST.make_log_ticks
-Λs = [1.]
-
-cuESS = res.toureff[end]*(1:ntours(res))
-lcuESS   = log10.(cuESS)
-lcumaxtls = log10.(accumulate(max, tourls))
-lcusumtls = log10.(cumsum(tourls))
-xlticks = make_log_ticks(lcusumtls) # TODO: if adding more methods, make sure to add them here too
-ylticks = make_log_ticks(lcuESS) # TODO: if adding more methods, make sure to add them here too
-pcs     = plot(
-    xlabel="Computational time",
-    ylabel="ESS lower bound", palette = DEF_PAL, 
-    legend = :bottomright,
-    xticks=(xlticks, ["10^{$e}" for e in xlticks]),
-    yticks=(ylticks, ["10^{$e}" for e in ylticks])
-)
-plot!(pcs, lcusumtls, lcuESS, label = "NRST (ser)")
-plot!(pcs, lcumaxtls, lcuESS, label = "NRST (par)")
-
-# add BouncyPDMP
-tourls, vNs = run_tours!(BouncyPDMP(Λs[end]), ntours(res))
-TE = (sum(vNs) ^ 2) / (ntours(res)*sum(abs2, vNs)) # corresponding ESSlbs[i] = TEs[i]*i, i in 1:ntours 
-cuESS = TE*(1:ntours(res))
-lcuESS = log10.(cuESS)
-scale_tourls = 2(N*tourls .+ 1.)
-lcumaxtls = log10.(accumulate(max, scale_tourls))
-plot!(pcs, lcumaxtls, lcuESS, label = "Ideal-PDMP")
-
-# add BouncyMC
-tourls, vNs = run_tours!(BouncyMC(Λs[end]/N,N), ntours(res))
-TE = (sum(vNs) ^ 2) / (ntours(res)*sum(abs2, vNs)) # corresponding ESSlbs[i] = TEs[i]*i, i in 1:ntours 
-cuESS = TE*(1:ntours(res))
-lcuESS = log10.(cuESS)
-lcumaxtls = log10.(accumulate(max,tourls))
-plot!(pcs, lcumaxtls, lcuESS, label = "Ideal-MC")
+plot(plots..., layout = (hl,2), size = (900,hl*333))
 
 ###############################################################################
 # Hierarchical model

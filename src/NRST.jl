@@ -56,7 +56,7 @@ export diagnostics
 # in later "include"s
 # NRSTSampler.jl
 abstract type RunResults end
-N(res::RunResults) = length(res.xarray)-1 # retrieve max tempering level
+N(res::RunResults) = length(res.trVs)-1 # retrieve max tempering level
 
 # load core files
 include("log_partition_utils.jl")
