@@ -10,6 +10,7 @@
 # ## Implementation using NRST
 
 using Distributions, DynamicPPL, Plots
+using Plots.PlotMeasures: px
 using NRST
 
 # Define a model using the `DynamicPPL.@model` macro
@@ -30,7 +31,7 @@ ns    = NRSTSampler(model, verbose = true)
 res   = parallel_run(ns, ntours = 65_536)
 plots = diagnostics(ns, res)
 hl    = ceil(Int, length(plots)/2)
-plot(plots..., layout = (hl,2), size = (900,hl*333))
+plot(plots..., layout = (hl,2), size = (900,hl*333),left_margin = 30px)
 
 #md # ![Diagnostics plots](assets/basic_diags.svg)
 

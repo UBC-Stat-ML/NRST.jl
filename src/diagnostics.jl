@@ -19,9 +19,9 @@ function diagnostics(ns::NRSTSampler, res::ParallelRunResults)
     rejrates=res.rpacc ./ res.visits
     prrs = plot(
         0:N, push!(rejrates[1:(end-1),1],NaN),
-        ylims = (0., Inf), legend = :outertopright, linestyle = :dash,
+        ylims = (0., Inf), legend = :topright, linestyle = :dash,
         palette=DEF_PAL, label = "Up", xlabel = "Level", 
-        ylabel = "Rejection probability", legend_foreground_color = nothing
+        ylabel = "Rejection probability"#, legend_foreground_color = nothing
     )
     plot!(prrs,
         0:N, pushfirst!(rejrates[2:end,2],NaN),
@@ -55,35 +55,39 @@ function diagnostics(ns::NRSTSampler, res::ParallelRunResults)
     );
     vline!(ptlens,
         [log10(2*(N+1))], palette = DEF_PAL, linestyle = :dot,
-        linewidth = 4, label = "2N+2=$(2*(N+1))"
+        label = "2N+2=$(2*(N+1))", linewidth = 4
     )
 
-    # Density plots for V
-    colorgrad = cgrad([DEF_PAL[1], DEF_PAL[2]], range(0.,1.,N+1))
-    minV   = minimum(minimum.(res.trVs))
-    ltrVs  = [log10.(1e-13 .+ trV .- minV) for trV in res.trVs]
-    lticks = NRST.make_log_ticks(collect(Base.Flatten([extrema(x) for x in ltrVs])))
-    pdens  = density(
-        ltrVs[1], color=colorgrad[1], label="", xlabel = "V", ylabel = "Density",
-        xticks = (collect(lticks), ["10^{$e}" for e in lticks])
+    # Density plots for x[1]
+    colorgrad = cgrad([DEF_PAL[1], DEF_PAL[2]], range(0.,1.,N+1));
+    pdens = density(
+        [x[1] for x in res.xarray[1]], color = colorgrad[1], label="",
+        xlabel = "x[1]", ylabel = "Density"
     )
     for i in 2:(N+1)
-        density!(pdens, ltrVs[i], color = colorgrad[i], label="")
+        density!(pdens,
+            [x[1] for x in res.xarray[i]], color = colorgrad[i], label=""
+        )
     end
 
     # ESS versus computational cost
     # compares serial v. parallel NRST and against idealizations of the index process
     pcs = plot_ess_time(res, Λs[end])
 
-    # # ESS/ntours for V versus toureff
-    # pvess = plot(
-    #     0:N, V_df[:,"ESS"] ./ ntours(res), xlabel="Level", label="ESS/#tours",
-    #     palette = DEF_PAL
-    # )
-    # plot!(pvess, 0:N, res.toureff, label="TE")
-    # hline!(pvess, [1.], linestyle = :dash, label="")
+    # ESS/ntours for indicator fun versus toureff
+    qxone  = quantile([x[1] for x in res.xarray[end]], 0.95)
+    inf_df = inference(res, h=x->x[1]>qxone, at=0:N);
+    pvess  = plot(
+        0:N, inf_df[:,"ESS"] ./ ntours(res), xlabel = "Level", 
+        label = "ESS/#tours", palette = DEF_PAL
+    )
+    plot!(pvess, 0:N, res.toureff, label="TE")
+    hline!(pvess, [1.], linestyle = :dash, label="")    
 
-    return (pocc,prrs,plam,plp,ptlens,pdens, pcs, plot())
+    return (
+        occ=pocc, rrs=prrs, lam=plam, lpart=plp, tourlens=ptlens, dens=pdens, 
+        esscost=pcs, esspertour=pvess
+    )
 end
 
 #######################################
@@ -174,7 +178,7 @@ function plot_ess_time(res::ParallelRunResults, Λ::AbstractFloat)
         c = (i-1)÷2
         s = i-2c
         plot!(
-            pcs, xs[i], ys[i], label = l, linewidth=2,
+            pcs, xs[i], ys[i], label = l,# linewidth=2,
             linecolor = DEF_PAL[c+1],
             linestyle = s==1 ? :dash : :solid
         )

@@ -33,11 +33,11 @@ function inference(
     tsum  = Vector{TF}(undef, length(at))   # temp for computing error within tour
     for tr in res.trvec
         fill!(tsum, zero(TF)) # reset sums
-        for (n, ip) in enumerate(tr.iptrace)
+        for (n, ip) in enumerate(tr.trIP)
             # check if the index is in the requested set
             a = findfirst(isequal(ip[1]), at)
             if !isnothing(a)
-                tsum[a] += h(tr.xtrace[n]) - means[a]
+                tsum[a] += h(tr.trX[n]) - means[a]
             end
         end
         sumsq .+= tsum .* tsum

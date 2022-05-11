@@ -16,10 +16,10 @@ model = Lnmodel(randn(30));
 
 # Build an NRST sampler for the model, tune it, sample with it, and show diagnostics
 ns = NRSTSampler(model, verbose = true);
-res = parallel_run(ns, ntours = 524_288, keep_xs = false);
+res = parallel_run(ns, ntours = 65_536);
 plots = diagnostics(ns, res);
 hl = ceil(Int, length(plots)/2)
-plot(plots..., layout = (hl,2), size = (900,hl*333))
+plot(plots..., layout = (hl,2), size = (900,hl*333), left_margin = 30px)
 
 ###############################################################################
 # Hierarchical model
@@ -50,27 +50,19 @@ Y = readdlm(
     joinpath(dirname(pathof(NRST)), "..", "data", "simulated8schools.csv"),
      ',', Float64
 );
-model = HierarchicalModel(Y);
+model = HierarchicalModel(Y)
 
-# Build an NRST sampler for the model, tune it, sample with it, and show diagnostics
-ns = NRSTSampler(model, N = 53, verbose = true, tune=false);
-tune!(ns, max_s1_rounds=8, max_ntours=2^14)
-res = parallel_run(ns, ntours = 512, keep_xs = false);
-plots = diagnostics(ns, res);
-hl = ceil(Int, length(plots)/2)
-plot(plots..., layout = (hl,2), size = (800,hl*333))
+# This
+# - builds an NRST sampler for the model
+# - tunes it
+# - runs tours in parallel
+# - shows diagnostics
+ns    = NRSTSampler(model, N = 11, verbose = true);
+res   = parallel_run(ns, ntours = 65_536);
+plots = diagnostics(ns, res)
+hl    = ceil(Int, length(plots)/2)
+plot(plots..., layout = (hl,2), size = (900,hl*333), left_margin = 30px)
 
-# ESS/ntours for V versus toureff
-sigmas = [NRST.params(e)[1] for e in ns.explorers]
-
-indlowVs = [trV < minV for trV in res.trVs]
-inference(res, )
-pvess = plot(
-    0:N, V_df[:,"ESS"] ./ ntours(res), xlabel="Level", label="ESS/#tours",
-    palette = DEF_PAL
-)
-pvess = plot(0:N, res.toureff, label="TE")
-hline!(pvess, [1.], linestyle = :dash, label="")
 ###############################################################################
 # XY model
 ###############################################################################
@@ -104,15 +96,4 @@ Vref(θs::Vector{<:AbstractFloat}) = sum(Vref, θs)
 # This
 # - builds an NRST sampler for the model
 # - initializes it, finding an optimal grid
-# - sample tours in parallel and uses them to get more accurate estimates of c(β)
-# - sample one last time to show diagnostics
-ns = NRSTSampler(
-    V,
-    Vref,
-    randref,
-    N = 57,
-    verbose = true
-);
-plots = diagnostics(ns, parallel_run(ns, ntours = 524_288, keep_xs = false));
-hl = ceil(Int, length(plots)/2)
-plot(plots..., layout = (hl,2), size = (800,hl*333))
+# - sample tours in parallel and uses them to get more accurate 
