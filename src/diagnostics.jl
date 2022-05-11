@@ -59,18 +59,17 @@ function diagnostics(ns::NRSTSampler, res::ParallelRunResults)
     )
 
     # Density plots for V
-    colorgrad = cgrad([DEF_PAL[1], DEF_PAL[2]], range(0.,1.,N+1));
+    colorgrad = cgrad([DEF_PAL[1], DEF_PAL[2]], range(0.,1.,N+1))
     minV   = minimum(minimum.(res.trVs))
-    ltrVs  = [log10.(100eps() .+ trV .- minV) for trV in res.trVs]
-    lticks = make_log_ticks(vcat(ltrVs...))
+    ltrVs  = [log10.(1e-13 .+ trV .- minV) for trV in res.trVs]
+    lticks = NRST.make_log_ticks(collect(Base.Flatten([extrema(x) for x in ltrVs])))
     pdens  = density(
         ltrVs[1], color=colorgrad[1], label="", xlabel = "V", ylabel = "Density",
         xticks = (collect(lticks), ["10^{$e}" for e in lticks])
     )
     for i in 2:(N+1)
-        density!(pdens,ltrVs[i], color = colorgrad[i], label="")
+        density!(pdens, ltrVs[i], color = colorgrad[i], label="")
     end
-
 
     # ESS versus computational cost
     # compares serial v. parallel NRST and against idealizations of the index process
@@ -110,13 +109,13 @@ function plot_lambda(Λ,bs,lab)
 end
 
 # utility to make nice log ticks
-function make_log_ticks(lxs)
+function make_log_ticks(lxs::AbstractVector{<:Real}, idealdiv::Int=5)
     lmin, lmax   = extrema(lxs)
     tlmin, tlmax = ceil(Int,lmin), floor(Int,lmax)
     width        = tlmax-tlmin
     candidates   = 1:width 
     divisors     = candidates[findall([width % c == 0 for c in candidates])]
-    bestdiv      = divisors[argmin(abs.(divisors.-4))] # ideal div implies div+1 actual ticks
+    bestdiv      = divisors[argmin(abs.(divisors .- idealdiv))] # ideal div implies div+1 actual ticks
     return tlmin:(width÷bestdiv):tlmax
 end
 

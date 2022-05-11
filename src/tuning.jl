@@ -5,15 +5,15 @@
 # full tuning
 function tune!(
     ns::NRSTSampler{T,I,K};
-    max_s1_rounds::Int = 16,
-    max_s2_rounds::Int = 1,
-    max_Δβs::Real      = 0.01,
+    max_s1_rounds::Int = 18,
+    max_s2_rounds::Int = 0,
+    max_Δβs::Real      = 0.005,
     max_relΔcone::Real = 0.005,
     max_relΔΛ::Real    = 0.01,
     nsteps_init::Int   = 32,
-    max_nsteps::Int    = 1_048_576,
+    max_nsteps::Int    = 4_194_304,
     maxcor::Real       = 0.99,
-    max_ntours::Int    = 524_288,
+    max_ntours::Int    = 4_194_304,
     verbose::Bool      = true
     ) where {T,I,K}
     verbose && println("Tuning started ($(Threads.nthreads()) threads).\n")
@@ -62,6 +62,9 @@ function tune!(
         "\n"
     )
 
+    # at this point, ns has a fresh new grid, so explorers params, c, and  
+    # nexpls are stale, so we tune them
+
     #################################################################
     # Stage II: tuning using parallel runs of NRST tours
     # Note: this is desirable particularly in multimodal settings, where independent
@@ -74,7 +77,7 @@ function tune!(
     )
     rnd    = 0
     conv   = false
-    ntours = nsteps
+    ntours = min(max_ntours,nsteps)
     while !conv && (rnd < max_s2_rounds)
         rnd   += 1
         nsteps = min(max_nsteps,2nsteps)

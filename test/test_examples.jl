@@ -53,12 +53,24 @@ Y = readdlm(
 model = HierarchicalModel(Y);
 
 # Build an NRST sampler for the model, tune it, sample with it, and show diagnostics
-ns = NRSTSampler(model, N = 53, verbose = true);
-plots = diagnostics(ns, parallel_run(ns, ntours = 524_288, keep_xs = false));
+ns = NRSTSampler(model, N = 53, verbose = true, tune=false);
+tune!(ns, max_s1_rounds=8, max_ntours=2^14)
+res = parallel_run(ns, ntours = 512, keep_xs = false);
+plots = diagnostics(ns, res);
 hl = ceil(Int, length(plots)/2)
 plot(plots..., layout = (hl,2), size = (800,hl*333))
 
+# ESS/ntours for V versus toureff
+sigmas = [NRST.params(e)[1] for e in ns.explorers]
 
+indlowVs = [trV < minV for trV in res.trVs]
+inference(res, )
+pvess = plot(
+    0:N, V_df[:,"ESS"] ./ ntours(res), xlabel="Level", label="ESS/#tours",
+    palette = DEF_PAL
+)
+pvess = plot(0:N, res.toureff, label="TE")
+hline!(pvess, [1.], linestyle = :dash, label="")
 ###############################################################################
 # XY model
 ###############################################################################

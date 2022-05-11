@@ -26,9 +26,10 @@ model = Lnmodel(randn(30))
 # - tunes it
 # - runs tours in parallel
 # - shows diagnostics
-ns  = NRSTSampler(model, verbose = true)
-plots = diagnostics(ns, parallel_run(ns, ntours = 524_288, keep_xs = false))
-hl = ceil(Int, length(plots)/2)
+ns    = NRSTSampler(model, verbose = true)
+res   = parallel_run(ns, ntours = 65_536)
+plots = diagnostics(ns, res)
+hl    = ceil(Int, length(plots)/2)
 plot(plots..., layout = (hl,2), size = (900,hl*333))
 
 #md # ![Diagnostics plots](assets/basic_diags.svg)

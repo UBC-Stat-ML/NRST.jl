@@ -55,11 +55,12 @@ ns = NRSTSampler(
     V,
     Vref,
     randref,
-    N = 57,
+    N = 12,
     verbose = true
 )
-plots = diagnostics(ns, parallel_run(ns, ntours = 524_288, keep_xs = false))
-hl = ceil(Int, length(plots)/2)
+res   = parallel_run(ns, ntours = 65_536)
+plots = diagnostics(ns, res)
+hl    = ceil(Int, length(plots)/2)
 plot(plots..., layout = (hl,2), size = (900,hl*333))
 
 #md # ![Diagnostics plots](assets/XY_model_diags.svg)

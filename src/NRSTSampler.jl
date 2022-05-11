@@ -54,15 +54,15 @@ end
 # constructor that also builds an NRSTProblem and does initial tuning
 function NRSTSampler(
     tm::TemperedModel;
-    betas          = missing,
-    N::Int         = 10, # good performance for Λ=1, scales linearly with Λ
+    betas          = nothing,
+    N::Int         = 8, # Λ
     nexpl::Int     = 50, 
     use_mean::Bool = true,
     tune::Bool     = true,
     verbose::Bool  = false,
     kwargs...
     )
-    if ismissing(betas)
+    if isnothing(betas)
         betas = init_grid(N)
     else
         N = length(betas) - 1
