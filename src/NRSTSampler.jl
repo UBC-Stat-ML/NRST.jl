@@ -55,7 +55,7 @@ end
 function NRSTSampler(
     tm::TemperedModel;
     betas          = nothing,
-    N::Int         = 5, # best to use N(Λ) = 4 + 2Λ
+    N::Int         = 3, # best to use N(Λ) = inf{n: n/Λ ≤ 0.5}
     nexpl::Int     = 50, 
     use_mean::Bool = true,
     tune::Bool     = true,

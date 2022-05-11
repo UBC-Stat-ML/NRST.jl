@@ -56,17 +56,20 @@ plot(plots..., layout = (hl,2), size = (900,hl*333),left_margin = 30px)
 
 #md # ![Diagnostics plots](assets/hierarchical_model_diags.svg)
 
-# save diagnostics plot and cover image #src
-mkpath("assets") #src
-savefig("assets/hierarchical_model_diags.svg") #src
-savefig(plots[3], "assets/hierarchical_model.svg") #src
 
 
 # ## Notes on the results
-#
-# - This model is a great example of why tuning only using independent runs of
-#   explorers is insufficient. When one does this, and then runs NRST tours,
-#   we obtain a peak in rejection rates close to the prior (~level 4). This is
-#   because the explorers are bound to get stuck in only one region of the space
-#   so that when we run proper NRST, we reach zones that exhibit dramatically
-#   different behavior. 
+# ### Inspecting within and between-group std. devs.
+X = hcat([exp.(0.5*x[1:2]) for x in res.xarray[end]]...)
+psds = scatter(
+    X[1,:],X[2,:], xlabel="τ: between-groups std. dev.",
+    ylabel="σ: within-group std. dev.", label=""
+)
+
+#md # ![Scatter-plot of within and between-group std. devs.](assets/hierarchical_model_sds.svg)
+
+# save diagnostics plot, cover image, and other assets #src
+mkpath("assets") #src
+savefig("assets/hierarchical_model_diags.svg") #src
+savefig(plots[3], "assets/hierarchical_model.svg") #src
+savefig(psds, "assets/hierarchical_model_sds.svg") #src

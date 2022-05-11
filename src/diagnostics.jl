@@ -18,18 +18,18 @@ function diagnostics(ns::NRSTSampler, res::ParallelRunResults)
     # rejection rates
     rejrates=res.rpacc ./ res.visits
     prrs = plot(
-        0:N, push!(rejrates[1:(end-1),1],NaN),
-        ylims = (0., Inf), legend = :topright, linestyle = :dash,
-        palette=DEF_PAL, label = "Up", xlabel = "Level", 
+        0:(N-1), rejrates[1:(end-1),1],#push!(rejrates[1:(end-1),1],NaN),
+        ylims = (0., Inf), legend = :bottomright, linestyle = :dash,
+        palette=DEF_PAL, label = "Up-from", xlabel = "Level", 
         ylabel = "Rejection probability"#, legend_foreground_color = nothing
     )
     plot!(prrs,
-        0:N, pushfirst!(rejrates[2:end,2],NaN),
-        palette=DEF_PAL, label = "Down", linestyle = :dash
+        0:(N-1), rejrates[2:end,2],#pushfirst!(rejrates[2:end,2],NaN),
+        palette=DEF_PAL, label = "Down-to", linestyle = :dash
     )
     plot!(prrs,
-        0.5:(N-0.5), 0.5*(rejrates[1:(end-1),1]+rejrates[2:end,2]),
-        palette=DEF_PAL, label = "Mean"
+        0:(N-1), 0.5*(rejrates[1:(end-1),1]+rejrates[2:end,2]),
+        palette=DEF_PAL, label = "Average"
     )
 
     # Lambda Plot
@@ -78,10 +78,10 @@ function diagnostics(ns::NRSTSampler, res::ParallelRunResults)
     qxone  = quantile([x[1] for x in res.xarray[end]], 0.95)
     inf_df = inference(res, h=x->x[1]>qxone, at=0:N);
     pvess  = plot(
-        0:N, inf_df[:,"ESS"] ./ ntours(res), xlabel = "Level", 
+        ns.np.betas, inf_df[:,"ESS"] ./ ntours(res), xlabel = "β", 
         label = "ESS/#tours", palette = DEF_PAL
     )
-    plot!(pvess, 0:N, res.toureff, label="TE")
+    plot!(pvess, ns.np.betas, res.toureff, label="Tour Eff.")
     hline!(pvess, [1.], linestyle = :dash, label="")    
 
     return (
@@ -169,7 +169,7 @@ function plot_ess_time(res::ParallelRunResults, Λ::AbstractFloat)
     ylticks = make_log_ticks(collect(Base.Flatten([extrema(y) for y in ys])))
     pcs     = plot(
         xlabel = "Computational time",
-        ylabel = "ESS lower bound", palette = DEF_PAL, 
+        ylabel = "ESS @ cold level", palette = DEF_PAL, 
         legend = :bottomright,
         xticks = (xlticks, ["10^{$e}" for e in xlticks]),
         yticks = (ylticks, ["10^{$e}" for e in ylticks])

@@ -1,5 +1,8 @@
 ###############################################################################
 # tuning routines
+# NOTE: as maxcor → 0, ESS → ntours. Moreover, the tours lengths become more 
+# consistent, so the NRST-par curve in the ESS/cost plot converges to the
+# one for MC-par!
 ###############################################################################
 
 # full tuning
@@ -7,12 +10,12 @@ function tune!(
     ns::NRSTSampler{T,I,K};
     max_s1_rounds::Int = 18,
     max_s2_rounds::Int = 0,
-    max_Δβs::Real      = 0.005,
+    max_Δβs::Real      = min(0.01, 0.1*inv(ns.np.N)),
     max_relΔcone::Real = 0.005,
-    max_relΔΛ::Real    = 0.01,
+    max_relΔΛ::Real    = 0.015,
     nsteps_init::Int   = 32,
     max_nsteps::Int    = 4_194_304,
-    maxcor::Real       = 0.99,
+    maxcor::Real       = 0.001,
     max_ntours::Int    = 4_194_304,
     verbose::Bool      = true
     ) where {T,I,K}
@@ -77,11 +80,11 @@ function tune!(
     )
     rnd    = 0
     conv   = false
-    ntours = min(max_ntours,nsteps)
+
     while !conv && (rnd < max_s2_rounds)
         rnd   += 1
         nsteps = min(max_nsteps,2nsteps)
-        ntours = min(max_ntours,2ntours)
+        # ntours = min(max_ntours,2ntours)
 
         # at this point, ns has a fresh new grid, so explorers params, c, and  
         # nexpls are stale, so we tune them
@@ -99,6 +102,10 @@ function tune!(
         # after these steps, NRST is coherently tuned and can be used to sample
 
         # run NRST tours in parallel to tune the grid
+        # E[tourlength] = 2N, so each explorer is run twice, so the mean explorer
+        # runs 2mean(nexpls) on each tour. We equate this to the effort in nsteps
+        # to get ntours commesurate with that accuracy, and double it to be safe
+        ntours = min(max_ntours, ceil(Int, nsteps/mean(ns.np.nexpls)))#min(max_ntours,nsteps)
         verbose && println(
             "\tTuning the grid using $ntours tours...\n"
         )
@@ -136,6 +143,10 @@ function tune!(
     # Stage III: final c tuning using parallel runs of NRST tours
     #################################################################
     
+    # E[tourlength] = 2N, so each explorer is run twice, so the mean explorer
+    # runs 2mean(nexpls) on each tour. We equate this to the effort in nsteps
+    # to get ntours commesurate with that accuracy, and quadruple it to be safe
+    ntours = max(2_048, min(max_ntours, ceil(Int, 2nsteps/mean(ns.np.nexpls)))) #min(max_ntours,nsteps)
     verbose && println(
         "\nStage III: final c tuning using $ntours NRST tours.\n"
     )
