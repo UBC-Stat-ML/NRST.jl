@@ -67,25 +67,25 @@ function diagnostics(ns::NRSTSampler, res::ParallelRunResults)
         label = "2N+2=$(2*(N+1))", linewidth = 4
     )
 
-    # Density plots for x[1]
+    # Density plots for V
     colorgrad = cgrad([DEF_PAL[1], DEF_PAL[2]], range(0.,1.,N+1));
+    vrange = extrema(Base.Flatten([extrema(trV) for trV in res.trVs[((N+1)÷2):end]]))
+    vwidth = vrange[2] - vrange[1]
     pdens = density(
-        [x[1] for x in res.xarray[1]], color = colorgrad[1], label="",
-        xlabel = "x[1]", ylabel = "Density"
+        res.trVs[1], color = colorgrad[1], label="", xlabel = "V",
+        ylabel = "Density", xlims =(vrange[1] - 0.05vwidth, vrange[2] + 0.05vwidth)
     )
     for i in 2:(N+1)
-        density!(pdens,
-            [x[1] for x in res.xarray[i]], color = colorgrad[i], label=""
-        )
+        density!(pdens, res.trVs[i], color = colorgrad[i], label="")
     end
 
     # ESS versus computational cost
     # compares serial v. parallel NRST and against idealizations of the index process
     pcs = plot_ess_time(res, Λs[end])
 
-    # ESS/ntours for indicator fun versus toureff
-    qxone  = quantile([x[1] for x in res.xarray[end]], 0.95)
-    inf_df = inference(res, h=x->x[1]>qxone, at=0:N);
+    # use indicator that V is larger than a quantile
+    qV     = quantile(res.trVs[end], 0.95)
+    inf_df = inference(res, h = x -> V(ns.np.tm, x) > qV, at = 0:N)
     pvess  = plot(
         ns.np.betas, inf_df[:,"ESS"] ./ ntours(res), xlabel = "β", 
         label = "ESS/#tours", palette = DEF_PAL

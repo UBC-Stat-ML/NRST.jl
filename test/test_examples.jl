@@ -22,6 +22,7 @@ plots = diagnostics(ns, res);
 hl = ceil(Int, length(plots)/2)
 plot(plots..., layout = (hl,2), size = (900,hl*333), left_margin = 30px)
 
+
 ###############################################################################
 # Hierarchical model
 ###############################################################################
