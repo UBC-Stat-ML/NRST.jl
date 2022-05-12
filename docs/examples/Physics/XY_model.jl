@@ -1,5 +1,5 @@
 # ---
-# cover: assets/XY_model.svg
+# cover: assets/XY_model.png
 # title: XY model
 # description: Simulating the classical XY lattice model.
 # ---
@@ -22,6 +22,8 @@
 
 using Lattices, Distributions, Plots
 using Plots.PlotMeasures: px
+using KernelDensity
+using StatsPlots
 using NRST
 
 # Define the basics of the model
@@ -59,14 +61,37 @@ ns = NRSTSampler(
     N = 12,
     verbose = true
 )
-res   = parallel_run(ns, ntours = 65_536)
+res   = parallel_run(ns, ntours = 4_096)
 plots = diagnostics(ns, res)
 hl    = ceil(Int, length(plots)/2)
-plot(plots..., layout = (hl,2), size = (900,hl*333),left_margin = 30px)
+pdiags=plot(plots..., layout = (hl,2), size = (900,hl*333),left_margin = 30px)
 
-#md # ![Diagnostics plots](assets/XY_model_diags.svg)
+#md # ![Diagnostics plots](assets/XY_model_diags.png)
+
+# ## Notes on the results
+# ### Bivariate density plots of two neighbors
+parr = []
+for (i,xs) in enumerate(res.xarray)
+    X      = hcat([x[1:2] for x in xs]...)
+    kdefit = kde(X') 
+    push!(parr, plot(kdefit, title="β=$(round(ns.np.betas[i],digits=2))"))
+end
+N  = ns.np.N
+nc = min(N+1, 5)
+nr = ceil(Int, (N+1)/nc)
+for i in (N+2):(nc*nr)
+    push!(parr, plot())
+end 
+pbi = plot(
+    parr..., layout = (nr,nc), size = (300*nc,333*nr), ticks=false, 
+    showaxis = false, legend = false, colorbar = false
+)
+
+#md # ![Bivariate density plots of two neighbors](assets/XY_model_pbi.png)
+
 
 # save diagnostics plot and cover image #src
 mkpath("assets") #src
-savefig("assets/XY_model_diags.svg") #src
-savefig(plots[3], "assets/XY_model.svg") #src
+savefig(pdiags, "assets/XY_model_diags.png") #src
+savefig(plots[3], "assets/XY_model.png") #src
+savefig(pbi, "assets/XY_model_pbi.png") #src

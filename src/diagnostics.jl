@@ -32,6 +32,15 @@ function diagnostics(ns::NRSTSampler, res::ParallelRunResults)
         palette=DEF_PAL, label = "Average"
     )
 
+    # plot explorers acceptance probabilities and nexpls
+    exp_acc_probs = [run!(e, 40000) for e in ns.explorers]
+    pexpap = plot(
+        exp_acc_probs, label="", xlabel="Level", ylabel="Explorers acceptance prob."
+    )
+    pnexpl = plot(
+        ns.np.nexpls, label="", xlabel="Level", ylabel="Exploration length per NRST step"
+    )
+
     # Lambda Plot
     betas = ns.np.betas
     f_Λnorm, Λsnorm, Λs = NRST.get_lambda(betas, rejrates)
@@ -82,11 +91,11 @@ function diagnostics(ns::NRSTSampler, res::ParallelRunResults)
         label = "ESS/#tours", palette = DEF_PAL
     )
     plot!(pvess, ns.np.betas, res.toureff, label="Tour Eff.")
-    hline!(pvess, [1.], linestyle = :dash, label="")    
+    hline!(pvess, [1.], linestyle = :dash, label="")
 
     return (
-        occ=pocc, rrs=prrs, lam=plam, lpart=plp, tourlens=ptlens, dens=pdens, 
-        esscost=pcs, esspertour=pvess
+        occ=pocc, rrs=prrs, expap=pexpap, nexpl=pnexpl, lam=plam, lpart=plp,
+        tourlens=ptlens, dens=pdens, esscost=pcs, esspertour=pvess
     )
 end
 

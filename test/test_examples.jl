@@ -17,9 +17,6 @@ model = Lnmodel(randn(30));
 
 # Build an NRST sampler for the model, tune it, sample with it, and show diagnostics
 ns = NRSTSampler(model, N=3, verbose = true);
-sigmas = [NRST.params(e)[1] for e in ns.explorers]
-
-
 res = parallel_run(ns, ntours = 4_096);
 plots = diagnostics(ns, res);
 hl = ceil(Int, length(plots)/2)
@@ -62,13 +59,11 @@ model = HierarchicalModel(Y)
 # - tunes it
 # - runs tours in parallel
 # - shows diagnostics
-ns    = NRSTSampler(model, N = 11, verbose = true, tune=false);
-tune!(ns, maxcor=0.001)
+ns    = NRSTSampler(model, N = 11, verbose = true);
 res   = parallel_run(ns, ntours = 4_096);
 plots = diagnostics(ns, res)
 hl    = ceil(Int, length(plots)/2)
 plot(plots..., layout = (hl,2), size = (900,hl*333), left_margin = 30px)
-ns.np.nexpls
 
 # bivariate plot
 X = hcat([exp.(0.5*x[1:2]) for x in res.xarray[end]]...)
@@ -119,12 +114,35 @@ ns = NRSTSampler(
     randref,
     N = 12,
     verbose = true
-)
-res   = parallel_run(ns, ntours = 4_096)
-rejrates=res.rpacc ./ res.visits
-res.visits
-plots = diagnostics(ns, res)
-hl    = ceil(Int, length(plots)/2)
+);
+res   = parallel_run(ns, ntours = 4_096);
+plots = diagnostics(ns, res);
+hl    = ceil(Int, length(plots)/2);
 plot(plots..., layout = (hl,2), size = (900,hl*333),left_margin = 30px)
 
-
+# bivariate plot of x[1],x[2] accross β
+using KernelDensity
+using StatsPlots
+parr = []
+for (i,xs) in enumerate(res.xarray)
+    X = hcat([x[1:2] for x in xs]...)
+    kdefit = kde(X') 
+    push!(
+        parr, 
+        plot(
+            kdefit,# xlabel="x₁", ylabel="x₂", label="",
+            title="β=$(round(ns.np.betas[i],digits=2))"
+        )
+    )
+end
+N = ns.np.N
+nc = min(N+1, 5)
+nr = ceil(Int, (N+1)/nc)
+for i in (N+2):(nc*nr)
+    push!(parr, plot())
+end 
+plot(
+    parr..., layout = (nr,nc), size = (300*nc,333*nr), ticks=false, 
+    showaxis = false, legend = false, colorbar = false, 
+    #bottom_margin = 50px,left_margin = 50px, top_margin = 30px
+)

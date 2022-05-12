@@ -1,5 +1,5 @@
 # ---
-# cover: assets/hierarchical_model.svg
+# cover: assets/hierarchical_model.png
 # title: Hierarchical model
 # description: A random effects model coded in Turing.
 # ---
@@ -49,14 +49,12 @@ model = HierarchicalModel(Y)
 # - runs tours in parallel
 # - shows diagnostics
 ns    = NRSTSampler(model, N = 11, verbose = true)
-res   = parallel_run(ns, ntours = 65_536)
+res   = parallel_run(ns, ntours = 4_096)
 plots = diagnostics(ns, res)
 hl    = ceil(Int, length(plots)/2)
-plot(plots..., layout = (hl,2), size = (900,hl*333),left_margin = 30px)
+pdiags=plot(plots..., layout = (hl,2), size = (900,hl*333),left_margin = 30px)
 
-#md # ![Diagnostics plots](assets/hierarchical_model_diags.svg)
-
-
+#md # ![Diagnostics plots](assets/hierarchical_model_diags.png)
 
 # ## Notes on the results
 # ### Inspecting within and between-group std. devs.
@@ -66,10 +64,10 @@ psds = scatter(
     ylabel="σ: within-group std. dev.", label=""
 )
 
-#md # ![Scatter-plot of within and between-group std. devs.](assets/hierarchical_model_sds.svg)
+#md # ![Scatter-plot of within and between-group std. devs.](assets/hierarchical_model_sds.png)
 
 # save diagnostics plot, cover image, and other assets #src
 mkpath("assets") #src
-savefig("assets/hierarchical_model_diags.svg") #src
-savefig(plots[3], "assets/hierarchical_model.svg") #src
-savefig(psds, "assets/hierarchical_model_sds.svg") #src
+savefig(pdiags, "assets/hierarchical_model_diags.png") #src
+savefig(plots[3], "assets/hierarchical_model.png") #src
+savefig(psds, "assets/hierarchical_model_sds.png") #src
