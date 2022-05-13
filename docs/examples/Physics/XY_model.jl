@@ -1,5 +1,5 @@
 # ---
-# cover: assets/XY_model.png
+# cover: assets/XY_model/cover.png
 # title: XY model
 # description: Simulating the classical XY lattice model.
 # ---
@@ -58,15 +58,18 @@ ns = NRSTSampler(
     V,
     Vref,
     randref,
-    N = 12,
+    N = 13,
     verbose = true
 )
 res   = parallel_run(ns, ntours = 4_096)
 plots = diagnostics(ns, res)
 hl    = ceil(Int, length(plots)/2)
-pdiags=plot(plots..., layout = (hl,2), size = (900,hl*333),left_margin = 30px)
+pdiags=plot(
+    plots..., layout = (hl,2), size = (900,hl*333),left_margin = 40px,
+    right_margin = 40px
+)
 
-#md # ![Diagnostics plots](assets/XY_model_diags.png)
+#md # ![Diagnostics plots](assets/XY_model/diags.png)
 
 # ## Notes on the results
 # ### Bivariate density plots of two neighbors
@@ -82,16 +85,19 @@ nr = ceil(Int, (N+1)/nc)
 for i in (N+2):(nc*nr)
     push!(parr, plot())
 end 
-pbi = plot(
+pcover = plot(
     parr..., layout = (nr,nc), size = (300*nc,333*nr), ticks=false, 
     showaxis = false, legend = false, colorbar = false
 )
 
-#md # ![Bivariate density plots of two neighbors](assets/XY_model_pbi.png)
+#md # ![Bivariate density plots of two neighbors](assets/XY_model/cover.png)
 
 
-# save diagnostics plot and cover image #src
-mkpath("assets") #src
-savefig(pdiags, "assets/XY_model_diags.png") #src
-savefig(plots[3], "assets/XY_model.png") #src
-savefig(pbi, "assets/XY_model_pbi.png") #src
+# save cover image and diagnostics plots #src
+pathnm = "assets/XY_model" #src
+mkpath(pathnm) #src
+savefig(pcover, joinpath(pathnm,"cover.png")) #src
+savefig(pdiags, joinpath(pathnm,"diags.png")) #src
+for (nm,p) in zip(keys(plots), plots) #src
+    savefig(p, joinpath(pathnm, String(nm) * ".png")) #src
+end #src

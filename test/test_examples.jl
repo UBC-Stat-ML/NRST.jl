@@ -22,7 +22,8 @@ plots = diagnostics(ns, res);
 hl = ceil(Int, length(plots)/2)
 plot(plots..., layout = (hl,2), size = (900,hl*333), left_margin = 30px)
 
-
+1/(11)*0.1
+1/121
 ###############################################################################
 # Hierarchical model
 ###############################################################################
@@ -113,15 +114,18 @@ ns = NRSTSampler(
     V,
     Vref,
     randref,
-    N = 12,
+    N = 13,
     verbose = true
 );
 res   = parallel_run(ns, ntours = 4_096);
 plots = diagnostics(ns, res);
 hl    = ceil(Int, length(plots)/2);
-plot(plots..., layout = (hl,2), size = (900,hl*333),left_margin = 30px)
+pdiags=plot(
+    plots..., layout = (hl,2), size = (900,hl*333),left_margin = 40px,
+    right_margin = 40px
+)
 
-# bivariate plot of x[1],x[2] accross β
+# bivariate plot of x[1],x[2] across β
 using KernelDensity
 using StatsPlots
 parr = []

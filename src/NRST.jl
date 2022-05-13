@@ -5,7 +5,7 @@ using DataFrames: DataFrame
 using Distributions: Exponential, Normal, Uniform
 using DynamicPPL: DynamicPPL
 using Interpolations: interpolate, SteffenMonotonicInterpolation, LinearInterpolation
-using LogExpFunctions: logsumexp
+using LogExpFunctions: logsumexp, logistic
 using Plots
 using Printf
 using ProgressMeter: ProgressMeter

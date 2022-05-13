@@ -83,15 +83,26 @@ function diagnostics(ns::NRSTSampler, res::ParallelRunResults)
     # compares serial v. parallel NRST and against idealizations of the index process
     pcs = plot_ess_time(res, Λs[end])
 
-    # use indicator that V is larger than a quantile
-    qV     = quantile(res.trVs[end], 0.95)
-    inf_df = inference(res, h = x -> V(ns.np.tm, x) > qV, at = 0:N)
+    # ESS/ntours versus toureff for a bounded function
+    # note: TE bound is for true ESS and true TE. Sample estimates might not work. 
+    # use logistic(Z(V)) where Z is standardization using median
+    # looks weird but has benifits
+    # - V(x) is always defined for any model that got up to here
+    # - Z(V) with median is defined even for non-integrable-under-reference V
+    # - logistic(Z(V)) is bounded and has non trivial values in general -- ie,
+    #   not always 0 or not always 1 -- since Z(V) cannot be too far of 0
+    # The last condition fails for example for indicators like {V>v} for some
+    # v, since the distribution of V changes radically between temperatures.
+    mV = median(Base.Flatten(res.trVs))
+    sV = median(abs.(Base.Flatten(res.trVs) .- mV))
+    inf_df = inference(res, h = x -> logistic((V(ns.np.tm, x)-mV)/sV), at = 0:N)
     pvess  = plot(
         ns.np.betas, inf_df[:,"ESS"] ./ ntours(res), xlabel = "β", 
         label = "ESS/#tours", palette = DEF_PAL
     )
     plot!(pvess, ns.np.betas, res.toureff, label="Tour Eff.")
     hline!(pvess, [1.], linestyle = :dash, label="")
+
 
     return (
         occ=pocc, rrs=prrs, expap=pexpap, nexpl=pnexpl, lam=plam, lpart=plp,
@@ -178,7 +189,7 @@ function plot_ess_time(res::ParallelRunResults, Λ::AbstractFloat)
     ylticks = make_log_ticks(collect(Base.Flatten([extrema(y) for y in ys])))
     pcs     = plot(
         xlabel = "Computational time",
-        ylabel = "ESS @ cold level", palette = DEF_PAL, 
+        ylabel = "ESS bound @ cold level", palette = DEF_PAL, 
         legend = :bottomright,
         xticks = (xlticks, ["10^{$e}" for e in xlticks]),
         yticks = (ylticks, ["10^{$e}" for e in ylticks])

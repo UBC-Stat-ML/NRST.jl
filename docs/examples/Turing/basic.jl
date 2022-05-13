@@ -1,5 +1,5 @@
 # ---
-# cover: assets/basic.png
+# cover: assets/basic/cover.png
 # title: A simple LogNormal-Normal variance model
 # description: Using NRST with a basic Turing model.
 # ---
@@ -31,13 +31,19 @@ ns    = NRSTSampler(model, verbose = true)
 res   = parallel_run(ns, ntours = 4_096)
 plots = diagnostics(ns, res)
 hl    = ceil(Int, length(plots)/2)
-pdiags=plot(plots..., layout = (hl,2), size = (900,hl*333),left_margin = 30px)
+pdiags=plot(
+    plots..., layout = (hl,2), size = (900,hl*333),left_margin = 40px,
+    right_margin = 40px
+)
 
-#md # ![Diagnostics plots](assets/basic_diags.png)
+#md # ![Diagnostics plots](assets/basic/diags.png)
 
-# save diagnostics plot and cover image #src
-mkpath("assets") #src
-savefig(pdiags, "assets/basic_diags.png") #src
-savefig(plots[3], "assets/basic.png") #src
-
-
+# save cover image and diagnostics plots #src
+pcover = plots[:esscost] #src
+pathnm = "assets/basic" #src
+mkpath(pathnm) #src
+savefig(pcover, joinpath(pathnm,"cover.png")) #src
+savefig(pdiags, joinpath(pathnm,"diags.png")) #src
+for (nm,p) in zip(keys(plots), plots) #src
+    savefig(p, joinpath(pathnm, String(nm) * ".png")) #src
+end #src

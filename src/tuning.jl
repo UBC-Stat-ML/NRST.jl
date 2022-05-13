@@ -1,6 +1,6 @@
 ###############################################################################
 # tuning routines
-# NOTE: as maxcor → 0, ESS → ntours. Moreover, the tours lengths become more 
+# NOTE: as maxcor → 0, the tours lengths become more 
 # consistent, so the NRST-par curve in the ESS/cost plot converges to the
 # one for MC-par!
 ###############################################################################
@@ -9,15 +9,13 @@
 function tune!(
     ns::NRSTSampler{T,I,K};
     max_s1_rounds::Int = 18,
-    max_s2_rounds::Int = 0,
-    max_Δβs::Real      = max(0.005, min(0.01, 0.05*inv(ns.np.N))),
+    max_Δβs::Real      = 0.0075,
     max_relΔcone::Real = 0.005,
-    max_relΔΛ::Real    = 0.015,
+    max_relΔΛ::Real    = 0.02,
     nsteps_init::Int   = 32,
     max_nsteps::Int    = 4_194_304,
     maxcor::Real       = 0.001,
     min_ntours::Int    = 2_048,
-    max_ntours::Int    = 4_194_304,
     verbose::Bool      = true
     ) where {T,I,K}
     verbose && println("Tuning started ($(Threads.nthreads()) threads).\n")
@@ -29,7 +27,7 @@ function tune!(
     verbose && println(
         "Stage I: Bootstrapping the sampler using independent runs from the explorers.\n"
     ); show(plot_grid(ns.np.betas, title="Histogram of βs: initial grid")); println("\n")
-    rnd   = 0
+    rnd     = 0
     nsteps  = nsteps_init÷2                 # nsteps is doubled at the beginning of the loop
     oldcone = relΔcone = oldΛ = relΔΛ = NaN # to assess convergence on c(1) and Λ=Λ(1)
     conv    = false
@@ -57,19 +55,12 @@ function tune!(
         conv = !isnan(relΔcone) && (relΔcone<max_relΔcone) && 
             !isnan(relΔΛ) && (relΔΛ < max_relΔΛ) && (Δβs<max_Δβs)
     end
-
+    # at this point, ns has a fresh new grid, so explorers params, c, and  
+    # nexpls are stale => we need to tune them
     verbose && print(
         (conv ? "Grid converged!" :
                 "max_rounds=$max_s1_rounds reached.") *
-        # "\nFinal round of stage I: adjusting settings to new grid...\n" *
-        # "\tTuning explorers..."
-        "\n"
-    )
-
-    # at this point, ns has a fresh new grid, so explorers params, c, and  
-    # nexpls are stale, so we tune them
-    verbose && print(
-        "\nFinal round of stage I: adjusting settings to new grid...\n" *
+        "\n\nFinal round of stage I: adjusting settings to new grid...\n" *
         "\tTuning explorers..."
     )
     tune_explorers!(ns, verbose = false)
@@ -91,25 +82,25 @@ function tune!(
     # to get stuck in single modes due to the renewal property.
     #################################################################
     
-    # E[tourlength] = 2N, so each explorer is run twice, so the mean explorer
-    # runs 2mean(nexpls) on each tour. We replace mean with 2minimum for safety, and
-    # equate this to nsteps to get ntours commesurate with accuracy of previous stage
-    # Finally, we increase it by multiplying it for safety
-    # ntours = max(min_ntours, min(max_ntours, 20*ceil(Int, nsteps/(2minimum(ns.np.nexpls)) ) ))
-    # 
-    # another derivation: let nexpl be the representative number of exploration steps.
-    # A single visit to level N does nexpl, so a single tour does 2nexpl if it reaches
-    # The prob of reaching is P(tau_atom>tau_top) =? RTT = 0.5[1+E[PN]]^{-1}, where
-    # E[PN] = Nr/(1-r) = N(Λ/N)/(1-Λ/N) = Λ/(1-Λ/N)
-    # note: E[PN] = N for r=1/2
-    # Hence, the expected number of steps given a tour visit is 
-    # 2nexpl*RTT = nexpl[1+E[PN]]^{-1}
-    # For ntours, this is ntours*nexpl[1+E[PN]]^{-1}
+    # idea: set ntours to match the effort from the previous step
+    # let nexpl be a representative number of exploration steps.
+    # A single visit to level N does nexpl. Suppose that either we get a
+    # perfect roundtrip, or we don't reach level N at all.
+    # The prob of reaching is P(tau_atom>tau_top) =? 2RTT = [1+E[PN]]^{-1}, where
+    # E[PN] = sum_{i=1}^N r_i/(1-r_i)
+    # note: when r_i=r=Λ/N -> E[PN]= N(Λ/N)/(1-Λ/N) = Λ/(1-Λ/N)
+    # note: E[PN] = N for r=1/2, so P(tau_atom>tau_top)=1/(N+1)
+    # note: E[PN] = 0 for r=0, P(tau_atom>tau_top)=1
+    # Hence, the expected number of steps in a tour (2 is because we sample twice at each state) 
+    # 2nexpl*RTT = 2nexpl[1+E[PN]]^{-1}
+    # For ntours, this is 2ntours*nexpl[1+E[PN]]^{-1}
     # Hence
-    # nsteps = ntours*nexpl/[1+E[PN]] <=> ntours = nsteps(1+E[PN])/nexpl
-    EPN      = oldΛ/(1 - oldΛ/ns.np.N)
-    ntours_f = nsteps*(1+EPN)/minimum(ns.np.nexpls) # use minimum as representative to be safe
-    ntours   = max(min_ntours, min(max_ntours, ceil(Int, ntours_f)))
+    # nsteps = 2ntours*nexpl/[1+E[PN]] <=> ntours = 0.5nsteps(1+E[PN])/nexpl
+    R        = est_rej_probs(trVs, ns.np.betas, ns.np.c)     # compute average rejection probabilities
+    averej   = (R[1:(end-1),1] + R[2:end,2])/2               # average up and down rejections
+    EPN      = sum(averej ./ (1. .- averej))
+    ntours_f = 2*(0.5*nsteps*(1+EPN)/minimum(ns.np.nexpls))  # min and 2* for safety
+    ntours   = max(min_ntours, min(nsteps, ceil(Int, ntours_f)))
     verbose && println(
         "\nStage II: tune c(β) using $ntours NRST tours.\n"
     )

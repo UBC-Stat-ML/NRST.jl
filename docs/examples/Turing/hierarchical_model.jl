@@ -1,5 +1,5 @@
 # ---
-# cover: assets/hierarchical_model.png
+# cover: assets/hierarchical_model/cover.png
 # title: Hierarchical model
 # description: A random effects model coded in Turing.
 # ---
@@ -52,22 +52,29 @@ ns    = NRSTSampler(model, N = 11, verbose = true)
 res   = parallel_run(ns, ntours = 4_096)
 plots = diagnostics(ns, res)
 hl    = ceil(Int, length(plots)/2)
-pdiags=plot(plots..., layout = (hl,2), size = (900,hl*333),left_margin = 30px)
+pdiags=plot(
+    plots..., layout = (hl,2), size = (900,hl*333),left_margin = 40px,
+    right_margin = 40px
+)
 
-#md # ![Diagnostics plots](assets/hierarchical_model_diags.png)
+#md # ![Diagnostics plots](assets/hierarchical_model/diags.png)
 
 # ## Notes on the results
 # ### Inspecting within and between-group std. devs.
 X = hcat([exp.(0.5*x[1:2]) for x in res.xarray[end]]...)
-psds = scatter(
+pcover = scatter(
     X[1,:],X[2,:], xlabel="τ: between-groups std. dev.",
     ylabel="σ: within-group std. dev.", label=""
 )
 
-#md # ![Scatter-plot of within and between-group std. devs.](assets/hierarchical_model_sds.png)
+#md # ![Scatter-plot of within and between-group std. devs.](assets/hierarchical_model/cover.png)
 
-# save diagnostics plot, cover image, and other assets #src
-mkpath("assets") #src
-savefig(pdiags, "assets/hierarchical_model_diags.png") #src
-savefig(plots[3], "assets/hierarchical_model.png") #src
-savefig(psds, "assets/hierarchical_model_sds.png") #src
+# save cover image and diagnostics plots #src
+pathnm = "assets/hierarchical_model" #src
+mkpath(pathnm) #src
+savefig(pcover, joinpath(pathnm,"cover.png")) #src
+savefig(pdiags, joinpath(pathnm,"diags.png")) #src
+for (nm,p) in zip(keys(plots), plots) #src
+    savefig(p, joinpath(pathnm, String(nm) * ".png")) #src
+end #src
+
