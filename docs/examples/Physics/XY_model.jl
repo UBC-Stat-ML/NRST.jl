@@ -4,7 +4,7 @@
 # description: Simulating the classical XY lattice model.
 # ---
 
-# The model is the probability distribution of the angles ``\theta_s \in (-\pi,\pi)`` at each
+# The model is the probability distribution of the angles ``\theta_s \in (-\pi,\pi]`` at each
 # of the ``s\in\{1,\dots,S^2\}`` locations of a square lattice ``\mathbb{S}`` of side length
 # equal to S. The tempered distributions have densities
 # ```math
@@ -14,8 +14,7 @@
 # ```math
 # V(\theta) = -J\sum_{(a,b)\in\mathbb{S}} \cos(\theta_a-\theta_b)
 # ```
-# for ``J>0``. This potential is minimal for perfectly aligned configurations.
-# Note that the reference distribution is uniform on ``(-\pi,\pi)^{S^2}``.
+# for ``J>0``. Note that the reference distribution is uniform on ``(-\pi,\pi)^{S^2}``.
 
 
 # ## Implementation using NRST
@@ -54,14 +53,14 @@ Vref(θs::Vector{<:AbstractFloat}) = sum(Vref, θs)
 # - initializes it, finding an optimal grid
 # - sample tours in parallel and uses them to get more accurate estimates of c(β)
 # - sample one last time to show diagnostics
-ns = NRSTSampler(
+ns, ts = NRSTSampler(
     V,
     Vref,
     randref,
-    N = 13,
+    N = 12,
     verbose = true
 )
-res   = parallel_run(ns, ntours = 4_096)
+res   = parallel_run(ns, ntours = ts.ntours)
 plots = diagnostics(ns, res)
 hl    = ceil(Int, length(plots)/2)
 pdiags=plot(
@@ -73,6 +72,17 @@ pdiags=plot(
 
 # ## Notes on the results
 # ### Bivariate density plots of two neighbors
+#
+# Note that for ``\theta_a,\theta_b \in [-\pi,\pi]``,
+# ```math
+# \cos(\theta_a-\theta_b) = 0 \iff \theta_a - \theta_b = 2k\pi
+# ```
+# for ``k\in\{-1,0,1\}``. The plots below show that as ``\beta`` increases,
+# the samples concentrate at either of three loci, each described by a different
+# value of ``k``. Indeed, the diagonal corresponds to ``k=0``, while the
+# off-diagonal loci have ``|k|=1``. In the ideal physical model,
+# ``\theta_s \in (-\pi,\pi]``, so the non-coherent states have 0 prior probability.
+# In floating-point arithmetic, however, the distinction between open and closed.
 parr = []
 for (i,xs) in enumerate(res.xarray)
     X      = hcat([x[1:2] for x in xs]...)

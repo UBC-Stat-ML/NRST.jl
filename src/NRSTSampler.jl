@@ -71,8 +71,12 @@ function NRSTSampler(
     x  = initx(rand(tm))                                                    # draw an initial point
     es = init_explorers(tm, betas, x)                                       # instantiate a vector of N explorers
     ns = NRSTSampler(np, es, x, MVector(0,1), Ref(V(tm,x)))
-    tune && tune!(ns; verbose = verbose, kwargs...)                         # tune explorers, c, and betas
-    return ns
+    if tune
+        tunestats = tune!(ns; verbose = verbose, kwargs...)                 # tune explorers, c, and betas
+    else
+        tunestats = NamedTuple()
+    end
+    return ns, tunestats
 end
 
 init_grid(N::Int) = collect(range(0,1,N+1))

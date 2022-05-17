@@ -86,7 +86,7 @@ function diagnostics(ns::NRSTSampler, res::ParallelRunResults)
     # ESS/ntours versus toureff for a bounded function
     # note: TE bound is for true ESS and true TE. Sample estimates might not work. 
     # use logistic(Z(V)) where Z is standardization using median
-    # looks weird but has benifits
+    # looks weird but has benefits over other potential bounded functions
     # - V(x) is always defined for any model that got up to here
     # - Z(V) with median is defined even for non-integrable-under-reference V
     # - logistic(Z(V)) is bounded and has non trivial values in general -- ie,
@@ -95,7 +95,7 @@ function diagnostics(ns::NRSTSampler, res::ParallelRunResults)
     # v, since the distribution of V changes radically between temperatures.
     mV = median(Base.Flatten(res.trVs))
     sV = median(abs.(Base.Flatten(res.trVs) .- mV))
-    inf_df = inference(res, h = x -> logistic((V(ns.np.tm, x)-mV)/sV), at = 0:N)
+    inf_df = inference_on_V(res, h = v -> logistic((v-mV)/sV), at = 0:N)
     pvess  = plot(
         ns.np.betas, inf_df[:,"ESS"] ./ ntours(res), xlabel = "β", 
         label = "ESS/#tours", palette = DEF_PAL
@@ -144,6 +144,8 @@ function make_log_ticks(lxs::AbstractVector{<:Real}, idealdiv::Int=5)
 end
 
 # utility for the ess/time plot
+# TODO: add BouncyMC with imperfect tuning, using asymmetric, non-equi rejections
+# that can be obtained from "res" (see rejrates in rejections plot)
 function plot_ess_time(res::ParallelRunResults, Λ::AbstractFloat)
     resN   = N(res)
     resnts = ntours(res)
@@ -168,28 +170,40 @@ function plot_ess_time(res::ParallelRunResults, Λ::AbstractFloat)
     scale_tourls = resN*tourls .+ 2.           # the shortest tour has n(0)=2 and the perfect roundtrip has n(2)=2N+2
     push!(xs, log10.(cumsum(scale_tourls)))
     push!(ys, log10.(cuESS))
-    push!(labels, "PDMP-ser")
+    push!(labels, "IdCTSer")
     push!(xs, log10.(accumulate(max, scale_tourls)))
     push!(ys, log10.(cuESS))
-    push!(labels, "PDMP-par")
+    push!(labels, "IdCTPar")
 
-    # BouncyMC
+    # BouncyMC: perfect tuning
     tourls, vNs = run_tours!(BouncyMC(Λ/resN,resN), resnts)
     TE = (sum(vNs) ^ 2) / (resnts*sum(abs2, vNs))
     cuESS = TE*(1:resnts)
     push!(xs, log10.(cumsum(tourls)))
     push!(ys, log10.(cuESS))
-    push!(labels, "MC-ser")
+    push!(labels, "IdDTPerfSer")
     push!(xs, log10.(accumulate(max, tourls)))
     push!(ys, log10.(cuESS))
-    push!(labels, "MC-par")
+    push!(labels, "IdDTPerfPar")
+
+    # BouncyMC: same tuning as NRST
+    R = res.rpacc ./ res.visits
+    tourls, vNs = run_tours!(BouncyMC(R), resnts)
+    TE = (sum(vNs) ^ 2) / (resnts*sum(abs2, vNs))
+    cuESS = TE*(1:resnts)
+    push!(xs, log10.(cumsum(tourls)))
+    push!(ys, log10.(cuESS))
+    push!(labels, "IdDTActSer")
+    push!(xs, log10.(accumulate(max, tourls)))
+    push!(ys, log10.(cuESS))
+    push!(labels, "IdDTActPar")
 
     # plot
     xlticks = make_log_ticks(collect(Base.Flatten([extrema(x) for x in xs])))
     ylticks = make_log_ticks(collect(Base.Flatten([extrema(y) for y in ys])))
     pcs     = plot(
         xlabel = "Computational time",
-        ylabel = "ESS bound @ cold level", palette = DEF_PAL, 
+        ylabel = "ESS bound @ cold level",# palette = DEF_PAL, 
         legend = :bottomright,
         xticks = (xlticks, ["10^{$e}" for e in xlticks]),
         yticks = (ylticks, ["10^{$e}" for e in ylticks])
@@ -199,7 +213,7 @@ function plot_ess_time(res::ParallelRunResults, Λ::AbstractFloat)
         s = i-2c
         plot!(
             pcs, xs[i], ys[i], label = l,# linewidth=2,
-            linecolor = DEF_PAL[c+1],
+            linecolor = okabe_ito[c+1],
             linestyle = s==1 ? :dash : :solid
         )
     end

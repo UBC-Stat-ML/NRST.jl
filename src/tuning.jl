@@ -8,13 +8,14 @@
 # full tuning
 function tune!(
     ns::NRSTSampler{T,I,K};
-    max_s1_rounds::Int = 18,
-    max_Δβs::Real      = 0.0075,
-    max_relΔcone::Real = 0.005,
-    max_relΔΛ::Real    = 0.02,
+    max_s1_rounds::Int = 19,
+    max_ar_ratio::Real = 0.060,        # limit on std(ar)/mean(ar), ar: average of up/down rejection prob
+    max_Δβs::Real      = ns.np.N^(-2), # limit on max change in grid
+    max_relΔcone::Real = 0.0015,       # limit on rel change in c(1)
+    max_relΔΛ::Real    = 0.015,        # limit on rel change in Λ = Λ(1)
     nsteps_init::Int   = 32,
-    max_nsteps::Int    = 4_194_304,
-    maxcor::Real       = 0.001,
+    max_nsteps::Int    = 8_388_608,
+    maxcor::Real       = 0.8,
     min_ntours::Int    = 2_048,
     verbose::Bool      = true
     ) where {T,I,K}
@@ -29,7 +30,7 @@ function tune!(
     ); show(plot_grid(ns.np.betas, title="Histogram of βs: initial grid")); println("\n")
     rnd     = 0
     nsteps  = nsteps_init÷2                 # nsteps is doubled at the beginning of the loop
-    oldcone = relΔcone = oldΛ = relΔΛ = NaN # to assess convergence on c(1) and Λ=Λ(1)
+    oldcone = relΔcone = oldΛ = relΔΛ = NaN
     conv    = false
     while !conv && (rnd < max_s1_rounds)
         rnd += 1
@@ -41,19 +42,22 @@ function tune!(
         # tune c and betas
         verbose && print("\tTuning c and grid using $nsteps steps per explorer...")
         res      = @timed tune_c_betas!(ns, nsteps)
-        Δβs, Λ   = res.value
+        Δβs, Λ, R= res.value        
+        ar       = (R[1:(end-1),1] + R[2:end,2])/2 # note: these rejections are before grid adjustment, so they are technically stale, but are still useful to assess convergence. compute std dev of average of up and down rejs
+        ar_ratio = std(ar)/mean(ar)
         relΔcone = abs(ns.np.c[end] - oldcone) / abs(oldcone)
         oldcone  = ns.np.c[end]
         relΔΛ    = abs(Λ - oldΛ) / abs(oldΛ)
         oldΛ     = Λ
-        verbose && @printf(
-            "done!\n\t\tmax(Δbetas)=%.3f\n\t\tc(1)=%.2f (relΔ=%.2f%%)\n\t\tΛ=%.2f (relΔ=%.1f%%)\n\t\tElapsed: %.1fs\n\n", 
-            Δβs, ns.np.c[end], 100*relΔcone, Λ, 100*relΔΛ, res.time
+        verbose && @printf( # the following line cannot be cut with concat ("*") because @printf only accepts string literals
+            "done!\n\t\tAR std/mean=%.3f\n\t\tmax(Δbetas)=%.3f\n\t\tc(1)=%.2f (relΔ=%.2f%%)\n\t\tΛ=%.2f (relΔ=%.1f%%)\n\t\tElapsed: %.1fs\n\n", 
+            ar_ratio, Δβs, ns.np.c[end], 100*relΔcone, Λ, 100*relΔΛ, res.time
         ); show(plot_grid(ns.np.betas, title="Histogram of βs: round $rnd")); println("\n")
 
         # check convergence
         conv = !isnan(relΔcone) && (relΔcone<max_relΔcone) && 
-            !isnan(relΔΛ) && (relΔΛ < max_relΔΛ) && (Δβs<max_Δβs)
+            !isnan(relΔΛ) && (relΔΛ < max_relΔΛ) && (Δβs<max_Δβs) &&
+            (ar_ratio < max_ar_ratio)
     end
     # at this point, ns has a fresh new grid, so explorers params, c, and  
     # nexpls are stale => we need to tune them
@@ -82,30 +86,24 @@ function tune!(
     # to get stuck in single modes due to the renewal property.
     #################################################################
     
-    # idea: set ntours to match the effort from the previous step
-    # let nexpl be a representative number of exploration steps.
-    # A single visit to level N does nexpl. Suppose that either we get a
-    # perfect roundtrip, or we don't reach level N at all.
-    # The prob of reaching is P(tau_atom>tau_top) =? 2RTT = [1+E[PN]]^{-1}, where
-    # E[PN] = sum_{i=1}^N r_i/(1-r_i)
-    # note: when r_i=r=Λ/N -> E[PN]= N(Λ/N)/(1-Λ/N) = Λ/(1-Λ/N)
-    # note: E[PN] = N for r=1/2, so P(tau_atom>tau_top)=1/(N+1)
-    # note: E[PN] = 0 for r=0, P(tau_atom>tau_top)=1
-    # Hence, the expected number of steps in a tour (2 is because we sample twice at each state) 
-    # 2nexpl*RTT = 2nexpl[1+E[PN]]^{-1}
-    # For ntours, this is 2ntours*nexpl[1+E[PN]]^{-1}
-    # Hence
-    # nsteps = 2ntours*nexpl/[1+E[PN]] <=> ntours = 0.5nsteps(1+E[PN])/nexpl
-    R        = est_rej_probs(trVs, ns.np.betas, ns.np.c)     # compute average rejection probabilities
-    averej   = (R[1:(end-1),1] + R[2:end,2])/2               # average up and down rejections
-    EPN      = sum(averej ./ (1. .- averej))
-    ntours_f = 2*(0.5*nsteps*(1+EPN)/minimum(ns.np.nexpls))  # min and 2* for safety
-    ntours   = max(min_ntours, min(nsteps, ceil(Int, ntours_f)))
+    # two heuristics, choose max of both:
+    # 1) rationale:
+    #    - above, each explorer produces nsteps samples
+    #    - here, every tour each explorer runs twice on average
+    #      => ntours=nsteps/(2nexpls) gives same comp cost
+    #    - but in each of those runs, a explorer returns only 1 sample
+    #    - if we split the long runs above into tours, we would get 
+    #      nsteps/(2ntours) = nexpls samples per tour per explorer.
+    #      => to get same accuracy, need to multiply ntours by sqrt(nexpls)
+    # 2) heuristic for when nexpls→∞, where 1) fails
+    ntours_f = max(0.5*nsteps/sqrt(mean(ns.np.nexpls)), 150*nsteps^(1/4))
+    ntours   = max(min_ntours, min(2nsteps, ceil(Int, ntours_f)))
     verbose && println(
         "\nStage II: tune c(β) using $ntours NRST tours.\n"
     )
     tune_c!(ns, parallel_run(ns, ntours = ntours, keep_xs = false))
     println("\nTuning completed.\n")
+    return (nsteps=nsteps, ntours=ntours)
 end
 
 
@@ -148,14 +146,7 @@ function tune_c_betas!(ns::NRSTSampler, nsteps::Int)
     @unpack c, betas = ns.np
     trVs, _  = @suppress_err tune_c!(ns, nsteps) # tune c using aggV and trVs if necessary
     R        = est_rej_probs(trVs, betas, c)     # compute average rejection probabilities
-    tune_betas!(ns, R)
-end
-
-# method for proper runs of NRST
-# important: must do c first, because after changing betas "res" is stale
-function tune_c_betas!(ns::NRSTSampler, res::RunResults)
-    tune_c!(ns, res)
-    tune_betas!(ns, res)
+    (tune_betas!(ns, R)..., R)
 end
 
 #######################################
@@ -305,8 +296,8 @@ function optimize_grid!(betas::Vector{K}, R::Matrix{K}) where {K<:AbstractFloat}
     for i in 2:N
         targetΛ     = Λtargets[i]
         b1          = newbetas[i-1]
-        b2          = betas[findfirst(u -> (u>targetΛ), Λsnorm)]                 # f_Λnorm^{-1}(targetΛ) cannot exceed this
-        newbetas[i] = find_zero(β -> f_Λnorm(β)-targetΛ, (b1,b2), atol = Δ*1e-7) # set tolerance for |f_Λnorm(β)-target| 
+        b2          = betas[findfirst(u -> (u>targetΛ), Λsnorm)] # f_Λnorm^{-1}(targetΛ) cannot exceed this
+        newbetas[i] = monoroot(β -> f_Λnorm(β)-targetΛ, b1, b2)  # set tolerance for |f_Λnorm(β)-target| 
     end
     newbetas[end] = one(K)
     copyto!(betas, newbetas)
@@ -329,7 +320,8 @@ end
 function tune_nexpls!(
     nexpls::Vector{TI},
     trVs::Vector{Vector{TF}},
-    maxcor::TF
+    maxcor::TF;
+    smooth::Bool=false
     ) where {TI<:Int, TF<:AbstractFloat}
     acs = [autocor(trV) for trV in trVs[2:end]]  # compute autocorrelations
     L   = log(maxcor)
@@ -337,7 +329,7 @@ function tune_nexpls!(
         ac  = acs[i]
         idx = findfirst(x->isless(x,maxcor), ac) # attempt to find maxcor in acs
         if !isnothing(idx)
-            nexpls[i] = idx - 1                  # acs starts at lag 0
+            nexpls[i] = idx - one(TI)            # acs starts at lag 0
         else                                     # extrapolate with model ac[n]=exp(ρn)
             l = length(ac)
             X = reshape(collect(0:(l-1)),(l,1))  # build design matrix
@@ -346,16 +338,49 @@ function tune_nexpls!(
             nexpls[i] = ceil(TI, L/ρ)            # x = e^{ρn} => log(x) = ρn => n = log(x)/ρ
         end
     end
-    # smooth the results
-    N          = length(nexpls)
-    lognxs     = log.(nexpls)
-    spl        = fit(SmoothingSpline, 1/N:1/N:1, lognxs, .0001)
-    lognxspred = predict(spl) # fitted vector
-    for i in eachindex(nexpls)
-        nexpls[i] = ceil(TI, exp(lognxspred[i]))
+    if smooth
+        # smooth the results
+        N          = length(nexpls)
+        lognxs     = log.(nexpls)
+        spl        = fit(SmoothingSpline, 1/N:1/N:1, lognxs, .0001)
+        lognxspred = predict(spl) # fitted vector
+        for i in eachindex(nexpls)
+            nexpls[i] = ceil(TI, exp(lognxspred[i]))
+        end
     end
 end
 
+#######################################
+# utilities
+#######################################
+
+# find root for monotonic univariate functions
+function monoroot(
+    f, l::F, u::F;
+    tol   = eps(F),
+    maxit = 30
+    ) where {F<:AbstractFloat}
+    fl = f(l)
+    fu = f(u)
+    if sign(fl) == sign(fu)     # f monotone & same sign at both ends => no root in interval
+        return NaN
+    end
+    h = l
+    for i in 1:maxit
+        h  = (l+u)/2
+        fh = f(h)
+        if abs(fh) < tol
+            return h
+        elseif sign(fl) == sign(fh)
+            l  = h
+            fl = fh
+        else
+            u  = h
+            fu = fh
+        end
+    end
+    return h
+end
 
 #######################################
 # plotting utilities

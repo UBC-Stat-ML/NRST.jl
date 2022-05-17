@@ -9,9 +9,6 @@ const DPPL = DynamicPPL
 # TemperedModel built from a Turing model
 # struct TuringTemperedModel{TV,TVr,Tr,Tmod,Tspl,TVi} <: TemperedModel
 struct TuringTemperedModel{Tm<:DPPL.Model,Ts<:DPPL.AbstractSampler,TVi<:DPPL.AbstractVarInfo} <: TemperedModel
-    # V::TV       # energy Function
-    # Vref::TVr   # energy of reference distribution
-    # randref::Tr # produces independent sample from reference distribution
     model::Tm  # a DPPL.Model
     spl::Ts    # a DPPL.Sampler
     viout::TVi # a DPPL.VarInfo
@@ -22,10 +19,6 @@ function TuringTemperedModel(model::DPPL.Model)
     viout   = DPPL.VarInfo(model)            # build a TypedVarInfo
     spl     = DPPL.SampleFromPrior()         # used for sampling and to "link!" (transform to unrestricted space)
     DPPL.link!(viout, spl)                   # force transformation 𝕏 → ℝ
-    # randref = gen_randref(viout, spl, model)
-    # V       = gen_V(viout, spl, model)
-    # Vref    = gen_Vref(viout, spl, model)
-    # TuringTemperedModel(V, Vref, randref, model, spl, viout)
     TuringTemperedModel(model, spl, viout)
 end
 
@@ -35,10 +28,6 @@ function Base.copy(tm::TuringTemperedModel)
     @unpack model, spl = tm
     vinew   = DPPL.VarInfo(model)            # build a new TypedVarInfo
     DPPL.link!(vinew, spl)                   # link with old sampler to force transformation 𝕏 → ℝ
-    # randref = gen_randref(vinew, spl, model)
-    # V       = gen_V(vinew, spl, model)
-    # Vref    = gen_Vref(vinew, spl, model)
-    # TuringTemperedModel(V, Vref, randref, model, spl, vinew)
     TuringTemperedModel(model, spl, vinew)
 end
 
@@ -56,42 +45,14 @@ end
 # methods
 #######################################
 
-# generate a closure to get a (transformed!) iid sample from the prior
-# TODO: it might be more efficient to create (and link!) vi once outside the inner fn,
-# so that it is captured in the closure, and then just use model(). However,
-# I haven't been able to "reuse" a typed VarInfo for sampling
-# function gen_randref(::Tvi, spl, model) where {Tvi} # passing the type of viout is enough to make randref type-stable
-#     function randref(rng::Random.AbstractRNG=Random.GLOBAL_RNG)
-#         vi::Tvi = DPPL.VarInfo(rng, model, DPPL.SampleFromPrior(), DPPL.PriorContext()) # avoids evaluating the likelihood
-#         DPPL.link!(vi, spl)
-#         vi[spl]
-#     end
-#     return randref
-# end
+# sampling from the prior
 function Base.rand(tm::TuringTemperedModel, rng::Random.AbstractRNG=Random.GLOBAL_RNG)
     vi = DPPL.VarInfo(rng, tm.model, tm.spl, DPPL.PriorContext()) # avoids evaluating the likelihood
     DPPL.link!(vi, tm.spl)
     vi[tm.spl]
 end
 
-# generate functions to compute prior (Vref) and likelihood (V) potentials
-# these functions act on transfomed (i.e., unconstrained) variables
-# simplified and modified version of gen_logπ in Turing
-# https://github.com/TuringLang/Turing.jl/blob/b5fd7611e596ba2806479f0680f8a5965e4bf055/src/inference/hmc.jl#L444
-# difference: it does not retain the original value in vi, which we don't really need
-# Note: can use hasproperty(V,:vi) to distinguish V's created with Turing interface
-# TODO: this is inefficient because it requires 2 passes over the graph to get Vref + βV,
-# but this would probably need improving the way we work with Vref and V in NRST
-# function gen_Vref(viout, spl, model)
-#     function Vref(x)::Float64
-#         vi  = viout # this helps with the re-binding+Boxing issue: https://invenia.github.io/blog/2019/10/30/julialang-features-part-1/#an-aside-on-boxing
-#         vi  = DPPL.setindex!!(vi, x, spl)
-#         vi  = last(DPPL.evaluate!!(model, vi, spl, DPPL.PriorContext()))
-#         pot = -DPPL.getlogp(vi)
-#         return pot
-#     end
-#     return Vref
-# end
+# evaluate reference potential
 function Vref(tm::TuringTemperedModel, x)::Float64
     vi  = tm.viout # this helps with the re-binding+Boxing issue: https://invenia.github.io/blog/2019/10/30/julialang-features-part-1/#an-aside-on-boxing
     vi  = DPPL.setindex!!(vi, x, tm.spl)
@@ -99,16 +60,8 @@ function Vref(tm::TuringTemperedModel, x)::Float64
     pot = -DPPL.getlogp(vi)
     return pot
 end
-# function gen_V(viout, spl, model)
-#     function V(x)::Float64
-#         vi  = viout # this helps with the re-binding+Boxing issue: https://invenia.github.io/blog/2019/10/30/julialang-features-part-1/#an-aside-on-boxing
-#         vi  = DPPL.setindex!!(vi, x, spl)
-#         vi  = last(DPPL.evaluate!!(model, vi, spl, DPPL.LikelihoodContext()))
-#         pot = -DPPL.getlogp(vi)
-#         return pot
-#     end
-#     return V
-# end
+
+# evaluate target potential
 function V(tm::TuringTemperedModel, x)::Float64
     vi  = tm.viout # this helps with the re-binding+Boxing issue: https://invenia.github.io/blog/2019/10/30/julialang-features-part-1/#an-aside-on-boxing
     vi  = DPPL.setindex!!(vi, x, tm.spl)
@@ -192,12 +145,12 @@ end
 # 2) the 1st "step" call is done without a "state" object
 #	https://github.com/TuringLang/AbstractMCMC.jl/blob/3de7393b8b8e76330f53505b27d2b928ef178681/src/sample.jl#L120
 #    For HMC, this call without state is captured here
-# 	https://github.com/TuringLang/DPPL.jl/blob/5cc158556a8742194647cf72ae3e3cad2718fac2/src/sampler.jl#L71
+# 	https://github.com/TuringLang/DynamicPPL.jl/blob/5cc158556a8742194647cf72ae3e3cad2718fac2/src/sampler.jl#L71
 #    - if no initial parameters are passed, it uses the "initialsampler" method of the sampler to 
 #      draw an initial value. Turing defaults to "SampleFromUniform", as shown here
 #	https://github.com/TuringLang/Turing.jl/blob/b5fd7611e596ba2806479f0680f8a5965e4bf055/src/inference/hmc.jl#L100
-#    - NOTE: currently "SampleFromUniform" is replaced in DPPL by "SamplerFromPrior". see
-# 	https://github.com/TuringLang/DPPL.jl/blob/5cc158556a8742194647cf72ae3e3cad2718fac2/src/sampler.jl#L97
+#    - NOTE: currently "SampleFromUniform" is replaced in DynamicPPL by "SamplerFromPrior". see
+# 	https://github.com/TuringLang/DynamicPPL.jl/blob/5cc158556a8742194647cf72ae3e3cad2718fac2/src/sampler.jl#L97
 #      These samples from there prior occur in the constrained (untransformed) space. 
 #    - after setting initial value in constrained space, the "initialstep" method is called
 #	https://github.com/TuringLang/Turing.jl/blob/b5fd7611e596ba2806479f0680f8a5965e4bf055/src/inference/hmc.jl#L143
@@ -213,9 +166,9 @@ end
 #      At each step an "HMCTransition" is created, which holds the parameters in constrained space
 #   https://github.com/TuringLang/Turing.jl/blob/b5fd7611e596ba2806479f0680f8a5965e4bf055/src/inference/hmc.jl#L30   
 #      This is achieved by calling "tonamedtuple(vi)", which essentially does vi[@varname(v)] for each variable v.
-#   https://github.com/TuringLang/DPPL.jl/blob/1744ba7bbc9da5cd8e0d04ab66ba588030e30879/src/varinfo.jl#L1022
+#   https://github.com/TuringLang/DynamicPPL.jl/blob/1744ba7bbc9da5cd8e0d04ab66ba588030e30879/src/varinfo.jl#L1022
 #      This indexing is the part that implicitly carries out the invlink'ing for a linked vi 
-#   https://github.com/TuringLang/DPPL.jl/blob/1744ba7bbc9da5cd8e0d04ab66ba588030e30879/src/varinfo.jl#L911
+#   https://github.com/TuringLang/DynamicPPL.jl/blob/1744ba7bbc9da5cd8e0d04ab66ba588030e30879/src/varinfo.jl#L911
 #
 #      Eventually, sampling finishes, at which point "bundle_samples" is called. this is specialized in Turing,
 #      to construct their Chains object from the "samples", which for HMC is a vector of HMCTransitions. Therefore,

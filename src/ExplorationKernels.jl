@@ -150,7 +150,7 @@ function tune!(
     α          = -1.0,
     min_rounds = 2,
     max_rounds = 16,
-    nsteps     = 400,
+    nsteps     = 400, # ~= p(1-p)(Z/eps)^2 <= (Z/2eps)^2, for Z = quantile(Normal(), 0.975)
     verbose    = true
     ) where {F,K}
     nsteps < 1 && return

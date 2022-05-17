@@ -8,7 +8,12 @@ Sys.which(::String)=nothing
 
 # make DemoCards
 examples, examples_cb, examples_assets = makedemos(
-    "examples", edit_branch = "main"
+    "examples", 
+    edit_branch = "main",
+    literate_kwargs = (
+    	 edit_commit = "main",
+    	 codefence   = ("````julia" => "````")
+    )
 )
 
 # if there are generated css assets, pass it to Documenter.HTML

@@ -1,6 +1,6 @@
 module NRST
 
-using ColorSchemes: seaborn_colorblind
+using ColorSchemes: seaborn_colorblind, okabe_ito
 using DataFrames: DataFrame
 using Distributions: Exponential, Normal, Uniform
 using DynamicPPL: DynamicPPL
@@ -10,7 +10,6 @@ using Plots
 using Printf
 using ProgressMeter: ProgressMeter
 using Random: Random
-using Roots: find_zero
 using SmoothingSplines: SmoothingSpline, fit, predict
 using StaticArrays: MVector, SVector
 using Statistics

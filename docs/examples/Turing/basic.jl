@@ -27,8 +27,8 @@ model = Lnmodel(randn(30))
 # - tunes it
 # - runs tours in parallel
 # - shows diagnostics
-ns    = NRSTSampler(model, verbose = true)
-res   = parallel_run(ns, ntours = 4_096)
+ns, ts= NRSTSampler(model, verbose = true)
+res   = parallel_run(ns, ntours = ts.ntours)
 plots = diagnostics(ns, res)
 hl    = ceil(Int, length(plots)/2)
 pdiags=plot(

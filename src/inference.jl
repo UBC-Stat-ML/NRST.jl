@@ -24,11 +24,15 @@ end
 # 95% of the intervals means±1.96sqrt(avars/ntours) should contain the true posterior mean
 function inference(
     res::ParallelRunResults{T,TInt,TF};
-    h::Function,                            # a real-valued test function defined on x space
+    h,                                      # a real-valued test function defined on x space
     at::AbstractVector{<:Int} = [N(res)],   # indexes ⊂ 0:res.N at which to estimate E^{i}[h(x)]
     α::TF = 0.95                            # confidence level for asymptotic confidence intervals
     ) where {T,TInt,TF}
     means = point_estimate(res, h=h, at=at) # compute means using pre-processed res.xarray (fast)
+    pvars = similar(means)                  # compute posterior variance
+    for (p,i) in enumerate(at)
+        pvars[p] = point_estimate(res, h=(x->abs2(h(x)-means[p])), at=[i])[1]
+    end
     sumsq = zeros(TF, length(at))           # accumulate squared error accross tours
     tsum  = Vector{TF}(undef, length(at))   # temp for computing error within tour
     for tr in res.trvec
@@ -43,17 +47,49 @@ function inference(
         sumsq .+= tsum .* tsum
     end
     avars = sumsq ./ ntours(res)            # compute asymptotic variance
+    summarize_inference(res, at, α, means, avars, pvars)
+end
 
-    # compute half width of α-CI
+# same as before but specialized for inferences on h(x) = h(V(x))
+# works even for res objects that do not keep track of xs (i.e., keep_xs=false)
+function inference_on_V(
+    res::ParallelRunResults{T,TInt,TF};
+    h,                                      # a real-valued test function defined on ℝ
+    at::AbstractVector{<:Int} = [N(res)],   # indexes ⊂ 0:res.N at which to estimate E^{i}[h(V)]
+    α::TF = 0.95                            # confidence level for asymptotic confidence intervals
+    ) where {T,TInt,TF}
+    # compute posterior means and variances
+    means = Vector{TF}(undef, length(at))
+    pvars = similar(means)                  
+    for (p,i) in enumerate(at)
+        hVs      = h.(res.trVs[i+1])
+        m        = mean(hVs)
+        v        = var(hVs, mean=m)
+        means[p] = m
+        pvars[p] = v
+    end
+    sumsq = zeros(TF, length(at))           # accumulate squared error accross tours
+    tsum  = Vector{TF}(undef, length(at))   # temp for computing error within tour
+    for tr in res.trvec
+        fill!(tsum, zero(TF)) # reset sums
+        for (n, ip) in enumerate(tr.trIP)
+            # check if the index is in the requested set
+            a = findfirst(isequal(ip[1]), at)
+            if !isnothing(a)
+                tsum[a] += h(tr.trV[n]) - means[a]
+            end
+        end
+        sumsq .+= tsum .* tsum
+    end
+    avars = sumsq ./ ntours(res)            # compute asymptotic variance
+    summarize_inference(res, at, α, means, avars, pvars)
+end
+
+# compute half width of α-CI, ESS, and build summarized dataframe
+function summarize_inference(res::ParallelRunResults, at, α, means, avars, pvars)
     qmult    = quantile(Normal(), (1+α)/2)
     nsamples = vec(sum(res.visits[at .+ 1,:], dims=2))
     hws      = qmult * sqrt.(avars ./ nsamples) # half-widths of interval
-
-    # compute posterior variance and ESS
-    pvars = similar(means)
-    for (p,i) in enumerate(at)
-        pvars[p] = point_estimate(res, h=(x->abs2(h(x)-means[p])), at=[i])[1]
-    end
     ESS      = nsamples .* (pvars ./ avars)
     return DataFrame(
         "Level"      => at,
