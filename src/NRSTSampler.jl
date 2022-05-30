@@ -96,7 +96,7 @@ end
 
 # copy-constructor, using a given NRSTSampler (usually already tuned)
 function Base.copy(ns::NRSTSampler)
-    newtm = copy(ns.np.tm)            # the only element in np that we copy
+    newtm  = copy(ns.np.tm)            # the only element in np that we copy
     newnp  = NRSTProblem(ns.np, newtm) # build new Problem using new tm
     newx   = rand(newtm)
     expls  = init_explorers(newtm, newnp.betas, newx)
@@ -178,7 +178,7 @@ function run!(ns::NRSTSampler{T,I,K}; nsteps::Int) where {T,I,K}
     for n in 1:nsteps
         trX[n]  = copy(ns.x)                   # needs copy o.w. pushes a ref to ns.x
         trIP[n] = copy(ns.ip)
-        trV[n]  = curV[]
+        trV[n]  = ns.curV[]
         trRP[n] = step!(ns)                    # note: since trIP[n] was stored before, trRP[n] is rej prob of swap **initiated** from trIP[n]
     end
     return SerialNRSTTrace(trX, trIP, trV, trRP, ns.np.N)

@@ -21,12 +21,11 @@
 
 using Lattices, Distributions, Plots
 using Plots.PlotMeasures: px
-using KernelDensity
-using StatsPlots
+using Dierckx
 using NRST
 
 # Define the basics of the model
-const S   = 8;
+const S   = 4;
 const Ssq = S*S;
 const sq  = Square(S,S); # define a square lattice
 const J   = 2;           # coupling constant to force βᶜ < 1 in our parametrization, since βᶜ = 1.1199 for J=1: https://iopscience.iop.org/article/10.1088/0305-4470/38/26/003
@@ -82,16 +81,36 @@ pdiags=plot(
 # value of ``k``. Indeed, the diagonal corresponds to ``k=0``, while the
 # off-diagonal loci have ``|k|=1``. In the ideal physical model,
 # ``\theta_s \in (-\pi,\pi]``, so the non-coherent states have 0 prior probability.
-# In floating-point arithmetic, however, the distinction between open and closed.
-parr = []
+# In floating-point arithmetic, however, the distinction between open and closed
+# is impossible.
+nsub_wish = 32768
+ngrid     = 50
+xr = yr = range(-pi,pi,ngrid)
+Xnew      = repeat(reshape(xr, 1, :), ngrid, 1)
+Ynew      = repeat(yr, 1, ngrid)
+parr      = []
 for (i,xs) in enumerate(res.xarray)
-    X      = hcat([x[1:2] for x in xs]...)
-    kdefit = kde(X') 
-    push!(parr, plot(kdefit, title="β=$(round(ns.np.betas[i],digits=2))"))
+    # i=1; xs=res.xarray[i]
+    β      = ns.np.betas[i]
+    nsam   = length(xs)
+    nsub   = min(nsub_wish,nsam)
+    idx    = sample(1:nsam, nsub, replace=false, ordered=true)
+    X      = hcat([x[1:2] for x in xs[idx]]...)
+    probs  = exp.(ns.np.c[i] .- β*res.trVs[i][idx])
+    pmin,pmax = extrema(probs)
+    cprobs = (pmax-pmin<eps()) ? probs : (probs.-pmin)./(pmax-pmin)
+    spline = Spline2D(X[1,:], X[2,:], cprobs, s=nsub)
+    Z      = map(spline, Xnew, Ynew)
+    plev   = scatter(
+        X[1,:], X[2,:], markeralpha=1000/nsub, palette=DEF_PAL,
+        title="β=$(round(β,digits=2))", label=""
+    )
+    i > 1 && contour!(plev, xr, yr, Z) # needed because contour is not working with constant Z    
+    push!(parr, plev)
 end
 N  = ns.np.N
-nc = min(N+1, 5)
-nr = ceil(Int, (N+1)/nc)
+nc = min(N+1, ceil(Int,sqrt(N+1)))
+nr = floor(Int, (N+1)/nc)
 for i in (N+2):(nc*nr)
     push!(parr, plot())
 end 

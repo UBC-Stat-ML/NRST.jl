@@ -101,7 +101,7 @@ function tune!(
     verbose && println(
         "\nStage II: tune c(β) using $ntours NRST tours.\n"
     )
-    tune_c!(ns, parallel_run(ns, ntours = ntours, keep_xs = false))
+    tune_c!(ns, parallel_run(ns; ntours = ntours, keep_xs = false))
     println("\nTuning completed.\n")
     return (nsteps=nsteps, ntours=ntours)
 end
@@ -219,7 +219,7 @@ function collectVs!(
     ) where {T,I,K}
     @unpack tm, use_mean, N = ns.np
     aggfun = use_mean ? mean : median
-    nsteps = length(first(trVs)) 
+    nsteps = length(first(trVs))
     for i in 1:nsteps
         trVs[1][i] = V(tm, rand(tm))
     end
@@ -265,8 +265,7 @@ function est_rej_probs(trVs, betas, c)
     R    = similar(c, (N+1, 2)) # rejection probs: R[:,1] is up, R[:,2] is dn
     uno  = one(eltype(c))
     cero = zero(eltype(c))
-    Threads.@threads for i in 1:(N+1) # "Threads.@threads for" does not work with enumerate(trVs)
-        trV = trVs[i]
+    for (i, trV) in enumerate(trVs)
         if i > N
             R[i,1] = uno
         else

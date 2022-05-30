@@ -1,3 +1,36 @@
+using Distributions, DynamicPPL, Plots
+using Plots.PlotMeasures: px
+using NRST
+
+# Define a model using the `DynamicPPL.@model` macro
+@model function Lnmodel(x)
+    s  ~ LogNormal()
+    x .~ Normal(0.,s)
+end
+
+# Now we instantiate a proper `DynamicPPL.Model` object by a passing a vector of observations
+model = Lnmodel(randn(30))
+
+# This
+# - builds an NRST sampler for the model
+# - tunes it
+# - runs tours in parallel
+# - shows diagnostics
+ns, ts= NRSTSampler(model, verbose = true)
+res   = parallel_run(ns, ntours = ts.ntours)
+plots = diagnostics(ns, res)
+hl    = ceil(Int, length(plots)/2)
+pdiags=plot(
+    plots..., layout = (hl,2), size = (900,hl*333),left_margin = 40px,
+    right_margin = 40px
+)
+
+
+###############################################################################
+###############################################################################
+###############################################################################
+
+
 using Lattices, Distributions, Plots
 using Plots.PlotMeasures: px
 using NRST
@@ -37,7 +70,7 @@ ns, ts = NRSTSampler(
     N = 5,
     verbose = true
 )
-res   = parallel_run(ns, ntours = ts.ntours);
+res   = parallel_run(ns, ntours = ts.ntours)
 plots = diagnostics(ns, res)
 hl    = ceil(Int, length(plots)/2)
 pdiags=plot(
@@ -45,17 +78,27 @@ pdiags=plot(
     right_margin = 40px
 )
 
-# using KernelDensity
-# using StatsPlots
-using Dierckx
+#md # ![Diagnostics plots](assets/XY_model/diags.png)
 
+# ## Notes on the results
+# ### Bivariate density plots of two neighbors
+#
+# Note that for ``\theta_a,\theta_b \in [-\pi,\pi]``,
+# ```math
+# \cos(\theta_a-\theta_b) = 0 \iff \theta_a - \theta_b = 2k\pi
+# ```
+# for ``k\in\{-1,0,1\}``. The plots below show that as ``\beta`` increases,
+# the samples concentrate at either of three loci, each described by a different
+# value of ``k``. Indeed, the diagonal corresponds to ``k=0``, while the
+# off-diagonal loci have ``|k|=1``. In the ideal physical model,
+# ``\theta_s \in (-\pi,\pi]``, so the non-coherent states have 0 prior probability.
+# In floating-point arithmetic, however, the distinction between open and closed
+# is impossible.
 DEF_PAL = NRST.DEF_PAL
-nsub_wish = 32768
-ngrid = 50
-xr = yr = range(-pi,pi,ngrid)
-Xnew   = repeat(reshape(xr, 1, :), ngrid, 1)
-Ynew   = repeat(yr, 1, ngrid)
-parr = []
+
+ngrid     = 50
+nsub_wish = ngrid*ngrid*5
+parr      = []
 for (i,xs) in enumerate(res.xarray)
     # i=1; xs=res.xarray[i]
     β      = ns.np.betas[i]
@@ -63,21 +106,15 @@ for (i,xs) in enumerate(res.xarray)
     nsub   = min(nsub_wish,nsam)
     idx    = sample(1:nsam, nsub, replace=false, ordered=true)
     X      = hcat([x[1:2] for x in xs[idx]]...)
-    probs  = exp.(ns.np.c[i] .- β*res.trVs[i][idx])
-    pmin,pmax = extrema(probs)
-    cprobs = (pmax-pmin<eps()) ? probs : (probs.-pmin)./(pmax-pmin)
-    spline = Spline2D(X[1,:], X[2,:], cprobs, s=nsub)
-    Z      = map(spline, Xnew, Ynew)
     plev   = scatter(
         X[1,:], X[2,:], markeralpha=1000/nsub, palette=DEF_PAL,
         title="β=$(round(β,digits=2))", label=""
     )
-    i > 1 && contour!(plev, xr, yr, Z) # needed because contour is not working with constant Z    
     push!(parr, plev)
 end
 N  = ns.np.N
 nc = min(N+1, ceil(Int,sqrt(N+1)))
-nr = floor(Int, (N+1)/nc)
+nr = ceil(Int, (N+1)/nc)
 for i in (N+2):(nc*nr)
     push!(parr, plot())
 end 
