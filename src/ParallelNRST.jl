@@ -10,7 +10,7 @@
 # used to avoid race conditions between threads
 # initialize with ns and additional nthreads-1 copies
 # note that np object is still shared since it's not modified during simulation
-function copy_sampler(ns::NRSTSampler)
+function replicate(ns::NRSTSampler)
     nthreads    = Threads.nthreads()
     samplers    = Channel{typeof(ns)}(nthreads)
     put!(samplers, ns)
@@ -38,7 +38,7 @@ function run!(
     @sync for _ in 1:ntours
         Threads.@spawn begin
             ns = take!(samplers)      # take a sampler out of the idle repository
-            tr = tour!(ns; kwargs...) # run a full tour with the sampler corresponding to this thread, avoiding race conditions
+            tr = tour!(ns; kwargs...) # run a full tour with a sampler that cannot be used by other thread
             put!(results, tr)         # push results to this thread's own storage, avoiding race conditions
             put!(samplers, ns)        # return the sampler to the idle channel 
             ProgressMeter.next!(p)
@@ -49,13 +49,8 @@ function run!(
 end
 
 # method for a single NRSTSampler that creates only temp copies
-function parallel_run(
-    ns::NRSTSampler; 
-    ntours::Int,
-    kwargs...
-    )
-    run!(copy_sampler(ns); ntours=ntours, kwargs...)
-end
+parallel_run(ns::NRSTSampler; ntours::Int, kwargs...) =
+    run!(replicate(ns); ntours=ntours, kwargs...)
 
 #######################################
 # trace postprocessing

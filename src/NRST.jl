@@ -23,11 +23,11 @@ using UnPack: @unpack
 export NRSTSampler,
     run!,
     tune!,
-    post_process
+    post_process,
+    run_tours!
 
 # ParallelNRST.jl
-export copy_sampler,
-    parallel_run,
+export parallel_run,
     ntours,
     tourlengths
 

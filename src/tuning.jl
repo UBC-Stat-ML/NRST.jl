@@ -28,20 +28,21 @@ function tune!(
     verbose && println(
         "Stage I: Bootstrapping the sampler using independent runs from the explorers.\n"
     ); show(plot_grid(ns.np.betas, title="Histogram of βs: initial grid")); println("\n")
+    xpls    = replicate(ns.xpl, ns.np.betas) # create a vector of explorers, fully independent of ns and its own explorer
     rnd     = 0
-    nsteps  = nsteps_init÷2                 # nsteps is doubled at the beginning of the loop
+    nsteps  = nsteps_init÷2                  # nsteps is doubled at the beginning of the loop
     oldcone = relΔcone = oldΛ = relΔΛ = NaN
     conv    = false
     while !conv && (rnd < max_s1_rounds)
         rnd += 1
         nsteps = min(max_nsteps,2nsteps)
         verbose && print("Round $rnd:\n\tTuning explorers...")
-        tune_explorers!(ns, verbose = false)
+        tune_explorers!(xpls, verbose = false)
         verbose && println("done!")
         
         # tune c and betas
         verbose && print("\tTuning c and grid using $nsteps steps per explorer...")
-        res      = @timed tune_c_betas!(ns, nsteps)
+        res      = @timed tune_c_betas!(ns.np, xpls, nsteps)
         Δβs, Λ, R= res.value        
         ar       = (R[1:(end-1),1] + R[2:end,2])/2 # note: these rejections are before grid adjustment, so they are technically stale, but are still useful to assess convergence. compute std dev of average of up and down rejs
         ar_ratio = std(ar)/mean(ar)
@@ -67,10 +68,13 @@ function tune!(
         "\n\nFinal round of stage I: adjusting settings to new grid...\n" *
         "\tTuning explorers..."
     )
-    tune_explorers!(ns, verbose = false)
+    tune_explorers!(xpls, verbose = false)
+    for (i,xpl) in enumerate(xpls)         # need to store tuned params for later use with ns.xpl
+        ns.np.xplpars[i] = params(xpl)
+    end
     verbose && print("done!\n\tTuning c and nexpls using $nsteps steps per explorer...")
-    res     = @timed @suppress_err tune_c!(ns, nsteps)
-    trVs, _ = res.value 
+    res     = @timed @suppress_err tune_c!(ns.np, xpls, nsteps)
+    trVs, _ = res.value
     tune_nexpls!(ns.np.nexpls, trVs, maxcor)
     verbose && @printf("done!\n\t\tElapsed: %.1fs\n\n", res.time)
     verbose && show(lineplot_term(
@@ -98,10 +102,10 @@ function tune!(
     # 2) heuristic for when nexpls→∞, where 1) fails
     ntours_f = max(0.5*nsteps/sqrt(mean(ns.np.nexpls)), 150*nsteps^(1/4))
     ntours   = max(min_ntours, min(2nsteps, ceil(Int, ntours_f)))
-    verbose && println(
-        "\nStage II: tune c(β) using $ntours NRST tours.\n"
-    )
-    tune_c!(ns, parallel_run(ns; ntours = ntours, keep_xs = false))
+    # verbose && println(
+    #     "\nStage II: tune c(β) using $ntours NRST tours.\n"
+    # )
+    # tune_c!(ns.np, parallel_run(ns; ntours = ntours, keep_xs = false))
     println("\nTuning completed.\n")
     return (nsteps=nsteps, ntours=ntours)
 end
@@ -116,23 +120,11 @@ end
 #######################################
 
 # tune the explorers' parameters
-function tune_explorers!(ns::NRSTSampler;smooth=true,kwargs...)
-    Threads.@threads for expl in ns.explorers
-        tune!(expl;kwargs...)
+function tune_explorers!(xpls::Vector{<:ExplorationKernel};smooth=true,kwargs...)
+    Threads.@threads for xpl in xpls
+        tune!(xpl;kwargs...)
     end
-    smooth && smooth_params!(ns.explorers)
-end
-
-# tune the explorers' parameters serially. can use previous expl's params as
-# warm start for the next.
-function tune_explorers_serial!(ns::NRSTSampler;smooth=true,kwargs...)
-    tune!(ns.explorers[1];kwargs...)
-    for i in 2:ns.np.N
-        # use previous explorer's params as warm start
-        pars = params(ns.explorers[i-1])
-        tune!(ns.explorers[i], pars;kwargs...)
-    end
-    smooth && smooth_params!(ns.explorers)
+    smooth && smooth_params!(xpls)
 end
 
 #######################################
@@ -142,11 +134,11 @@ end
 # Tune c and betas using independent runs of the explorers
 # note: explorers must be tuned already before running this
 # note: need to tune c first because this is used for estimating rejections (R)
-function tune_c_betas!(ns::NRSTSampler, nsteps::Int)
-    @unpack c, betas = ns.np
-    trVs, _  = @suppress_err tune_c!(ns, nsteps) # tune c using aggV and trVs if necessary
-    R        = est_rej_probs(trVs, betas, c)     # compute average rejection probabilities
-    (tune_betas!(ns, R)..., R)
+function tune_c_betas!(np::NRSTProblem, xpls::Vector{<:ExplorationKernel}, nsteps::Int)
+    trVs, _  = @suppress_err tune_c!(np, xpls, nsteps) # tune c using aggV and trVs if necessary
+    R        = est_rej_probs(trVs, np.betas, np.c)     # compute average rejection probabilities
+    out      = tune_betas!(np, R)
+    (out..., R)
 end
 
 #######################################
@@ -155,11 +147,11 @@ end
 
 # tune the c vector using samples of the potential function
 function tune_c!(
-    ns::NRSTSampler{T,I,K},
+    np::NRSTProblem{T,K},
     trVs::Vector{Vector{K}},
     aggV::Vector{K}
-    ) where {T,I,K}
-    @unpack use_mean, c, betas = ns.np
+    ) where {T,K}
+    @unpack use_mean, c, betas = np
     if use_mean && abs(aggV[1]) > 1e16
         @info "V likely not integrable under the reference; using stepping stone."
         stepping_stone!(c, betas, trVs) # compute log(Z(b)/Z0) and store it in c
@@ -170,38 +162,29 @@ function tune_c!(
     return
 end
 
-# method for collecting samples using just the explorers
-function tune_c!(ns::NRSTSampler, nsteps::Int)
-    @unpack c, betas = ns.np
-    trVs, aggV = collectVs(ns, nsteps)
-    tune_c!(ns, trVs, aggV)
+# method for collecting samples using explorers
+function tune_c!(np::NRSTProblem, xpls::Vector{<:ExplorationKernel}, nsteps::Int)
+    trVs, aggV = collectVs(np, xpls, nsteps)
+    tune_c!(np, trVs, aggV)
     return (trVs = trVs, aggV = aggV)
 end
 
 # method for proper runs of NRST
-function tune_c!(ns::NRSTSampler, res::RunResults)
+function tune_c!(np::NRSTProblem, res::RunResults)
     trVs = res.trVs
-    aggV = ns.np.use_mean ? mean.(trVs) : median.(trVs)
-    tune_c!(ns, trVs, aggV)
+    aggV = np.use_mean ? mean.(trVs) : median.(trVs)
+    tune_c!(np, trVs, aggV)
 end
 
 #######################################
 # tune betas
 #######################################
 
-function tune_betas!(ns::NRSTSampler, R::Matrix{<:Real})
-    betas    = ns.np.betas
+function tune_betas!(np::NRSTProblem, R::Matrix{<:Real})
+    betas    = np.betas
     oldbetas = copy(betas)                       # store old betas to check convergence
-    _, _, Λs = optimize_grid!(betas, R)         # tune using the inverse of Λ(β)
-    refresh_explorers!(ns)                       # since betas changed, the cached potentials are stale
+    _, _, Λs = optimize_grid!(betas, R)          # tune using the inverse of Λ(β)
     return (maximum(abs,betas-oldbetas),Λs[end]) # return max change in grid and Λ=Λ(1) to check convergence
-end
-
-# utility to reset Vβ caches in all explorers
-function refresh_explorers!(ns::NRSTSampler)
-    for e in ns.explorers
-        refresh_curVβ!(e)
-    end
 end
 
 # Tune betas using the output of NRST
@@ -211,33 +194,22 @@ tune_betas!(ns::NRSTSampler, res::RunResults) =
     tune_betas!(ns, res.rpacc ./ res.visits)
 
 # collect samples of V(x) at each of the levels, running explorers independently
-# store results in trVs. also compute V aggregate and store in aggV
-function collectVs!(
-    ns::NRSTSampler{T,I,K},
-    trVs::Vector{Vector{K}},
-    aggV::Vector{K}
-    ) where {T,I,K}
-    @unpack tm, use_mean, N = ns.np
-    aggfun = use_mean ? mean : median
-    nsteps = length(first(trVs))
+# also compute V aggregate
+function collectVs(np::NRSTProblem, xpls::Vector{<:ExplorationKernel}, nsteps::Int)
+    N      = np.N
+    aggV   = similar(np.c)
+    trVs   = [similar(aggV, nsteps) for _ in 0:N]
+    aggfun = np.use_mean ? mean : median
     for i in 1:nsteps
-        trVs[1][i] = V(tm, rand(tm))
+        trVs[1][i] = V(np.tm, rand(np.tm))
     end
     aggV[1] = aggfun(trVs[1])
-    Threads.@threads for i in 1:N         # "Threads.@threads for" does not work with enumerate(ns.explorers)
+    Threads.@threads for i in 1:N         # "Threads.@threads for" does not work with enumerate
         ipone = i+1
-        e = ns.explorers[i]
-        run!(e, trVs[ipone])              # run keeping track of V
+        set_β!(xpls[i], np.betas[ipone])  # needed because most likely the grid was updated 
+        run!(xpls[i], trVs[ipone])        # run keeping track of V
         aggV[ipone] = aggfun(trVs[ipone])
     end
-end
-
-# allocating version
-function collectVs(ns::NRSTSampler, nsteps::Int)
-    N    = ns.np.N
-    aggV = similar(ns.np.c)
-    trVs = [similar(aggV, nsteps) for _ in 0:N]
-    NRST.collectVs!(ns,trVs,aggV)
     return (trVs = trVs, aggV = aggV)
 end
 

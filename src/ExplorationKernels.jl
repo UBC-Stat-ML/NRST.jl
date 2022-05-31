@@ -4,39 +4,44 @@
 
 abstract type ExplorationKernel end
 
-# explore == run for nsteps
-function explore!(ex::ExplorationKernel, nsteps::Int)
+# explore for nsteps using the given params, without keeping track of anything
+# note: this only makes sense when called by an NRSTSampler with which the
+# explorer shares x and curV
+function explore!(
+    ex::ExplorationKernel,
+    β::AbstractFloat,
+    params::NamedTuple,
+    nsteps::Int
+    )
+    set_β!(ex, β)
+    set_params!(ex, params)
     for _ in 1:nsteps
         step!(ex)
     end
 end
+function set_β!(ex::ExplorationKernel, β::AbstractFloat)
+    ex.curβ[]  = β
+    ex.curVβ[] = ex.curVref[] + β*ex.curV[]
+end
 
-# change x and update potentials 
-function set_state!(ex::ExplorationKernel, x, vref, v, vβ)
-    set_x!(ex, x)
-    set_potentials!(ex, vref, v, vβ)
+# compute all potentials at some x
+function potentials(ex::ExplorationKernel, newx)
+    vref, v = potentials(ex.tm, newx)
+    vβ = vref + ex.curβ[]*v
+    vref, v, vβ
 end
-function set_state!(ex::ExplorationKernel, x, v)
-    vref = Vref(ex.tm, x)
-    vβ   = vref + ex.betas[ex.id]*v
-    set_state!(ex, x, vref, v, vβ)
-end
-function set_potentials!(ex::ExplorationKernel, vref, v, vβ)
+
+# set potentials. used during sampling with an explorer
+function set_potentials!(ex::ExplorationKernel, vref::F, v::F, vβ::F) where {F<:AbstractFloat}
     ex.curVref[] = vref
     ex.curV[]    = v
     ex.curVβ[]   = vβ
 end
 
-# compute potentials at some x
-function potentials(ex::ExplorationKernel, newx)
-    vref, v = potentials(ex.tm, newx)
-    vβ = vref + ex.betas[ex.id]*v
-    vref, v, vβ
-end
-
-# called by functions that modify "betas" during tuning
-function refresh_curVβ!(ex::ExplorationKernel)
-    ex.curVβ[] = ex.curVref[] + ex.betas[ex.id]*ex.curV[]
+# tune parameters starting from a given initialization point
+function tune!(ex::ExplorationKernel, params::NamedTuple;kwargs...)
+    set_params!(ex, params)
+    tune!(mhs::MHSampler;kwargs...)
 end
 
 ###############################################################################
@@ -49,47 +54,56 @@ end
 # - implement different propose! that dispatch on different types of x's
 ###############################################################################
 
-struct MHSampler{TTM<:TemperedModel,K<:AbstractFloat,A<:AbstractVector{K},I<:Int} <: ExplorationKernel
+struct MHSampler{TTM<:TemperedModel,K<:AbstractFloat,A<:AbstractVector{K}} <: ExplorationKernel
     tm::TTM                   # TemperedModel
     x::A                      # current state
     xprop::A                  # storage for proposal
     sigma::Base.RefValue{K}   # step length (stored as ref to make it mutable)
-    betas::A                  # pointer to the (unique) NRST betas vector
-    id::I                     # id of explorer == position of the β in betas that it uses. note: id>=2, because β=0 does not require an explorer 
+    curβ::Base.RefValue{K}    # current beta
     curVref::Base.RefValue{K} # current reference potential
     curV::Base.RefValue{K}    # current target potential
     curVβ::Base.RefValue{K}   # current tempered potential 
 end
 
 # outer constructor
-function MHSampler(tm, xinit, betas, id, sigma=1.0)
-    vref, v = potentials(tm, xinit)
-    vβ = vref + betas[id]*v
+function MHSampler(tm, xinit, β, curV, sigma=1.0)
+    vref    = Vref(tm, xinit)
+    vβ      = vref + β*curV[]
     MHSampler(
-        tm,
-        xinit,
-        similar(xinit),
-        Ref(sigma),
-        betas,
-        id,
-        Ref(vref),
-        Ref(v),
-        Ref(vβ)
+        tm, xinit, similar(xinit), Ref(sigma), Ref(β), Ref(vref), curV, Ref(vβ)
     )
 end
-params(mh::MHSampler) = (sigma=mh.sigma[],) # namedtuple of parameters
-set_x!(mhs, newx) = copyto!(mhs.x, newx)    # set x to new value
-# # test
-# mhs = MHSampler(x->(0.5sum(abs2,x)),ones(2))
+set_x!(mhs, newx) = copyto!(mhs.x, newx)                # set x to new value
+params(mh::MHSampler) = (sigma=mh.sigma[],)             # namedtuple of parameters
+function set_params!(mh::MHSampler, params::NamedTuple) # set sigma from a NamedTuple
+    mh.sigma[] = params.sigma
+end
 
-
-# set_state!(mhs,[0.2,0.5]) # test
+# copy constructors
+function Base.copy(mh::MHSampler)
+    newtm = copy(mh.tm)
+    newx  = copy(mh.x)
+    ncurV = Ref(mh.curV[])
+    copy(mh, newtm, newx, ncurV)
+end
+function Base.copy(mh::MHSampler, newtm::TemperedModel, newx, newcurV)
+    MHSampler(
+        newtm, newx, similar(mh.xprop), Ref(mh.sigma[]), Ref(mh.curβ[]),
+        Ref(mh.curVref[]), newcurV, Ref(mh.curVβ[])
+    )
+end
 
 # MH proposal = isotropic normal
 function propose!(mhs::MHSampler)
     for (i,xi) in enumerate(mhs.x)
         mhs.xprop[i] = xi + mhs.sigma[]*randn()
     end
+end
+
+# accept proposal: x <- xprop and update potentials 
+function acc_prop!(mhs::MHSampler, vref::F, v::F, vβ::F) where {F<:AbstractFloat}
+    set_x!(mhs, mhs.xprop)
+    set_potentials!(mhs, vref, v, vβ)
 end
 
 # basic Metropolis step (i.e, with symmetric proposal)
@@ -102,21 +116,17 @@ end
 # = exp[min(0,-ΔU)] = exp[-max(0,ΔU)]
 function step!(mhs::MHSampler)
     @unpack xprop = mhs
-    propose!(mhs)                             # propose new state, stored at mhs.xprop
-    pvref, pv, pvβ = potentials(mhs, xprop)   # compute potentials at proposed location
-    ΔU  = pvβ - mhs.curVβ[]                   # compute energy differential
-    acc = ΔU < rand(Exponential())            # twice as fast than -log(rand())
-    acc && set_state!(mhs,xprop,pvref,pv,pvβ) # if proposal accepted, update state
-    ap  = exp(-max(0., ΔU))                   # compute acceptance probability
+    propose!(mhs)                           # propose new state, stored at mhs.xprop
+    pvref, pv, pvβ = potentials(mhs, xprop) # compute potentials at proposed location
+    ΔU  = pvβ - mhs.curVβ[]                 # compute energy differential
+    acc = ΔU < rand(Exponential())          # twice as fast than -log(rand())
+    acc && acc_prop!(mhs, pvref, pv, pvβ)   # if proposal accepted, update state and caches
+    ap  = exp(-max(0., ΔU))                 # compute acceptance probability
     return ap
 end
 
-# # test
-# println(step!(mhs))
-# println(mhs.curU[])
-# mhs.x
-
-# run sampler keeping track of accepted probabilities
+# run sampler keeping track only of cummulative acceptance probability
+# used in tuning
 function run!(mhs::MHSampler, nsteps::Int)
     sum_ap = 0.
     for n in 1:nsteps
@@ -144,7 +154,6 @@ end
 # - Robbins-Monroe step size sequence is a_r = 10r^α for α<0
 function tune!(
     mhs::MHSampler{F,K};
-    sigma0     = -one(K),
     target_acc = 0.234,
     eps        = 0.05,
     α          = -1.0,
@@ -157,7 +166,6 @@ function tune!(
     minsigma = 1e-8
     err      = 10*eps
     r        = 0
-    (sigma0 > zero(K)) && (mhs.sigma[] = sigma0)
     verbose && @printf("Tuning initiated at sigma=%.1f\n", mhs.sigma[])
     while (r < min_rounds) || (err >= eps && r < max_rounds)
         r += 1
@@ -170,7 +178,6 @@ function tune!(
         )
     end
 end
-tune!(mhs::MHSampler,params::NamedTuple;kwargs...) = tune!(mhs::MHSampler;sigma0=params.sigma,kwargs...)
 # # test
 # # approximate V(x)=0.5||x||^2 (energy of N(0,I)) with mhs targetting N(0,b^2I). Then
 # # E[V] = (1/2)E[X1^2+X2^2] = (1/2) b^2 E[(X1/b)^2+(X2/b)^2] = b^2/2E[chi-sq(2)] = b^2
@@ -180,32 +187,50 @@ tune!(mhs::MHSampler,params::NamedTuple;kwargs...) = tune!(mhs::MHSampler;sigma0
 # @code_warntype tune!(mhs,x->(0.5sum(abs2,x)))
 
 ###############################################################################
-# methods for vectors of exploration kernels
+# default kernels for given data types
 ###############################################################################
 
-# create a vector of exploration kernels
-function init_explorers(tm::TemperedModel, betas, xinit::AbstractVector{<:AbstractFloat})
-    # copy(xinit) is necessary or all explorers end up sharing the same state x
-    # copy(tm) is necessary for threading when evaluating V,Vref,randref 
-    # changes something in their closures (e.g., when tm isa TuringTemperedModel)
-    # but "betas" is shared because for exploration this is read-only.
-    exp1    = MHSampler(copy(tm), copy(xinit), betas, 2)
-    exps    = Vector{typeof(exp1)}(undef, length(betas) - 1)
-    exps[1] = exp1
-    for i in 3:length(betas)
-        exps[i-1] = MHSampler(copy(tm), copy(xinit), betas, i)
+# default exploration kernel for x in ℝᵈ
+function get_explorer(
+    tm::TemperedModel, 
+    xinit::AbstractVector{TF}, 
+    refV::Base.RefValue{TF}
+    ) where {TF<:AbstractFloat}
+    # note: by not copying xinit, NRSTSampler and explorer share the same x state
+    #       same with the cached potential V 
+    # note: tm might contain fields that are mutated whenever potentials are
+    # computed (e.g. for TuringModel)
+    MHSampler(tm, xinit, one(first(xinit)), refV)
+end
+
+###############################################################################
+# methods for collections of exploration kernels
+###############################################################################
+
+# instantiate a vector of explorers by copying one. used for tuning NRSTSampler
+# note: the resulting explorers are not tethered to any NRSTSampler, in the sense 
+# that the state x is not shared with any NRSTSampler. Conversely, if xpl is
+# the explorer of an NRSTSampler, this function does not change that.
+function replicate(xpl::ExplorationKernel, betas::AbstractVector{<:AbstractFloat})
+    N    = length(betas) - 1
+    xpls = Vector{typeof(xpl)}(undef, N)
+    for i in 1:N
+        newxpl  = copy(xpl)        # use custom copy constructor
+        set_β!(newxpl, betas[i+1]) # set β and recalculate Vβ
+        xpls[i] = newxpl
     end
-    return exps
+    return xpls
 end
 
 # intuition: if optimal sigma=sigma(β) is smooth in β, then tuning can be improved
 # by smoothing across explorers
-function smooth_params!(explorers::Vector{<:MHSampler})
-    betas     = explorers[1].betas
-    logσs     = [log(NRST.params(e)[1]) for e in explorers]
-    spl       = fit(SmoothingSpline, log.(betas[2:end]), logσs, 20.)
+function smooth_params!(xpls::Vector{<:MHSampler})
+    betas     = [xpl.curβ[] for xpl in xpls] # note: this is length N
+    logσs     = [log(NRST.params(xpl)[1]) for xpl in xpls]
+    spl       = fit(SmoothingSpline, log.(betas), logσs, 20.)
     logσspred = predict(spl)
-    for (i,e) in enumerate(explorers)
-        e.sigma[] = exp(logσspred[i])
+    for (i,xpl) in enumerate(xpls)
+        xpl.sigma[] = exp(logσspred[i])
     end
 end
+

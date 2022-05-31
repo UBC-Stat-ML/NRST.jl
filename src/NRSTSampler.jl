@@ -3,27 +3,28 @@
 ###############################################################################
 
 # encapsulates all the specifics of the tempered problem
-# NOTE: when parallelizing, all fields must be shared except possibly
-# for "tm".
-struct NRSTProblem{TTM<:TemperedModel,K<:AbstractFloat,A<:Vector{K},TInt<:Int}
+struct NRSTProblem{TTM<:TemperedModel,K<:AbstractFloat,A<:Vector{K},TInt<:Int,TNT<:NamedTuple}
     tm::TTM              # a TemperedModel
     N::TInt              # number of states additional to reference (N+1 in total)
     betas::A             # vector of tempering parameters (length N+1)
     c::A                 # vector of parameters for the pseudoprior
     use_mean::Bool       # should we use "mean" (true) or "median" (false) for tuning c?
-    nexpls::Vector{TInt} # number of exploration steps for each explorer
+    nexpls::Vector{TInt} # vector of length N with number of exploration steps adequate for each level 1:N
+    xplpars::Vector{TNT} # vector of length N of named tuples, holding adequate parameters to use at each level 1:N
 end
 
 # copy constructor, allows replacing tm, but keeps everything else
 function NRSTProblem(oldnp::NRSTProblem, newtm)
-    NRSTProblem(newtm,oldnp.N,oldnp.betas,oldnp.c,oldnp.use_mean,oldnp.nexpls)
+    NRSTProblem(
+        newtm,oldnp.N,oldnp.betas,oldnp.c,oldnp.use_mean,oldnp.nexpls,oldnp.xplpars
+    )
 end
 
 # struct for the sampler
-struct NRSTSampler{T,I<:Int,K<:AbstractFloat,B<:Vector{<:ExplorationKernel},TProb<:NRSTProblem}
+struct NRSTSampler{T,I<:Int,K<:AbstractFloat,TXp<:ExplorationKernel,TProb<:NRSTProblem}
     np::TProb              # encapsulates problem specifics
-    explorers::B           # vector length N of exploration kernels
-    x::T                   # current state of target variable. no need to keep it in sync all the time with explorers. they are updated at exploration step
+    xpl::TXp               # exploration kernel
+    x::T                   # current state of target variable
     ip::MVector{2,I}       # current state of the Index Process (i,eps). uses statically sized but mutable vector
     curV::Base.RefValue{K} # current energy V(x) (stored as ref to make it mutable)
 end
@@ -67,12 +68,16 @@ function NRSTSampler(
     else
         N = length(betas) - 1
     end
-    np = NRSTProblem(tm, N, betas, similar(betas), use_mean, fill(nexpl,N)) # instantiate an NRSTProblem
-    x  = initx(rand(tm))                                                    # draw an initial point
-    es = init_explorers(tm, betas, x)                                       # instantiate a vector of N explorers
-    ns = NRSTSampler(np, es, x, MVector(0,1), Ref(V(tm,x)))
+    x    = initx(rand(tm))                                      # draw an initial point
+    curV = Ref(V(tm, x))
+    xpl  = get_explorer(tm, x, curV)
+    np   = NRSTProblem(                                         # instantiate an NRSTProblem
+        tm, N, betas, similar(betas), use_mean, fill(nexpl,N), 
+        fill(params(xpl), N)
+    ) 
+    ns  = NRSTSampler(np, xpl, x, MVector(0,1), curV)  # instantiate the NRSTSampler
     if tune
-        tunestats = tune!(ns; verbose = verbose, kwargs...)                 # tune explorers, c, and betas
+        tunestats = tune!(ns; verbose = verbose, kwargs...)     # tune explorers, c, and betas
     else
         tunestats = NamedTuple()
     end
@@ -96,11 +101,12 @@ end
 
 # copy-constructor, using a given NRSTSampler (usually already tuned)
 function Base.copy(ns::NRSTSampler)
-    newtm  = copy(ns.np.tm)            # the only element in np that we copy
-    newnp  = NRSTProblem(ns.np, newtm) # build new Problem using new tm
-    newx   = rand(newtm)
-    expls  = init_explorers(newtm, newnp.betas, newx)
-    NRSTSampler(newnp, expls, newx, MVector(0,1), Ref(V(newtm, newx)))
+    newtm = copy(ns.np.tm)                   # the only element in np that we (may) need to copy
+    newnp = NRSTProblem(ns.np, newtm)        # build new Problem using new tm
+    newx  = rand(newtm)
+    ncurV = Ref(V(newtm, newx))
+    nuxpl = copy(ns.xpl, newtm, newx, ncurV) # copy ns.xpl sharing stuff with the new sampler
+    NRSTSampler(newnp, nuxpl, newx, MVector(0,1), ncurV)
 end
 
 ###############################################################################
@@ -148,17 +154,15 @@ end
 
 # exploration step
 function expl_step!(ns::NRSTSampler{T,I,K}) where {T,I,K}
-    @unpack x,np,explorers,ip,curV = ns
+    @unpack np,xpl,ip,curV = ns
     if ip[1] == zero(I)
-        copyto!(x, rand(np.tm)) 
-        curV[] = V(np.tm, x)        # compute energy at new point
+        copyto!(ns.x, rand(np.tm))      # sample new state from the reference
+        curV[] = V(np.tm, ns.x)         # compute energy at new point
     else
-        expl  = explorers[ip[1]]    # current explorer (recall that ip[1] is 0-based)
-        nexpl = np.nexpls[ip[1]]    # get the exporer's number of exploration steps
-        set_state!(expl, x, curV[]) # pass current state and energy to explorer
-        explore!(expl, nexpl)       # explore for nexpl steps
-        copyto!(x, expl.x)          # update ns' state with the explorer's
-        curV[] = expl.curV[]        # copy energy from explorer
+        β      = np.betas[ip[1]]        # get the β for the level
+        nexpl  = np.nexpls[ip[1]]       # get number of exploration steps needed at this level
+        params = np.xplpars[ip[1]]      # get explorer params for this level 
+        explore!(xpl, β, params, nexpl) # explore for nexpl steps. note: ns.x and ns.curV are shared with xpl
     end
 end
 
@@ -169,20 +173,20 @@ function step!(ns::NRSTSampler)
     return rp    
 end
 
-# run for fixed number of steps
-function run!(ns::NRSTSampler{T,I,K}; nsteps::Int) where {T,I,K}
-    trX  = Vector{T}(undef, nsteps)
-    trIP = Vector{SVector{2,I}}(undef, nsteps) # can use a vector of SVectors since traces should not be modified
-    trV  = Vector{K}(undef, nsteps)
-    trRP = similar(trV)
-    for n in 1:nsteps
-        trX[n]  = copy(ns.x)                   # needs copy o.w. pushes a ref to ns.x
-        trIP[n] = copy(ns.ip)
-        trV[n]  = ns.curV[]
-        trRP[n] = step!(ns)                    # note: since trIP[n] was stored before, trRP[n] is rej prob of swap **initiated** from trIP[n]
-    end
-    return SerialNRSTTrace(trX, trIP, trV, trRP, ns.np.N)
-end
+# # run for fixed number of steps
+# function run!(ns::NRSTSampler{T,I,K}; nsteps::Int) where {T,I,K}
+#     trX  = Vector{T}(undef, nsteps)
+#     trIP = Vector{SVector{2,I}}(undef, nsteps) # can use a vector of SVectors since traces should not be modified
+#     trV  = Vector{K}(undef, nsteps)
+#     trRP = similar(trV)
+#     for n in 1:nsteps
+#         trX[n]  = copy(ns.x)                   # needs copy o.w. pushes a ref to ns.x
+#         trIP[n] = copy(ns.ip)
+#         trV[n]  = ns.curV[]
+#         trRP[n] = step!(ns)                    # note: since trIP[n] was stored before, trRP[n] is rej prob of swap **initiated** from trIP[n]
+#     end
+#     return SerialNRSTTrace(trX, trIP, trV, trRP, ns.np.N)
+# end
 
 # run a tour: run the sampler until we reach the atom ip=(0,-1)
 # note: by finishing at the atom (0,-1) and restarting using the renewal measure,
@@ -207,6 +211,20 @@ function tour!(
     push!(trV, ns.curV[])
     push!(trRP, step!(ns))
     return SerialNRSTTrace(trX, trIP, trV, trRP, ns.np.N)
+end
+
+# run multiple tours, return processed output
+function run_tours!(
+    ns::NRSTSampler{T,TI,TF};
+    ntours::Int,
+    kwargs...
+    ) where {T,TI,TF}
+    results = Channel{SerialNRSTTrace{T,TI,TF}}(ntours)
+    ProgressMeter.@showprogress 1 "Sampling: " for _ in 1:ntours
+        put!(results, tour!(ns;kwargs...))
+    end
+    close(results)
+    return ParallelRunResults(results)
 end
 
 ###############################################################################

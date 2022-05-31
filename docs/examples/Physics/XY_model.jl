@@ -21,7 +21,6 @@
 
 using Lattices, Distributions, Plots
 using Plots.PlotMeasures: px
-using Dierckx
 using NRST
 
 # Define the basics of the model
@@ -83,11 +82,8 @@ pdiags=plot(
 # ``\theta_s \in (-\pi,\pi]``, so the non-coherent states have 0 prior probability.
 # In floating-point arithmetic, however, the distinction between open and closed
 # is impossible.
-nsub_wish = 32768
 ngrid     = 50
-xr = yr = range(-pi,pi,ngrid)
-Xnew      = repeat(reshape(xr, 1, :), ngrid, 1)
-Ynew      = repeat(yr, 1, ngrid)
+nsub_wish = ngrid*ngrid*5
 parr      = []
 for (i,xs) in enumerate(res.xarray)
     # i=1; xs=res.xarray[i]
@@ -96,21 +92,15 @@ for (i,xs) in enumerate(res.xarray)
     nsub   = min(nsub_wish,nsam)
     idx    = sample(1:nsam, nsub, replace=false, ordered=true)
     X      = hcat([x[1:2] for x in xs[idx]]...)
-    probs  = exp.(ns.np.c[i] .- β*res.trVs[i][idx])
-    pmin,pmax = extrema(probs)
-    cprobs = (pmax-pmin<eps()) ? probs : (probs.-pmin)./(pmax-pmin)
-    spline = Spline2D(X[1,:], X[2,:], cprobs, s=nsub)
-    Z      = map(spline, Xnew, Ynew)
     plev   = scatter(
         X[1,:], X[2,:], markeralpha=1000/nsub, palette=DEF_PAL,
         title="β=$(round(β,digits=2))", label=""
     )
-    i > 1 && contour!(plev, xr, yr, Z) # needed because contour is not working with constant Z    
     push!(parr, plev)
 end
 N  = ns.np.N
 nc = min(N+1, ceil(Int,sqrt(N+1)))
-nr = floor(Int, (N+1)/nc)
+nr = ceil(Int, (N+1)/nc)
 for i in (N+2):(nc*nr)
     push!(parr, plot())
 end 
