@@ -55,7 +55,7 @@ ns, ts = NRSTSampler(
     V,
     Vref,
     randref,
-    N = 12,
+    N = 6,
     verbose = true
 )
 res   = parallel_run(ns, ntours = ts.ntours)

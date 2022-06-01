@@ -138,13 +138,19 @@ function make_log_ticks(lxs::AbstractVector{<:Real}, idealdiv::Int=5)
     lmin, lmax   = extrema(lxs)
     tlmin, tlmax = ceil(Int,lmin), floor(Int,lmax)
     width        = tlmax-tlmin
+    if width == 0
+        return tlmin:tlmax
+    end
     candidates   = 1:width 
     divisors     = candidates[findall([width % c == 0 for c in candidates])]
-    bestdiv      = divisors[argmin(abs.(divisors .- idealdiv))] # ideal div implies div+1 actual ticks
+    bestdiv      = divisors[argmin(abs.(divisors .- idealdiv))] # ideal div implies div+1 actual ticks  
     return tlmin:(width÷bestdiv):tlmax
 end
 
 # utility for the ess/time plot
+# NOTE: as maxcor → 0, the tours lengths become more 
+# consistent, so the NRST-par curve in the ESS/cost plot converges to the
+# one for MC-par!
 # TODO: add BouncyMC with imperfect tuning, using asymmetric, non-equi rejections
 # that can be obtained from "res" (see rejrates in rejections plot)
 function plot_ess_time(res::ParallelRunResults, Λ::AbstractFloat)

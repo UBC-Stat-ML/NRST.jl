@@ -4,6 +4,10 @@
 
 abstract type ExplorationKernel end
 
+#######################################
+# methods interfacing with an NRSTSampler
+#######################################
+
 # explore for nsteps using the given params, without keeping track of anything
 # note: this only makes sense when called by an NRSTSampler with which the
 # explorer shares x and curV
@@ -13,16 +17,21 @@ function explore!(
     params::NamedTuple,
     nsteps::Int
     )
-    set_β!(ex, β)
+    update_β!(ex, β)
     set_params!(ex, params)
     for _ in 1:nsteps
         step!(ex)
     end
 end
-function set_β!(ex::ExplorationKernel, β::AbstractFloat)
-    ex.curβ[]  = β
-    ex.curVβ[] = ex.curVref[] + β*ex.curV[]
+function update_β!(ex::ExplorationKernel, β::AbstractFloat)
+    ex.curβ[]    = β
+    ex.curVref[] = Vref(ex.tm, ex.x)          # vref is *not* shared so needs updating
+    ex.curVβ[]   = ex.curVref[] + β*ex.curV[] # vβ is *not* shared so needs updating
 end
+
+#######################################
+# methods used only within an explorer
+#######################################
 
 # compute all potentials at some x
 function potentials(ex::ExplorationKernel, newx)
@@ -215,8 +224,8 @@ function replicate(xpl::ExplorationKernel, betas::AbstractVector{<:AbstractFloat
     N    = length(betas) - 1
     xpls = Vector{typeof(xpl)}(undef, N)
     for i in 1:N
-        newxpl  = copy(xpl)        # use custom copy constructor
-        set_β!(newxpl, betas[i+1]) # set β and recalculate Vβ
+        newxpl  = copy(xpl)           # use custom copy constructor
+        update_β!(newxpl, betas[i+1]) # set β and recalculate Vβ
         xpls[i] = newxpl
     end
     return xpls

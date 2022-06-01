@@ -30,27 +30,35 @@ function run!(
     ntours::Int,           # total number of tours to run
     kwargs...
 ) where {T,TI,TF,TS<:NRSTSampler{T,TI,TF}}
-    # use a channel to put! results into (thread-safe)
-    results = Channel{SerialNRSTTrace{T,TI,TF}}(ntours)
+    # pre-allocate storage for results
+    results = Vector{SerialNRSTTrace{T,TI,TF}}(undef, ntours)
 
     # run tours in parallel, show progress
     p = ProgressMeter.Progress(ntours, "Sampling: ")
-    @sync for _ in 1:ntours
+    @sync for t in 1:ntours           # @sync tells the loop to end only when all @async operations inside end
         Threads.@spawn begin
             ns = take!(samplers)      # take a sampler out of the idle repository
             tr = tour!(ns; kwargs...) # run a full tour with a sampler that cannot be used by other thread
-            put!(results, tr)         # push results to this thread's own storage, avoiding race conditions
+            results[t] = tr           # writing to separate locations in a common vector is fine. see: https://discourse.julialang.org/t/safe-loop-with-push-multi-threading/41892/6, and e.g. https://stackoverflow.com/a/8978397/5443023
             put!(samplers, ns)        # return the sampler to the idle channel 
             ProgressMeter.next!(p)
+            yield()                   # https://github.com/timholy/ProgressMeter.jl/issues/189#issuecomment-792353566
         end
     end
-    close(results)
-    return ParallelRunResults(results)
+    
+    ParallelRunResults(results)       # post-process and return 
 end
 
 # method for a single NRSTSampler that creates only temp copies
-parallel_run(ns::NRSTSampler; ntours::Int, kwargs...) =
-    run!(replicate(ns); ntours=ntours, kwargs...)
+function parallel_run(ns::NRSTSampler; ntours::Int, kwargs...)
+    if Threads.nthreads() == 1
+        return run_tours!(ns; ntours=ntours, kwargs...)
+    end
+    samplers = replicate(ns)
+    res = run!(samplers; ntours=ntours, kwargs...)
+    close(samplers)
+    return res
+end
 
 #######################################
 # trace postprocessing
@@ -68,11 +76,10 @@ ntours(res::ParallelRunResults) = length(res.trvec)
 tourlengths(res::ParallelRunResults) = nsteps.(res.trvec)
 
 # outer constructor that parses a vector of serial traces
-function ParallelRunResults(results::Channel{TST}) where {T,I,K,TST<:SerialNRSTTrace{T,I,K}}
-    @assert Base.n_avail(results) == results.sz_max
-    ntours = results.sz_max
+function ParallelRunResults(results::Vector{TST}) where {T,I,K,TST<:SerialNRSTTrace{T,I,K}}
+    ntours = length(results)
     trvec  = Vector{TST}(undef, ntours) # storage for the raw traces
-    N      = fetch(results).N           # take an element of the channel, get N, and put it back
+    N      = first(results).N
     xarray = [T[] for _ in 0:N]         # i-th entry has samples at level i
     trVs   = [K[] for _ in 0:N]         # i-th entry has Vs corresponding to xarray[i]
     curvis = Matrix{I}(undef, N+1, 2)   # visits in current tour to each (i,eps) state
