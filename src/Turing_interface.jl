@@ -53,7 +53,7 @@ function Base.rand(tm::TuringTemperedModel, rng::Random.AbstractRNG=Random.GLOBA
 end
 
 # evaluate reference potential
-function Vref(tm::TuringTemperedModel, x)::Float64
+function Vref(tm::TuringTemperedModel, x)
     vi  = tm.viout # this helps with the re-binding+Boxing issue: https://invenia.github.io/blog/2019/10/30/julialang-features-part-1/#an-aside-on-boxing
     vi  = DPPL.setindex!!(vi, x, tm.spl)
     vi  = last(DPPL.evaluate!!(tm.model, vi, tm.spl, DPPL.PriorContext()))
@@ -62,7 +62,7 @@ function Vref(tm::TuringTemperedModel, x)::Float64
 end
 
 # evaluate target potential
-function V(tm::TuringTemperedModel, x)::Float64
+function V(tm::TuringTemperedModel, x)
     vi  = tm.viout # this helps with the re-binding+Boxing issue: https://invenia.github.io/blog/2019/10/30/julialang-features-part-1/#an-aside-on-boxing
     vi  = DPPL.setindex!!(vi, x, tm.spl)
     vi  = last(DPPL.evaluate!!(tm.model, vi, tm.spl, DPPL.LikelihoodContext()))

@@ -94,7 +94,8 @@ for (i,xs) in enumerate(res.xarray)
     idx    = sample(1:nsam, nsub, replace=false, ordered=true)
     X      = hcat([x[1:2] for x in xs[idx]]...)
     plev   = scatter(
-        X[1,:], X[2,:], markeralpha=1000/nsub, palette=seaborn_colorblind,
+        X[1,:], X[2,:], markeralpha=min(1., max(0.08, 1000/nsub)), 
+        palette=seaborn_colorblind,
         title="β=$(round(β,digits=2))", label=""
     )
     push!(parr, plev)
