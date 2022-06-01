@@ -33,13 +33,14 @@ function diagnostics(ns::NRSTSampler, res::ParallelRunResults)
     )
 
     # plot explorers acceptance probabilities and nexpls
-    # exp_acc_probs = [run!(e, 16384) for e in ns.explorers]
-    # pexpap = plot(
-    #     exp_acc_probs, label="", xlabel="Level", ylabel="Explorers acceptance prob."
-    # )
-    pexpap = plot() # placeholder
+    xplap = res.xplapac ./ vec(sum(res.visits, dims=2))[2:end]
+    pexpap = plot(
+        xplap, label="", xlabel="Level", ylabel="Explorers acceptance prob.",
+        palette = DEF_PAL
+    )
     pnexpl = plot(
-        ns.np.nexpls, label="", xlabel="Level", ylabel="Exploration length per NRST step"
+        ns.np.nexpls, label="", xlabel="Level", palette = DEF_PAL,
+        ylabel="Exploration length per NRST step"
     )
 
     # Lambda Plot

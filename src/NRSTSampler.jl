@@ -35,9 +35,10 @@ struct SerialNRSTTrace{T,TI<:Int,TF<:AbstractFloat}
     trIP::Vector{SVector{2,TI}}
     trV::Vector{TF}
     trRP::Vector{TF}
-    N::TI
+    trXplAP::Vector{Vector{TF}}
 end
-nsteps(tr::SerialNRSTTrace) = length(tr.trV) # recover nsteps
+get_N(tr::SerialNRSTTrace) = length(tr.trXplAP) # recover N. cant do N=N(tr) because julia gets dizzy
+nsteps(tr::SerialNRSTTrace) = length(tr.trV)    # recover nsteps
 
 # processed output
 struct SerialRunResults{T,TI<:Int,TF<:AbstractFloat} <: RunResults
@@ -46,6 +47,7 @@ struct SerialRunResults{T,TI<:Int,TF<:AbstractFloat} <: RunResults
     trVs::Vector{Vector{TF}}  # i-th entry has Vs corresponding to xarray[i]
     visits::Matrix{TI}        # total number of visits to each (i,eps)
     rpacc::Matrix{TF}         # accumulates rejection probs of swaps started from each (i,eps)
+    xplapac::Vector{TF}       # length N. accumulates explorers' acc probs
 end
 
 ###############################################################################
@@ -159,39 +161,45 @@ function comm_step!(ns::NRSTSampler{T,I,K}) where {T,I,K}
 end
 
 # exploration step
-function expl_step!(ns::NRSTSampler{T,I}) where {T,I}
+function expl_step!(ns::NRSTSampler{T,I,K}) where {T,I,K}
     @unpack np,xpl,ip,curV = ns
+    xplap = one(K)
     if ip[1] == zero(I)
-        copyto!(ns.x, rand(np.tm))      # sample new state from the reference
-        curV[] = V(np.tm, ns.x)         # compute energy at new point
+        copyto!(ns.x, rand(np.tm))               # sample new state from the reference
+        curV[] = V(np.tm, ns.x)                  # compute energy at new point
     else
-        β      = np.betas[ip[1]+1]      # get the β for the level
-        nexpl  = np.nexpls[ip[1]]       # get number of exploration steps needed at this level
-        params = np.xplpars[ip[1]]      # get explorer params for this level 
-        explore!(xpl, β, params, nexpl) # explore for nexpl steps. note: ns.x and ns.curV are shared with xpl
+        β      = np.betas[ip[1]+1]               # get the β for the level
+        nexpl  = np.nexpls[ip[1]]                # get number of exploration steps needed at this level
+        params = np.xplpars[ip[1]]               # get explorer params for this level 
+        xplap  = explore!(xpl, β, params, nexpl) # explore for nexpl steps. note: ns.x and ns.curV are shared with xpl
     end
+    return xplap
 end
 
 # NRST step = comm_step ∘ expl_step
 function step!(ns::NRSTSampler)
-    rp = comm_step!(ns) # returns rejection probability
-    expl_step!(ns)
-    return rp    
+    rp    = comm_step!(ns) # returns rejection probability
+    xplap = expl_step!(ns) # returns explorers' acceptance probability
+    return rp, xplap
 end
 
 # run for fixed number of steps
 function run!(ns::NRSTSampler{T,I,K}; nsteps::Int) where {T,I,K}
-    trX  = Vector{T}(undef, nsteps)
-    trIP = Vector{SVector{2,I}}(undef, nsteps) # can use a vector of SVectors since traces should not be modified
-    trV  = Vector{K}(undef, nsteps)
-    trRP = similar(trV)
+    trX     = Vector{T}(undef, nsteps)
+    trIP    = Vector{SVector{2,I}}(undef, nsteps) # can use a vector of SVectors since traces should not be modified
+    trV     = Vector{K}(undef, nsteps)
+    trRP    = similar(trV)
+    trXplAP = [K[] for _ in 1:ns.np.N]            # cant predict number of visits to each level
     for n in 1:nsteps
-        trX[n]  = copy(ns.x)                   # needs copy o.w. pushes a ref to ns.x
-        trIP[n] = copy(ns.ip)
-        trV[n]  = ns.curV[]
-        trRP[n] = step!(ns)                    # note: since trIP[n] was stored before, trRP[n] is rej prob of swap **initiated** from trIP[n]
+        trX[n]     = copy(ns.x)                   # needs copy o.w. pushes a ref to ns.x
+        trIP[n]    = copy(ns.ip)
+        trV[n]     = ns.curV[]
+        rp, xplap  = step!(ns)
+        trRP[n]    = rp                           # note: since trIP[n] was stored before step!, trRP[n] is rej prob of swap **initiated** from trIP[n]
+        l          = ns.ip[1]
+        l >= 1 && push!(trXplAP[l], xplap)        # note: since comm preceeds expl, we're correctly storing the acc prob of the most recent state
     end
-    return SerialNRSTTrace(trX, trIP, trV, trRP, ns.np.N)
+    return SerialNRSTTrace(trX, trIP, trV, trRP, trXplAP)
 end
 
 # run a tour: run the sampler until we reach the atom ip=(0,-1)
@@ -202,21 +210,25 @@ function tour!(
     keep_xs::Bool = true,                 # set to false if xs can be forgotten (useful for tuning to lower mem usage) 
     ) where {T,I,K}
     renew!(ns)
-    trX  = T[]
-    trIP = SVector{2,I}[]                 # can use a vector of SVectors since traces should not be modified
-    trV  = K[]
-    trRP = K[]
+    trX     = T[]
+    trIP    = SVector{2,I}[]              # can use a vector of SVectors since traces should not be modified
+    trV     = K[]
+    trRP    = K[]
+    trXplAP = [K[] for _ in 1:ns.np.N]
     while !(ns.ip[1] == 0 && ns.ip[2] == -1)
-        keep_xs && push!(trX, copy(ns.x)) # needs copy o.w. pushes a ref to ns.x
-        push!(trIP, copy(ns.ip))          # same
-        push!(trV, ns.curV[])
-        push!(trRP, step!(ns))
+        tour_step!(ns, trX, trIP, trV, trRP, trXplAP, keep_xs)
     end
-    keep_xs && push!(trX, copy(ns.x))
-    push!(trIP, copy(ns.ip))
+    tour_step!(ns, trX, trIP, trV, trRP, trXplAP, keep_xs)
+    return SerialNRSTTrace(trX, trIP, trV, trRP, trXplAP)
+end
+function tour_step!(ns::NRSTSampler, trX, trIP, trV, trRP, trXplAP, keep_xs)
+    keep_xs && push!(trX, copy(ns.x)) # needs copy o.w. pushes a ref to ns.x
+    push!(trIP, copy(ns.ip))          # same
     push!(trV, ns.curV[])
-    push!(trRP, step!(ns))
-    return SerialNRSTTrace(trX, trIP, trV, trRP, ns.np.N)
+    rp, xplap = step!(ns)
+    push!(trRP, rp)
+    l = ns.ip[1]
+    l >= 1 && push!(trXplAP[l], xplap)
 end
 
 # run multiple tours, return processed output
@@ -238,13 +250,14 @@ end
 
 # outer constructor that parses a trace
 function SerialRunResults(tr::SerialNRSTTrace{T,I,K}) where {T,I,K}
-    N      = tr.N
-    xarray = [T[] for _ in 0:N] # i-th entry has samples at state i
-    trVs   = [K[] for _ in 0:N] # i-th entry has Vs corresponding to xarray[i]
-    visacc = zeros(I, N+1, 2)   # accumulates visits
-    rpacc  = zeros(K, N+1, 2)   # accumulates rejection probs
-    post_process(tr, xarray, trVs, visacc, rpacc)
-    SerialRunResults(tr, xarray, trVs, visacc, rpacc)
+    N       = get_N(tr)
+    xarray  = [T[] for _ in 0:N] # i-th entry has samples at state i
+    trVs    = [K[] for _ in 0:N] # i-th entry has Vs corresponding to xarray[i]
+    visacc  = zeros(I, N+1, 2)   # accumulates visits
+    rpacc   = zeros(K, N+1, 2)   # accumulates rejection probs
+    xplapac = zeros(K, N)        # accumulates explorers' acc probs
+    post_process(tr, xarray, trVs, visacc, rpacc, xplapac)
+    SerialRunResults(tr, xarray, trVs, visacc, rpacc, xplapac)
 end
 
 function post_process(
@@ -252,13 +265,19 @@ function post_process(
     xarray::Vector{Vector{T}}, # length = N+1. i-th entry has samples at state i
     trVs::Vector{Vector{K}},   # length = N+1. i-th entry has Vs corresponding to xarray[i]
     visacc::Matrix{I},         # size (N+1) × 2. accumulates visits
-    rpacc::Matrix{K}           # size (N+1) × 2. accumulates rejection probs
+    rpacc::Matrix{K},          # size (N+1) × 2. accumulates rejection probs
+    xplapac::Vector{K}         # length = N. accumulates explorers' acc probs
     ) where {T,I,K}
     for (n, ip) in enumerate(tr.trIP)
-        idx    = ip[1] + 1
+        l      = ip[1]
+        idx    = l + 1
         idxeps = (ip[2] == one(I) ? 1 : 2)
-        visacc[idx, idxeps] += one(I)
-        rpacc[idx, idxeps]  += tr.trRP[n]
+        visacc[idx, idxeps]  += one(I)
+        rpacc[idx, idxeps]   += tr.trRP[n]
+        if l >= 1
+            nvl = visacc[idx,1] + visacc[idx,2] # (>=1) number of visits so far to level l, regardless of eps
+            xplapac[l] += tr.trXplAP[l][nvl]
+        end
         length(tr.trX) >= n && push!(xarray[idx], tr.trX[n]) # handle case keep_xs=false
         push!(trVs[idx], tr.trV[n])
     end

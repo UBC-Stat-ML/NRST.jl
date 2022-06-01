@@ -19,9 +19,11 @@ function explore!(
     )
     update_β!(ex, β)
     set_params!(ex, params)
+    acc = zero(typeof(β))
     for _ in 1:nsteps
-        step!(ex)
+        acc += step!(ex)
     end
+    return acc/nsteps       # return average acceptance probability
 end
 function update_β!(ex::ExplorationKernel, β::AbstractFloat)
     ex.curβ[]    = β
