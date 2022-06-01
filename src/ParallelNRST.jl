@@ -34,15 +34,15 @@ function run!(
     results = Vector{SerialNRSTTrace{T,TI,TF}}(undef, ntours)
 
     # run tours in parallel, show progress
-    p = ProgressMeter.Progress(ntours, "Sampling: ")
+    # p = ProgressMeter.Progress(ntours, "Sampling: ")
     @sync for t in 1:ntours           # @sync tells the loop to end only when all @async operations inside end
         Threads.@spawn begin
             ns = take!(samplers)      # take a sampler out of the idle repository
             tr = tour!(ns; kwargs...) # run a full tour with a sampler that cannot be used by other thread
             results[t] = tr           # writing to separate locations in a common vector is fine. see: https://discourse.julialang.org/t/safe-loop-with-push-multi-threading/41892/6, and e.g. https://stackoverflow.com/a/8978397/5443023
             put!(samplers, ns)        # return the sampler to the idle channel 
-            ProgressMeter.next!(p)
-            yield()                   # https://github.com/timholy/ProgressMeter.jl/issues/189#issuecomment-792353566
+            # ProgressMeter.next!(p)
+            # yield()                   # https://github.com/timholy/ProgressMeter.jl/issues/189#issuecomment-792353566
         end
     end
     

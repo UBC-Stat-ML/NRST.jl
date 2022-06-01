@@ -21,6 +21,7 @@
 
 using Lattices, Distributions, Plots
 using Plots.PlotMeasures: px
+using ColorSchemes: seaborn_colorblind
 using NRST
 
 # Define the basics of the model
@@ -93,7 +94,7 @@ for (i,xs) in enumerate(res.xarray)
     idx    = sample(1:nsam, nsub, replace=false, ordered=true)
     X      = hcat([x[1:2] for x in xs[idx]]...)
     plev   = scatter(
-        X[1,:], X[2,:], markeralpha=1000/nsub, palette=DEF_PAL,
+        X[1,:], X[2,:], markeralpha=1000/nsub, palette=seaborn_colorblind,
         title="β=$(round(β,digits=2))", label=""
     )
     push!(parr, plev)
