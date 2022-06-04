@@ -105,14 +105,10 @@ end
 
 # estimate log-partition function: β ↦ log(Z(β)/Z(0))
 function log_partition(np::NRSTProblem, res::RunResults)
-    if np.use_mean
-        return -np.c
-    else
-        return stepping_stone(np.betas, res.trVs)
-    end
+    np.use_mean ? -np.c : stepping_stone(np.betas, res.trVs)
 end
 
-# TODO: revive this
+# TODO: revive this?
 # # estimate log-partition function, with a pesimistic asymptotic error bound
 # # If I(n) is the cumulative integral approx at betas[n], then
 # #    - sd(I(1)) = sd(mean(V[1]))
