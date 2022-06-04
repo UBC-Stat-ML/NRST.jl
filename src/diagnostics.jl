@@ -105,7 +105,9 @@ function diagnostics(ns::NRSTSampler, res::ParallelRunResults)
     plot!(pvess, ns.np.betas, res.toureff, label="Tour Eff.")
     hline!(pvess, [1.], linestyle = :dash, label="")
 
-
+    # TODO: the following should be in its own plot
+    # plot of the trace of the (1st comp) of the index process
+    # plot_trace_iproc(res)
     return (
         occ=pocc, rrs=prrs, expap=pexpap, nexpl=pnexpl, lam=plam, lpart=plp,
         tourlens=ptlens, dens=pdens, esscost=pcs, esspertour=pvess
@@ -226,4 +228,28 @@ function plot_ess_time(res::ParallelRunResults, Λ::AbstractFloat)
         )
     end
     return pcs
+end
+
+# function to create a plot of the trace of the (1st comp) of the index process
+function plot_trace_iproc(res::ParallelRunResults)
+    K   = min(floor(Int, 800/(2*ns.np.N+2)), ts.ntours) # choose K so that we see around a given num of steps
+    len = sum(nsteps.(res.trvec[1:K]))
+    is  = Vector{eltype(ns.ip)}(undef, len)
+    l   = 1
+    for tr in res.trvec[1:K]
+        for ip in tr.trIP
+            is[l] = ip[1]
+            l += 1
+        end
+    end
+    itop = findall(isequal(ns.np.N), is)[1:2:end]
+    ibot = findall(isequal(zero(ns.np.N)), is)[2:2:end]
+    piproc = plot(
+        is, grid = false, palette = DEF_PAL, ylims = (0,1.04ns.np.N),
+        xlabel = "Step", ylabel = "Index", label = "",
+        left_margin = 15px, bottom_margin = 15px, size = (675, 225)
+    )
+    scatter!(piproc, itop .+ 0.5, [1.025ns.np.N], markershape = :dtriangle, label="")
+    vline!(piproc, ibot .+ 0.5, linestyle = :dot, label="", linewidth=2)
+    return piproc
 end
