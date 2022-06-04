@@ -15,7 +15,6 @@ using StaticArrays: MVector, SVector
 using Statistics
 using StatsBase: autocor
 using StatsPlots: density
-using Suppressor: @suppress_err
 using UnicodePlots: UnicodePlots
 using UnPack: @unpack
 

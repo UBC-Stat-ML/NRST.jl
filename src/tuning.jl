@@ -105,7 +105,7 @@ function tune!(
         np.xplpars[i] = params(xpl)
     end
     verbose && print("done!\n\tTuning c and nexpls using $nsteps steps per explorer...")
-    res  = @timed @suppress_err tune_c!(np, xpls, nsteps)
+    res  = @timed tune_c!(np, xpls, nsteps)
     trVs = res.value
     tune_nexpls!(np.nexpls, trVs, maxcor)
     verbose && @printf("done!\n\t\tElapsed: %.1fs\n\n", res.time)
@@ -143,8 +143,8 @@ end
 # note: explorers must be tuned already before running this
 # note: need to tune c first because this is used for estimating rejections (R)
 function tune_c_betas!(np::NRSTProblem, xpls::Vector{<:ExplorationKernel}, nsteps::Int)
-    trVs = @suppress_err tune_c!(np, xpls, nsteps) # collects Vs, tunes c, and returns Vs
-    R    = est_rej_probs(trVs, np.betas, np.c)     # compute average rejection probabilities
+    trVs = tune_c!(np, xpls, nsteps)           # collects Vs, tunes c, and returns Vs
+    R    = est_rej_probs(trVs, np.betas, np.c) # compute average rejection probabilities
     out  = tune_betas!(np, R)
     (out..., R)
 end

@@ -1,11 +1,11 @@
-using Distributions, Plots
+using Plots
 using Plots.PlotMeasures: px
 using ColorSchemes: okabe_ito
 using NRST
 
-const d    = 2
+const d    = 16
 const s0   = 2.
-const m    = 4.
+const m    = 8.
 const s0sq = s0*s0;
 
 # Using these we can write expressions for ``\mu_b``, ``s_b^2``, and ``\mathcal{F}``
@@ -28,7 +28,7 @@ ns, ts = NRSTSampler(
     V,
     Vref,
     randref,
-    N = 30,
+    N = 13,
     verbose = true,
     do_stage_2 = false
 );
