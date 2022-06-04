@@ -143,9 +143,9 @@ end
 # note: explorers must be tuned already before running this
 # note: need to tune c first because this is used for estimating rejections (R)
 function tune_c_betas!(np::NRSTProblem, xpls::Vector{<:ExplorationKernel}, nsteps::Int)
-    trVs, _  = @suppress_err tune_c!(np, xpls, nsteps) # tune c using aggV and trVs if necessary
-    R        = est_rej_probs(trVs, np.betas, np.c)     # compute average rejection probabilities
-    out      = tune_betas!(np, R)
+    trVs = @suppress_err tune_c!(np, xpls, nsteps) # collects Vs, tunes c, and returns Vs
+    R    = est_rej_probs(trVs, np.betas, np.c)     # compute average rejection probabilities
+    out  = tune_betas!(np, R)
     (out..., R)
 end
 
@@ -154,35 +154,21 @@ end
 #######################################
 
 # tune the c vector using samples of the potential function
-function tune_c!(
-    np::NRSTProblem{T,K},
-    trVs::Vector{Vector{K}},
-    aggV::Vector{K}
-    ) where {T,K}
-    @unpack use_mean, c, betas = np
-    if use_mean && abs(aggV[1]) > 1e16
-        @info "V likely not integrable under the reference; using stepping stone."
-        stepping_stone!(c, betas, trVs) # compute log(Z(b)/Z0) and store it in c
-        c .*= (-one(K))                 # c(b) = -log(Z(b)/Z0)
-    else
-        trapez!(c, betas, aggV)         # trapezodial approximation of int_0^beta aggV(b)db
-    end
+function tune_c!(np::NRSTProblem{T,K}, trVs::Vector{Vector{K}}) where {T,K}
+    stepping_stone!(np.c, np.betas, trVs) # compute log(Z(b)/Z0) and store it in c
+    np.c .*= (-one(K))                    # c(b) = -log(Z(b)/Z0)
     return
 end
 
 # method for collecting samples using explorers
 function tune_c!(np::NRSTProblem, xpls::Vector{<:ExplorationKernel}, nsteps::Int)
-    trVs, aggV = collectVs(np, xpls, nsteps)
-    tune_c!(np, trVs, aggV)
-    return (trVs = trVs, aggV = aggV)
+    trVs = collectVs(np, xpls, nsteps)
+    tune_c!(np, trVs)
+    return trVs
 end
 
 # method for proper runs of NRST
-function tune_c!(np::NRSTProblem, res::RunResults)
-    trVs = res.trVs
-    aggV = np.use_mean ? mean.(trVs) : median.(trVs)
-    tune_c!(np, trVs, aggV)
-end
+tune_c!(np::NRSTProblem, res::RunResults) = tune_c!(np, res.trVs)
 
 #######################################
 # tune betas
@@ -206,20 +192,16 @@ tune_betas!(ns::NRSTSampler, res::RunResults) =
 # note: np.tm is modified here because it is used for sampling V from the reference
 function collectVs(np::NRSTProblem, xpls::Vector{<:ExplorationKernel}, nsteps::Int)
     N      = np.N
-    aggV   = similar(np.c)
-    trVs   = [similar(aggV, nsteps) for _ in 0:N]
-    aggfun = np.use_mean ? mean : median
+    trVs   = [similar(np.c, nsteps) for _ in 0:N]
     for i in 1:nsteps
         trVs[1][i] = V(np.tm, rand(np.tm))
     end
-    aggV[1] = aggfun(trVs[1])
     Threads.@threads for i in 1:N           # "Threads.@threads for" does not work with enumerate
         ipone = i+1
         update_β!(xpls[i], np.betas[ipone]) # needed because most likely the grid was updated 
         run!(xpls[i], trVs[ipone])          # run keeping track of V
-        aggV[ipone] = aggfun(trVs[ipone])
     end
-    return (trVs = trVs, aggV = aggV)
+    return trVs
 end
 
 # for each sample V(x) at each level, estimate the conditional rejection

@@ -49,7 +49,7 @@ function diagnostics(ns::NRSTSampler, res::ParallelRunResults)
     plam = plot_lambda(β->Λs[end]*f_Λnorm(β),betas,"")
 
     # Plot of the log-partition function
-    lpart = log_partition(ns, res);
+    lpart = log_partition(ns.np, res);
     plp = plot(
         betas, lpart,# ribbon = (lp_df[:,1]-lp_df[:,2], lp_df[:,3]-lp_df[:,1]),
         palette=DEF_PAL, legend = :bottomright,

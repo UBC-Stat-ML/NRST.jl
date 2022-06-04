@@ -104,21 +104,11 @@ function summarize_inference(res::ParallelRunResults, at, α, means, avars, pvar
 end
 
 # estimate log-partition function: β ↦ log(Z(β)/Z(0))
-function log_partition(
-    ns::NRSTSampler{T,TInt,TF},
-    res::ParallelRunResults{T,TInt,TF};
-    α::TF = 0.95
-    ) where {T,TInt,TF}
-    if ns.np.use_mean
-        return -ns.np.c
-    end
-    meanV = mean.(res.trVs)
-    if abs(meanV[1]) > 1e16
-        @info "log_partition: " *
-        "V likely not integrable under the reference; using stepping stone."
-        return stepping_stone(ns.np.betas, res.trVs)
+function log_partition(np::NRSTProblem, res::RunResults)
+    if np.use_mean
+        return -np.c
     else
-        return -trapez(ns.np.betas, meanV)
+        return stepping_stone(np.betas, res.trVs)
     end
 end
 
