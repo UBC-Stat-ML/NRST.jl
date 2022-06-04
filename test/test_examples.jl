@@ -5,7 +5,7 @@ using NRST
 
 const d    = 2
 const s0   = 2.
-const m    = 1.
+const m    = 4.
 const s0sq = s0*s0;
 
 # Using these we can write expressions for ``\mu_b``, ``s_b^2``, and ``\mathcal{F}``
@@ -34,4 +34,9 @@ ns, ts = NRSTSampler(
 );
 copyto!(ns.np.c, F.(ns.np.betas)) # use optimal tuning
 res   = NRST.parallel_run(ns, ntours=ts.ntours, keep_xs=false);
-
+plots = diagnostics(ns, res)
+hl    = ceil(Int, length(plots)/2)
+pdiags=plot(
+    plots..., layout = (hl,2), size = (900,hl*333),left_margin = 40px,
+    right_margin = 40px
+)

@@ -105,8 +105,8 @@ function tune!(
         np.xplpars[i] = params(xpl)
     end
     verbose && print("done!\n\tTuning c and nexpls using $nsteps steps per explorer...")
-    res     = @timed @suppress_err tune_c!(np, xpls, nsteps)
-    trVs, _ = res.value
+    res  = @timed @suppress_err tune_c!(np, xpls, nsteps)
+    trVs = res.value
     tune_nexpls!(np.nexpls, trVs, maxcor)
     verbose && @printf("done!\n\t\tElapsed: %.1fs\n\n", res.time)
     verbose && show(lineplot_term(
