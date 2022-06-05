@@ -18,21 +18,28 @@ fi
 echo "Building docs using $nthreads threads."
 echo "Setting up the forked DemoCards package."
 
-# grab my fork of DemoCards
-myDCdir="$HOME/opt/DemoCards.jl"
-if [ -d $myDCdir ] 
-then
-    echo "Local DemoCards repo exists. Pulling changes..."
-    git -C $myDCdir pull
-else
-    echo "Local DemoCards repo not found."
-    mkdir -p $HOME/opt
-    git clone git@github.com:miguelbiron/DemoCards.jl.git $myDCdir
-fi
+# # grab my fork of DemoCards
+# myDCdir="$HOME/opt/DemoCards.jl"
+# if [ -d $myDCdir ] 
+# then
+#     echo "Local DemoCards repo exists. Pulling changes..."
+#     git -C $myDCdir pull
+# else
+#     echo "Local DemoCards repo not found."
+#     mkdir -p $HOME/opt
+#     git clone git@github.com:miguelbiron/DemoCards.jl.git $myDCdir
+# fi
 
-# the following puts the correct path to NRST in docs/Manifest.toml
-echo "Setting NRST and DemoCards fork as dependency of docs..."
-julia --project=docs/ -e 'using Pkg; Pkg.develop(Pkg.PackageSpec(path=".")); Pkg.develop(Pkg.PackageSpec(path="'$myDCdir'"))'
+echo "Setting NRST, my DemoCards fork, and my SplittableRandoms as dependencies of docs..."
+jlcmds=$(cat <<-END
+using Pkg
+Pkg.add("git@github.com:miguelbiron/DemoCards.jl.git")
+Pkg.add("git@github.com:miguelbiron/SplittableRandoms.jl.git")
+Pkg.develop(Pkg.PackageSpec(path="."))
+Pkg.instantiate()
+END
+)
+julia --project=docs/ -e $jlcmds
 
 # compile docs
 # note: The `GKSwstype=nul` environment variable is necessary for gifs to compile successfully
