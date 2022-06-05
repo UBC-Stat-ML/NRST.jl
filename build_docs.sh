@@ -31,6 +31,7 @@ echo "Setting up the forked DemoCards package."
 # fi
 
 echo "Setting NRST, my DemoCards fork, and my SplittableRandoms as dependencies of docs..."
+sed -i -r '/NRST.+/d' ./docs/Project.toml # remove NRST from the docs Project if exists
 jlcmds=$(cat <<-END
 using Pkg
 Pkg.add(
