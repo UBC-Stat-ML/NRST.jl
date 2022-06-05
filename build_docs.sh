@@ -14,21 +14,7 @@ if [ $nthreads -eq 0 ]; then
   echo $usagestr >&2
   exit 1
 fi
-
 echo "Building docs using $nthreads threads."
-echo "Setting up the forked DemoCards package."
-
-# # grab my fork of DemoCards
-# myDCdir="$HOME/opt/DemoCards.jl"
-# if [ -d $myDCdir ] 
-# then
-#     echo "Local DemoCards repo exists. Pulling changes..."
-#     git -C $myDCdir pull
-# else
-#     echo "Local DemoCards repo not found."
-#     mkdir -p $HOME/opt
-#     git clone git@github.com:miguelbiron/DemoCards.jl.git $myDCdir
-# fi
 
 echo "Setting NRST, my DemoCards fork, and my SplittableRandoms as dependencies of docs..."
 sed -i -r '/NRST.+/d' ./docs/Project.toml # remove NRST from the docs Project if exists
