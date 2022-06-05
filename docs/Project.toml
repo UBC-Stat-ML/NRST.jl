@@ -1,5 +1,6 @@
 [deps]
 ColorSchemes = "35d6a980-a343-548e-a6ea-1d62b119f2f4"
+DemoCards = "311a05b2-6137-4a5a-b473-18580a3d38b5"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
 DynamicPPL = "366bfd00-2699-11ea-058f-f148b4cae6d8"

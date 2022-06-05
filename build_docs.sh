@@ -33,13 +33,15 @@ echo "Setting up the forked DemoCards package."
 echo "Setting NRST, my DemoCards fork, and my SplittableRandoms as dependencies of docs..."
 jlcmds=$(cat <<-END
 using Pkg
-Pkg.add("git@github.com:miguelbiron/DemoCards.jl.git")
-Pkg.add("git@github.com:miguelbiron/SplittableRandoms.jl.git")
+Pkg.add(
+	[Pkg.PackageSpec(url="git@github.com:miguelbiron/DemoCards.jl.git"),
+	 Pkg.PackageSpec(url="git@github.com:miguelbiron/SplittableRandoms.jl.git")]
+)
 Pkg.develop(Pkg.PackageSpec(path="."))
 Pkg.instantiate()
 END
 )
-julia --project=docs/ -e $jlcmds
+julia --project=docs/ -e "$jlcmds"
 
 # compile docs
 # note: The `GKSwstype=nul` environment variable is necessary for gifs to compile successfully
@@ -49,4 +51,3 @@ julia --project=docs/ -e $jlcmds
 # see: https://docs.julialang.org/en/v1/base/base/#Core.InterruptException
 echo "Compiling docs (takes a while)..."
 DOCUMENTER_DEBUG=true JULIA_DEBUG=DemoCards GKSwstype=nul julia -t $nthreads --project=docs/ -e "include(popfirst!(ARGS))" docs/make.jl
-
