@@ -22,13 +22,11 @@ function TuringTemperedModel(model::DPPL.Model)
     TuringTemperedModel(model, spl, viout)
 end
 
-# copy a TuringTemperedModel. it keeps model and spl common. Avoiding copying model is
-# especially important because it contains the dataset, which can be huge
+# copy a TuringTemperedModel. it keeps model.args common because that is the
+# data, which can be huge
 function Base.copy(tm::TuringTemperedModel)
-    @unpack model, spl = tm
-    vinew   = DPPL.VarInfo(model)            # build a new TypedVarInfo
-    DPPL.link!(vinew, spl)                   # link with old sampler to force transformation 𝕏 → ℝ
-    TuringTemperedModel(model, spl, vinew)
+    newmodel = tm.model.f(tm.model.args...)
+    TuringTemperedModel(newmodel)
 end
 
 # NRSTSampler constructor
@@ -46,7 +44,7 @@ end
 #######################################
 
 # sampling from the prior
-function Base.rand(tm::TuringTemperedModel, rng::Random.AbstractRNG=Random.GLOBAL_RNG)
+function Base.rand(tm::TuringTemperedModel, rng::Random.AbstractRNG=Random.default_rng())
     vi = DPPL.VarInfo(rng, tm.model, tm.spl, DPPL.PriorContext()) # avoids evaluating the likelihood
     DPPL.link!(vi, tm.spl)
     vi[tm.spl]
@@ -59,7 +57,7 @@ function Vref(tm::TuringTemperedModel, x)
     vi  = last(
         DPPL.evaluate_threadunsafe!!(           # we copy vi when doing stuff in parallel so it's ok
             tm.model, vi, DPPL.SamplingContext(
-                Random.GLOBAL_RNG,              # state of rng is not modified so it doesnt matter which we use
+                Random.RandomDevice(),          # state of rng is not modified so it doesnt matter which we use and this is lightweight
                 tm.spl,
                 DPPL.PriorContext()
             )
@@ -85,7 +83,7 @@ function V(tm::TuringTemperedModel, x)
     vi  = last(
         DPPL.evaluate_threadunsafe!!(           # we copy vi when doing stuff in parallel so it's ok
             tm.model, vi, DPPL.SamplingContext(
-                Random.GLOBAL_RNG,              # state of rng is not modified so it doesnt matter which we use
+                Random.RandomDevice(),          # state of rng is not modified so it doesnt matter which we use and this is lightweight
                 tm.spl,
                 DPPL.LikelihoodContext()
             )

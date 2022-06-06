@@ -328,7 +328,7 @@ function monoroot(
         return NaN
     end
     h = l
-    for i in 1:maxit
+    for _ in 1:maxit
         h  = (l+u)/2
         fh = f(h)
         if abs(fh) < tol
