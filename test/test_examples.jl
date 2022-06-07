@@ -3,7 +3,7 @@ using Plots.PlotMeasures: px
 using ColorSchemes: okabe_ito
 using NRST
 
-const d    = 2
+const d    = 32
 const s0   = 2.
 const m    = 4.
 const s0sq = s0*s0;
@@ -28,11 +28,15 @@ ns, ts = NRSTSampler(
     V,
     Vref,
     randref,
-    N = 4,
+    N = 12,
     verbose = true,
-    tune = false
+    do_stage_2 = false
 );
 copyto!(ns.np.c, F.(ns.np.betas)) # use optimal tuning
-ns.tr
-run!(ns,nsteps=8)
-ns.tr
+res   = NRST.parallel_run(ns, ntours=ts.ntours, keep_xs=false);
+plots = diagnostics(ns, res)
+hl    = ceil(Int, length(plots)/2)
+pdiags=plot(
+    plots..., layout = (hl,2), size = (900,hl*333),left_margin = 40px,
+    right_margin = 40px
+)

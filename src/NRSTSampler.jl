@@ -57,8 +57,7 @@ function NRSTSampler(
         fill(params(xpl), N)
     ) 
     ip = MVector(zero(N), one(N))
-    tr = NRSTTrace(typeof(x), N, eltype(betas))
-    ns = NRSTSampler(np, xpl, x, ip, curV, tr)                  # instantiate the NRSTSampler
+    ns = NRSTSampler(np, xpl, x, ip, curV)                      # instantiate the NRSTSampler
     if tune
         tunestats = tune!(ns; verbose = verbose, kwargs...)     # tune explorers, c, and betas
     else
@@ -89,9 +88,8 @@ function Base.copy(ns::NRSTSampler)
     newnp = NRSTProblem(ns.np, newtm)        # build new Problem from the old one but using new tm
     newx  = copy(ns.x)
     ncurV = Ref(V(newtm, newx))
-    newtr = copy(ns.tr)
     nuxpl = copy(ns.xpl, newtm, newx, ncurV) # copy ns.xpl sharing stuff with the new sampler
-    NRSTSampler(newnp, nuxpl, newx, MVector(0,1), ncurV, newtr)
+    NRSTSampler(newnp, nuxpl, newx, MVector(0,1), ncurV)
 end
 
 ###############################################################################
