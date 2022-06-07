@@ -46,8 +46,8 @@ function tune!(
     max_s1_rounds::Int = 19,
     max_ar_ratio::Real = 0.075,     # limit on std(ar)/mean(ar), ar: average of up/down rejection prob
     max_Δβs::Real      = np.N^(-2), # limit on max change in grid
-    max_relΔcone::Real = 0.0015,    # limit on rel change in c(1)
-    max_relΔΛ::Real    = 0.018,     # limit on rel change in Λ = Λ(1)
+    max_relΔcone::Real = 0.002,     # limit on rel change in c(1)
+    max_relΔΛ::Real    = 0.02,      # limit on rel change in Λ = Λ(1)
     nsteps_init::Int   = 32,
     max_nsteps::Int    = 8_388_608,
     maxcor::Real       = 0.8,

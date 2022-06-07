@@ -166,7 +166,7 @@ pdists = plot(
 #md # ![Bivariate density plots of two neighbors](assets/mvNormals/dists.png)
 
 # save cover image and diagnostics plots #src
-pcover = parr[end-1] #src
+pcover = parr[N+1] #src
 pathnm = "assets/mvNormals" #src
 mkpath(pathnm) #src
 savefig(pdists, joinpath(pathnm,"dists.png")) #src
