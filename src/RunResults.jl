@@ -10,13 +10,14 @@ struct NRSTTrace{T,TI<:Int,TF<:AbstractFloat}
     trXplAP::Vector{Vector{TF}}
 end
 
-# outer constructors based on "examples" of types
+# outer constructors that allocate empty arrays with conservative sizehint
 function NRSTTrace(::Type{T}, N::TI,::Type{TF}) where {T,TI<:Int,TF<:AbstractFloat}
-    trX     = T[]
-    trIP    = SVector{2,TI}[]                # can use a vector of SVectors since traces should not be modified
-    trV     = TF[]
-    trRP    = TF[]
-    trXplAP = [TF[] for _ in 1:N]
+    M       = 20N                                          # simple conservative estimate = 10E[T]
+    trX     = sizehint!(T[], M)
+    trIP    = sizehint!(SVector{2,TI}[], M)                # can use a vector of SVectors since traces should not be modified
+    trV     = sizehint!(TF[], M)
+    trRP    = sizehint!(TF[], M)
+    trXplAP = [sizehint!(TF[], M) for _ in 1:N]
     NRSTTrace(trX, trIP, trV, trRP, trXplAP)
 end
 function NRSTTrace(::Type{T}, N::TI,::Type{TF}, nsteps::Int) where {T,TI<:Int,TF<:AbstractFloat}
@@ -29,7 +30,6 @@ function NRSTTrace(::Type{T}, N::TI,::Type{TF}, nsteps::Int) where {T,TI<:Int,TF
 end
 get_N(tr::NRSTTrace) = length(tr.trXplAP)  # recover N. cant do N=N(tr) because julia gets dizzy
 get_nsteps(tr::NRSTTrace) = length(tr.trV) # recover nsteps
-
 # NRSTTrace(tr::NRSTTrace{T,TI,TF}) where {T,TI,TF} = NRSTTrace(T, get_N(tr), TF) # construct empty trace of the same type that another
 # function Base.empty!(tr::NRSTTrace{T,TI,TF}) where {T,TI,TF}
 #     empty!(tr.trX)

@@ -45,8 +45,8 @@ function tune!(
     xpls::Vector{<:ExplorationKernel};
     max_s1_rounds::Int = 19,
     max_ar_ratio::Real = 0.075,     # limit on std(ar)/mean(ar), ar: average of up/down rejection prob
-    max_Δβs::Real      = np.N^(-2), # limit on max change in grid
-    max_relΔcone::Real = 0.002,     # limit on rel change in c(1)
+    # max_Δβs::Real      = np.N^(-2), # limit on max change in grid
+    max_relΔcone::Real = 0.003,     # limit on rel change in c(1)
     max_relΔΛ::Real    = 0.02,      # limit on rel change in Λ = Λ(1)
     nsteps_init::Int   = 32,
     max_nsteps::Int    = 8_388_608,
@@ -86,8 +86,7 @@ function tune!(
 
         # check convergence
         conv = !isnan(relΔcone) && (relΔcone<max_relΔcone) && 
-            !isnan(relΔΛ) && (relΔΛ < max_relΔΛ) && (Δβs<max_Δβs) &&
-            (ar_ratio < max_ar_ratio)
+            !isnan(relΔΛ) && (relΔΛ < max_relΔΛ) && (ar_ratio < max_ar_ratio)
     end
     # at this point, ns has a fresh new grid, so explorers params, c, and  
     # nexpls are stale => we need to tune them
