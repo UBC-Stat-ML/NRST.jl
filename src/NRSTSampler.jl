@@ -27,27 +27,7 @@ struct NRSTSampler{T,I<:Int,K<:AbstractFloat,TXp<:ExplorationKernel,TProb<:NRSTP
     x::T                   # current state of target variable
     ip::MVector{2,I}       # current state of the Index Process (i,eps). uses statically sized but mutable vector
     curV::Base.RefValue{K} # current energy V(x) (stored as ref to make it mutable)
-end
-
-# raw trace of a serial run
-struct SerialNRSTTrace{T,TI<:Int,TF<:AbstractFloat}
-    trX::Vector{T}
-    trIP::Vector{SVector{2,TI}}
-    trV::Vector{TF}
-    trRP::Vector{TF}
-    trXplAP::Vector{Vector{TF}}
-end
-get_N(tr::SerialNRSTTrace) = length(tr.trXplAP) # recover N. cant do N=N(tr) because julia gets dizzy
-nsteps(tr::SerialNRSTTrace) = length(tr.trV)    # recover nsteps
-
-# processed output
-struct SerialRunResults{T,TI<:Int,TF<:AbstractFloat} <: RunResults
-    tr::SerialNRSTTrace{T,TI} # raw trace
-    xarray::Vector{Vector{T}} # i-th entry has samples at state i
-    trVs::Vector{Vector{TF}}  # i-th entry has Vs corresponding to xarray[i]
-    visits::Matrix{TI}        # total number of visits to each (i,eps)
-    rpacc::Matrix{TF}         # accumulates rejection probs of swaps started from each (i,eps)
-    xplapac::Vector{TF}       # length N. accumulates explorers' acc probs
+    tr::NRSTTrace{T,I,K}   # trace
 end
 
 ###############################################################################
@@ -77,7 +57,9 @@ function NRSTSampler(
         tm, N, betas, similar(betas), use_mean, fill(nexpl,N), 
         fill(params(xpl), N)
     ) 
-    ns  = NRSTSampler(np, xpl, x, MVector(0,1), curV)  # instantiate the NRSTSampler
+    ip = MVector(zero(N), one(N))
+    tr = NRSTTrace(typeof(x), N, eltype(betas))
+    ns = NRSTSampler(np, xpl, x, ip, curV, tr)                  # instantiate the NRSTSampler
     if tune
         tunestats = tune!(ns; verbose = verbose, kwargs...)     # tune explorers, c, and betas
     else
@@ -89,10 +71,10 @@ end
 # grid initialization
 init_grid(N::Int) = collect(range(0,1,N+1))
 
-# safe initialization for arrays with entries in reals
+# safe initialization for arrays with float entries
 # robust against disruptions by heavy tailed reference distributions
-function initx(pre_x::AbstractArray{TR}) where {TR<:Real}
-    uno = one(TR)
+function initx(pre_x::AbstractArray{TF}) where {TF<:AbstractFloat}
+    uno = one(TF)
     rand(Uniform(-uno,uno), size(pre_x))
 end
 
@@ -105,11 +87,12 @@ end
 # copy-constructor, using a given NRSTSampler (usually already tuned)
 function Base.copy(ns::NRSTSampler)
     newtm = copy(ns.np.tm)                   # the only element in np that we (may) need to copy
-    newnp = NRSTProblem(ns.np, newtm)        # build new Problem using new tm and old Problem
+    newnp = NRSTProblem(ns.np, newtm)        # build new Problem from the old one but using new tm
     newx  = copy(ns.x)
     ncurV = Ref(V(newtm, newx))
+    newtr = copy(ns.tr)
     nuxpl = copy(ns.xpl, newtm, newx, ncurV) # copy ns.xpl sharing stuff with the new sampler
-    NRSTSampler(newnp, nuxpl, newx, MVector(0,1), ncurV)
+    NRSTSampler(newnp, nuxpl, newx, MVector(0,1), ncurV, newtr)
 end
 
 ###############################################################################
@@ -185,11 +168,9 @@ end
 
 # run for fixed number of steps
 function run!(ns::NRSTSampler{T,I,K}; nsteps::Int) where {T,I,K}
-    trX     = Vector{T}(undef, nsteps)
-    trIP    = Vector{SVector{2,I}}(undef, nsteps) # can use a vector of SVectors since traces should not be modified
-    trV     = Vector{K}(undef, nsteps)
-    trRP    = similar(trV)
-    trXplAP = [K[] for _ in 1:ns.np.N]            # cant predict number of visits to each level
+    empty!(ns.tr)
+    resize!(ns.tr, nsteps)
+    @unpack trX, trIP, trV, trRP, trXplAP = ns.tr
     for n in 1:nsteps
         trX[n]     = copy(ns.x)                   # needs copy o.w. pushes a ref to ns.x
         trIP[n]    = copy(ns.ip)
@@ -199,7 +180,6 @@ function run!(ns::NRSTSampler{T,I,K}; nsteps::Int) where {T,I,K}
         l          = ns.ip[1]
         l >= 1 && push!(trXplAP[l], xplap)        # note: since comm preceeds expl, we're correctly storing the acc prob of the most recent state
     end
-    return SerialNRSTTrace(trX, trIP, trV, trRP, trXplAP)
 end
 
 # run a tour: run the sampler until we reach the atom ip=(0,-1)
@@ -219,7 +199,7 @@ function tour!(
         tour_step!(ns, trX, trIP, trV, trRP, trXplAP, keep_xs)
     end
     tour_step!(ns, trX, trIP, trV, trRP, trXplAP, keep_xs)
-    return SerialNRSTTrace(trX, trIP, trV, trRP, trXplAP)
+    return NRSTTrace(trX, trIP, trV, trRP, trXplAP)
 end
 function tour_step!(ns::NRSTSampler, trX, trIP, trV, trRP, trXplAP, keep_xs)
     keep_xs && push!(trX, copy(ns.x)) # needs copy o.w. pushes a ref to ns.x
@@ -237,11 +217,11 @@ function run_tours!(
     ntours::Int,
     kwargs...
     ) where {T,TI,TF}
-    results = Vector{SerialNRSTTrace{T,TI,TF}}(undef, ntours)
+    results = Vector{NRSTTrace{T,TI,TF}}(undef, ntours)
     ProgressMeter.@showprogress 1 "Sampling: " for t in 1:ntours
         results[t] = tour!(ns;kwargs...)
     end
-    return ParallelRunResults(results)
+    return TouringRunResults(results)
 end
 
 ###############################################################################
@@ -249,7 +229,7 @@ end
 ###############################################################################
 
 # outer constructor that parses a trace
-function SerialRunResults(tr::SerialNRSTTrace{T,I,K}) where {T,I,K}
+function SerialRunResults(tr::NRSTTrace{T,I,K}) where {T,I,K}
     N       = get_N(tr)
     xarray  = [T[] for _ in 0:N] # i-th entry has samples at state i
     trVs    = [K[] for _ in 0:N] # i-th entry has Vs corresponding to xarray[i]
@@ -261,7 +241,7 @@ function SerialRunResults(tr::SerialNRSTTrace{T,I,K}) where {T,I,K}
 end
 
 function post_process(
-    tr::SerialNRSTTrace{T,I,K},
+    tr::NRSTTrace{T,I,K},
     xarray::Vector{Vector{T}}, # length = N+1. i-th entry has samples at state i
     trVs::Vector{Vector{K}},   # length = N+1. i-th entry has Vs corresponding to xarray[i]
     visacc::Matrix{I},         # size (N+1) × 2. accumulates visits

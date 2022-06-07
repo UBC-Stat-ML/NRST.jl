@@ -4,7 +4,7 @@
 
 const DEF_PAL = seaborn_colorblind # default palette
 
-function diagnostics(ns::NRSTSampler, res::ParallelRunResults)
+function diagnostics(ns::NRSTSampler, res::TouringRunResults)
     N = ns.np.N
 
     # occupancy rates
@@ -156,7 +156,7 @@ end
 # one for MC-par!
 # TODO: add BouncyMC with imperfect tuning, using asymmetric, non-equi rejections
 # that can be obtained from "res" (see rejrates in rejections plot)
-function plot_ess_time(res::ParallelRunResults, Λ::AbstractFloat)
+function plot_ess_time(res::TouringRunResults, Λ::AbstractFloat)
     resN   = N(res)
     resnts = ntours(res)
     labels = String[]
@@ -231,7 +231,7 @@ function plot_ess_time(res::ParallelRunResults, Λ::AbstractFloat)
 end
 
 # function to create a plot of the trace of the (1st comp) of the index process
-function plot_trace_iproc(res::ParallelRunResults)
+function plot_trace_iproc(res::TouringRunResults)
     K   = min(floor(Int, 800/(2*ns.np.N+2)), ts.ntours) # choose K so that we see around a given num of steps
     len = sum(nsteps.(res.trvec[1:K]))
     is  = Vector{eltype(ns.ip)}(undef, len)

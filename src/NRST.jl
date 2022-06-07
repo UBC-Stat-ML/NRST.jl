@@ -49,14 +49,8 @@ export tune_explorers!,
 # diagnostics.jl
 export diagnostics
 
-# declarations needed here to fix the fact that the "include"s are 
-# processed sequentially, so that things appear undefined even tho they exist
-# in later "include"s
-# NRSTSampler.jl
-abstract type RunResults end
-N(res::RunResults) = length(res.trVs)-1 # retrieve max tempering level
-
 # load core files
+include("RunResults.jl")
 include("log_partition_utils.jl")
 include("TemperedModel.jl")
 include("ExplorationKernels.jl")

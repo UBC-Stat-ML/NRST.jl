@@ -9,7 +9,8 @@ abstract type TemperedModel end
 potentials(tm::TemperedModel, x) = (Vref(tm,x), V(tm,x))
 
 # simple case: user passes proper Functions
-# note: callable structs not allowed since they probably are modified by evaluating V's
+# note: callable structs not allowed since they are probably modified when one
+# evaluates them
 struct SimpleTemperedModel{TV<:Function,TVr<:Function,Tr<:Function} <: TemperedModel
     V::TV       # energy Function
     Vref::TVr   # energy of reference distribution

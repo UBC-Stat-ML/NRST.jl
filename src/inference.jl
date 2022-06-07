@@ -4,7 +4,7 @@
 ###############################################################################
 
 # compute only the point estimate using a pre-processed xarray
-# works with both SerialRunResults and ParallelRunResults
+# works with both SerialRunResults and TouringRunResults
 function point_estimate(
     res::RunResults;
     h::Function,                          # a real-valued test function defined on x space
@@ -14,7 +14,7 @@ function point_estimate(
     [isempty(xs) ? NaN64 : convert(Float64,agg(h.(xs))) for xs in res.xarray[at .+ 1]]
 end
 
-# using a ParallelRunResults, compute for a given real valued test function h and each level "at"
+# using a TouringRunResults, compute for a given real valued test function h and each level "at"
 #   - point estimate
 #   - asymptotic Monte Carlo variance of the point estimate
 #   - posterior variance
@@ -23,7 +23,7 @@ end
 # note: if the sampler is repeatedly run independently for the same number of tours,
 # 95% of the intervals means±1.96sqrt(avars/ntours) should contain the true posterior mean
 function inference(
-    res::ParallelRunResults{T,TInt,TF};
+    res::TouringRunResults{T,TInt,TF};
     h,                                      # a real-valued test function defined on x space
     at::AbstractVector{<:Int} = [N(res)],   # indexes ⊂ 0:res.N at which to estimate E^{i}[h(x)]
     α::TF = 0.95                            # confidence level for asymptotic confidence intervals
@@ -53,7 +53,7 @@ end
 # same as before but specialized for inferences on h(x) = h(V(x))
 # works even for res objects that do not keep track of xs (i.e., keep_xs=false)
 function inference_on_V(
-    res::ParallelRunResults{T,TInt,TF};
+    res::TouringRunResults{T,TInt,TF};
     h,                                      # a real-valued test function defined on ℝ
     at::AbstractVector{<:Int} = [N(res)],   # indexes ⊂ 0:res.N at which to estimate E^{i}[h(V)]
     α::TF = 0.95                            # confidence level for asymptotic confidence intervals
@@ -86,7 +86,7 @@ function inference_on_V(
 end
 
 # compute half width of α-CI, ESS, and build summarized dataframe
-function summarize_inference(res::ParallelRunResults, at, α, means, avars, pvars)
+function summarize_inference(res::TouringRunResults, at, α, means, avars, pvars)
     qmult    = quantile(Normal(), (1+α)/2)
     nsamples = vec(sum(res.visits[at .+ 1,:], dims=2))
     hws      = qmult * sqrt.(avars ./ nsamples) # half-widths of interval
@@ -116,7 +116,7 @@ end
 # # Therefore, the upper and lower bounds can also be gotten using trapez!
 # function log_partition(
 #     ns::NRSTSampler{T,TInt,TF},
-#     res::ParallelRunResults{T,TInt,TF};
+#     res::TouringRunResults{T,TInt,TF};
 #     α::TF = 0.95
 #     ) where {T,TInt,TF}
 #     # compute summary statistics for the potential function
