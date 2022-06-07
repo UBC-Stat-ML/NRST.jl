@@ -1,4 +1,4 @@
-# NRST
+# NRST.jl
 
 A Julia package implementing Non-reversible Simulated Tempering. Take a look at the documentation to understand how `NRST` works.
 

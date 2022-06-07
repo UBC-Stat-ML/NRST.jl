@@ -27,7 +27,6 @@ struct NRSTSampler{T,I<:Int,K<:AbstractFloat,TXp<:ExplorationKernel,TProb<:NRSTP
     x::T                   # current state of target variable
     ip::MVector{2,I}       # current state of the Index Process (i,eps). uses statically sized but mutable vector
     curV::Base.RefValue{K} # current energy V(x) (stored as ref to make it mutable)
-    tr::NRSTTrace{T,I,K}   # trace
 end
 
 ###############################################################################
@@ -167,41 +166,42 @@ function step!(ns::NRSTSampler)
 end
 
 # run for fixed number of steps
-function run!(ns::NRSTSampler{T,I,K}; nsteps::Int) where {T,I,K}
-    empty!(ns.tr)
-    resize!(ns.tr, nsteps)
-    @unpack trX, trIP, trV, trRP, trXplAP = ns.tr
+function run!(ns::NRSTSampler,tr::NRSTTrace)
+    @unpack trX, trIP, trV, trRP, trXplAP = tr
+    nsteps = length(trV)
     for n in 1:nsteps
-        trX[n]     = copy(ns.x)                   # needs copy o.w. pushes a ref to ns.x
-        trIP[n]    = copy(ns.ip)
-        trV[n]     = ns.curV[]
+        trX[n]  = copy(ns.x)                   # needs copy o.w. pushes a ref to ns.x
+        trIP[n] = copy(ns.ip)
+        trV[n]  = ns.curV[]
         rp, xplap  = step!(ns)
-        trRP[n]    = rp                           # note: since trIP[n] was stored before step!, trRP[n] is rej prob of swap **initiated** from trIP[n]
+        trRP[n] = rp                           # note: since trIP[n] was stored before step!, trRP[n] is rej prob of swap **initiated** from trIP[n]
         l          = ns.ip[1]
-        l >= 1 && push!(trXplAP[l], xplap)        # note: since comm preceeds expl, we're correctly storing the acc prob of the most recent state
+        l >= 1 && push!(trXplAP[l], xplap)     # note: since comm preceeds expl, we're correctly storing the acc prob of the most recent state
     end
+end
+function run!(ns::NRSTSampler{T,I,K}; nsteps::Int) where {T,I,K}
+    tr = NRSTTrace(T, ns.np.N, K, nsteps)
+    run!(ns,tr)
+    return tr
 end
 
 # run a tour: run the sampler until we reach the atom ip=(0,-1)
 # note: by finishing at the atom (0,-1) and restarting using the renewal measure,
 # repeatedly calling this function is equivalent to standard sequential sampling 
-function tour!(
-    ns::NRSTSampler{T,I,K};
-    keep_xs::Bool = true,                 # set to false if xs can be forgotten (useful for tuning to lower mem usage) 
-    ) where {T,I,K}
+function tour!(ns::NRSTSampler,tr::NRSTTrace;kwargs...)
     renew!(ns)
-    trX     = T[]
-    trIP    = SVector{2,I}[]              # can use a vector of SVectors since traces should not be modified
-    trV     = K[]
-    trRP    = K[]
-    trXplAP = [K[] for _ in 1:ns.np.N]
     while !(ns.ip[1] == 0 && ns.ip[2] == -1)
-        tour_step!(ns, trX, trIP, trV, trRP, trXplAP, keep_xs)
+        tour_step!(ns, tr;kwargs...)
     end
-    tour_step!(ns, trX, trIP, trV, trRP, trXplAP, keep_xs)
-    return NRSTTrace(trX, trIP, trV, trRP, trXplAP)
+    tour_step!(ns, tr;kwargs...)
 end
-function tour_step!(ns::NRSTSampler, trX, trIP, trV, trRP, trXplAP, keep_xs)
+function tour!(ns::NRSTSampler{T,I,K};kwargs...) where {T,I,K}
+    tr = NRSTTrace(T, ns.np.N, K)
+    tour!(ns,tr;kwargs...)
+    return tr
+end
+function tour_step!(ns::NRSTSampler, tr::NRSTTrace; keep_xs::Bool=true)
+    @unpack trX, trIP, trV, trRP, trXplAP = tr
     keep_xs && push!(trX, copy(ns.x)) # needs copy o.w. pushes a ref to ns.x
     push!(trIP, copy(ns.ip))          # same
     push!(trV, ns.curV[])
@@ -223,44 +223,3 @@ function run_tours!(
     end
     return TouringRunResults(results)
 end
-
-###############################################################################
-# trace postprocessing
-###############################################################################
-
-# outer constructor that parses a trace
-function SerialRunResults(tr::NRSTTrace{T,I,K}) where {T,I,K}
-    N       = get_N(tr)
-    xarray  = [T[] for _ in 0:N] # i-th entry has samples at state i
-    trVs    = [K[] for _ in 0:N] # i-th entry has Vs corresponding to xarray[i]
-    visacc  = zeros(I, N+1, 2)   # accumulates visits
-    rpacc   = zeros(K, N+1, 2)   # accumulates rejection probs
-    xplapac = zeros(K, N)        # accumulates explorers' acc probs
-    post_process(tr, xarray, trVs, visacc, rpacc, xplapac)
-    SerialRunResults(tr, xarray, trVs, visacc, rpacc, xplapac)
-end
-
-function post_process(
-    tr::NRSTTrace{T,I,K},
-    xarray::Vector{Vector{T}}, # length = N+1. i-th entry has samples at state i
-    trVs::Vector{Vector{K}},   # length = N+1. i-th entry has Vs corresponding to xarray[i]
-    visacc::Matrix{I},         # size (N+1) × 2. accumulates visits
-    rpacc::Matrix{K},          # size (N+1) × 2. accumulates rejection probs
-    xplapac::Vector{K}         # length = N. accumulates explorers' acc probs
-    ) where {T,I,K}
-    for (n, ip) in enumerate(tr.trIP)
-        l      = ip[1]
-        idx    = l + 1
-        idxeps = (ip[2] == one(I) ? 1 : 2)
-        visacc[idx, idxeps]  += one(I)
-        rpacc[idx, idxeps]   += tr.trRP[n]
-        if l >= 1
-            nvl = visacc[idx,1] + visacc[idx,2] # (>=1) number of visits so far to level l, regardless of eps
-            xplapac[l] += tr.trXplAP[l][nvl]
-        end
-        length(tr.trX) >= n && push!(xarray[idx], tr.trX[n]) # handle case keep_xs=false
-        push!(trVs[idx], tr.trV[n])
-    end
-end
-
-

@@ -7,9 +7,9 @@
 # works with both SerialRunResults and TouringRunResults
 function point_estimate(
     res::RunResults;
-    h::Function,                          # a real-valued test function defined on x space
-    at::AbstractVector{<:Int} = [N(res)], # indexes ⊂ 0:N at which to estimate E^{i}[h(x)]
-    agg::Function = mean                  # aggregation function
+    h::Function,                              # a real-valued test function defined on x space
+    at::AbstractVector{<:Int} = [get_N(res)], # indexes ⊂ 0:N at which to estimate E^{i}[h(x)]
+    agg::Function = mean                      # aggregation function
     )
     [isempty(xs) ? NaN64 : convert(Float64,agg(h.(xs))) for xs in res.xarray[at .+ 1]]
 end
@@ -24,12 +24,12 @@ end
 # 95% of the intervals means±1.96sqrt(avars/ntours) should contain the true posterior mean
 function inference(
     res::TouringRunResults{T,TInt,TF};
-    h,                                      # a real-valued test function defined on x space
-    at::AbstractVector{<:Int} = [N(res)],   # indexes ⊂ 0:res.N at which to estimate E^{i}[h(x)]
-    α::TF = 0.95                            # confidence level for asymptotic confidence intervals
+    h,                                        # a real-valued test function defined on x space
+    at::AbstractVector{<:Int} = [get_N(res)], # indexes ⊂ 0:res.N at which to estimate E^{i}[h(x)]
+    α::TF = 0.95                              # confidence level for asymptotic confidence intervals
     ) where {T,TInt,TF}
-    means = point_estimate(res, h=h, at=at) # compute means using pre-processed res.xarray (fast)
-    pvars = similar(means)                  # compute posterior variance
+    means = point_estimate(res, h=h, at=at)   # compute means using pre-processed res.xarray (fast)
+    pvars = similar(means)                    # compute posterior variance
     for (p,i) in enumerate(at)
         pvars[p] = point_estimate(res, h=(x->abs2(h(x)-means[p])), at=[i])[1]
     end
@@ -46,7 +46,7 @@ function inference(
         end
         sumsq .+= tsum .* tsum
     end
-    avars = sumsq ./ ntours(res)            # compute asymptotic variance
+    avars = sumsq ./ get_ntours(res)            # compute asymptotic variance
     summarize_inference(res, at, α, means, avars, pvars)
 end
 
@@ -54,9 +54,9 @@ end
 # works even for res objects that do not keep track of xs (i.e., keep_xs=false)
 function inference_on_V(
     res::TouringRunResults{T,TInt,TF};
-    h,                                      # a real-valued test function defined on ℝ
-    at::AbstractVector{<:Int} = [N(res)],   # indexes ⊂ 0:res.N at which to estimate E^{i}[h(V)]
-    α::TF = 0.95                            # confidence level for asymptotic confidence intervals
+    h,                                        # a real-valued test function defined on ℝ
+    at::AbstractVector{<:Int} = [get_N(res)], # indexes ⊂ 0:res.N at which to estimate E^{i}[h(V)]
+    α::TF = 0.95                              # confidence level for asymptotic confidence intervals
     ) where {T,TInt,TF}
     # compute posterior means and variances
     means = Vector{TF}(undef, length(at))
@@ -81,7 +81,7 @@ function inference_on_V(
         end
         sumsq .+= tsum .* tsum
     end
-    avars = sumsq ./ ntours(res)            # compute asymptotic variance
+    avars = sumsq ./ get_ntours(res)            # compute asymptotic variance
     summarize_inference(res, at, α, means, avars, pvars)
 end
 

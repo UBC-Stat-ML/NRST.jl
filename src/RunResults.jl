@@ -1,6 +1,6 @@
-#######################################
+##############################################################################
 # raw trace of a serial run
-#######################################
+##############################################################################
 
 struct NRSTTrace{T,TI<:Int,TF<:AbstractFloat}
     trX::Vector{T}
@@ -10,7 +10,7 @@ struct NRSTTrace{T,TI<:Int,TF<:AbstractFloat}
     trXplAP::Vector{Vector{TF}}
 end
 
-# outer constructor based on "examples" of types
+# outer constructors based on "examples" of types
 function NRSTTrace(::Type{T}, N::TI,::Type{TF}) where {T,TI<:Int,TF<:AbstractFloat}
     trX     = T[]
     trIP    = SVector{2,TI}[]                # can use a vector of SVectors since traces should not be modified
@@ -19,22 +19,42 @@ function NRSTTrace(::Type{T}, N::TI,::Type{TF}) where {T,TI<:Int,TF<:AbstractFlo
     trXplAP = [TF[] for _ in 1:N]
     NRSTTrace(trX, trIP, trV, trRP, trXplAP)
 end
+function NRSTTrace(::Type{T}, N::TI,::Type{TF}, nsteps::Int) where {T,TI<:Int,TF<:AbstractFloat}
+    trX     = Vector{T}(undef, nsteps)
+    trIP    = Vector{SVector{2,TI}}(undef, nsteps) # can use a vector of SVectors since traces should not be modified
+    trV     = Vector{TF}(undef, nsteps)
+    trRP    = similar(trV)
+    trXplAP = [TF[] for _ in 1:N]                  # cant predict number of visits to each level
+    NRSTTrace(trX, trIP, trV, trRP, trXplAP)
+end
 get_N(tr::NRSTTrace) = length(tr.trXplAP)  # recover N. cant do N=N(tr) because julia gets dizzy
 get_nsteps(tr::NRSTTrace) = length(tr.trV) # recover nsteps
-NRSTTrace(tr::NRSTTrace{T,TI,TF}) where {T,TI,TF} = NRSTTrace(T, get_N(tr), TF) # constructor empty trace of the same type that another
-function Base.empty!(tr::NRSTTrace{T,TI,TF}) where {T,TI,TF}
-    empty!(tr.trX)
-    empty!(tr.trIP)
-    empty!(tr.trV)
-    empty!(tr.trRP)
-    empty!.(tr.trXplAP) # empty the component vectors not the outer vector, so that it retains length N
-end
-function Base.resize!(tr::NRSTTrace{T,TI,TF}, n::Int) where {T,TI,TF}
-    resize!(tr.trX, n)
-    resize!(tr.trIP, n)
-    resize!(tr.trV, n)
-    resize!(tr.trRP, n)
-end
+
+# NRSTTrace(tr::NRSTTrace{T,TI,TF}) where {T,TI,TF} = NRSTTrace(T, get_N(tr), TF) # construct empty trace of the same type that another
+# function Base.empty!(tr::NRSTTrace{T,TI,TF}) where {T,TI,TF}
+#     empty!(tr.trX)
+#     empty!(tr.trIP)
+#     empty!(tr.trV)
+#     empty!(tr.trRP)
+#     empty!.(tr.trXplAP) # empty the component vectors not the outer vector, so that it retains length N
+#     return
+# end
+# function Base.resize!(tr::NRSTTrace{T,TI,TF}, n::Int) where {T,TI,TF}
+#     resize!(tr.trX, n)
+#     resize!(tr.trIP, n)
+#     resize!(tr.trV, n)
+#     resize!(tr.trRP, n)
+#     return
+# end
+# function Base.copy(tr::NRSTTrace{T,TI,TF}) where {T,TI,TF}
+#     NRSTTrace(
+#         copy(tr.trX),
+#         copy(tr.trIP),
+#         copy(tr.trV),
+#         copy(tr.trRP),
+#         copy.(tr.trXplAP)
+#     )
+# end
 
 #######################################
 # trace postprocessing
@@ -44,6 +64,10 @@ abstract type RunResults{T,TI<:Int,TF<:AbstractFloat} end
 
 get_N(res::RunResults) = length(res.trVs)-1 # retrieve max tempering level
 
+#######################################
+# serial
+#######################################
+
 struct SerialRunResults{T,TI,TF} <: RunResults{T,TI,TF}
     tr::NRSTTrace{T,TI}       # raw trace
     xarray::Vector{Vector{T}} # i-th entry has samples at state i
@@ -52,6 +76,44 @@ struct SerialRunResults{T,TI,TF} <: RunResults{T,TI,TF}
     rpacc::Matrix{TF}         # accumulates rejection probs of swaps started from each (i,eps)
     xplapac::Vector{TF}       # length N. accumulates explorers' acc probs
 end
+
+# outer constructor that parses a trace
+function SerialRunResults(tr::NRSTTrace{T,I,K}) where {T,I,K}
+    N       = get_N(tr)
+    xarray  = [T[] for _ in 0:N] # i-th entry has samples at state i
+    trVs    = [K[] for _ in 0:N] # i-th entry has Vs corresponding to xarray[i]
+    visacc  = zeros(I, N+1, 2)   # accumulates visits
+    rpacc   = zeros(K, N+1, 2)   # accumulates rejection probs
+    xplapac = zeros(K, N)        # accumulates explorers' acc probs
+    post_process(tr, xarray, trVs, visacc, rpacc, xplapac)
+    SerialRunResults(tr, xarray, trVs, visacc, rpacc, xplapac)
+end
+function post_process(
+    tr::NRSTTrace{T,I,K},
+    xarray::Vector{Vector{T}}, # length = N+1. i-th entry has samples at state i
+    trVs::Vector{Vector{K}},   # length = N+1. i-th entry has Vs corresponding to xarray[i]
+    visacc::Matrix{I},         # size (N+1) × 2. accumulates visits
+    rpacc::Matrix{K},          # size (N+1) × 2. accumulates rejection probs
+    xplapac::Vector{K}         # length = N. accumulates explorers' acc probs
+    ) where {T,I,K}
+    for (n, ip) in enumerate(tr.trIP)
+        l      = ip[1]
+        idx    = l + 1
+        idxeps = (ip[2] == one(I) ? 1 : 2)
+        visacc[idx, idxeps]  += one(I)
+        rpacc[idx, idxeps]   += tr.trRP[n]
+        if l >= 1
+            nvl = visacc[idx,1] + visacc[idx,2] # (>=1) number of visits so far to level l, regardless of eps
+            xplapac[l] += tr.trXplAP[l][nvl]
+        end
+        length(tr.trX) >= n && push!(xarray[idx], tr.trX[n]) # handle case keep_xs=false
+        push!(trVs[idx], tr.trV[n])
+    end
+end
+
+#######################################
+# touring
+#######################################
 
 struct TouringRunResults{T,TI,TF} <: RunResults{T,TI,TF}
     trvec::Vector{NRSTTrace{T,TI,TF}} # vector of raw traces from each tour
@@ -89,4 +151,3 @@ function TouringRunResults(results::Vector{TST}) where {T,I,K,TST<:NRSTTrace{T,I
     toureff = vec(sum(totvis, dims=2).^2) ./ (ntours*sumsq)    # = (sum(totvis, dims=2)/ntours).^2 ./ (sumsq/ntours)
     TouringRunResults(results, xarray, trVs, totvis, rpacc, xplapac, toureff)    
 end
-
