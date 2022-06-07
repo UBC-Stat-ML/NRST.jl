@@ -218,5 +218,5 @@ function run_tours!(
     ProgressMeter.@showprogress 1 "Sampling: " for t in 1:ntours
         results[t] = tour!(ns;kwargs...)
     end
-    return ParallelRunResults(results)
+    return TouringRunResults(results)
 end
