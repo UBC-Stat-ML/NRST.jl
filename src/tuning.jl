@@ -24,13 +24,10 @@ function tune!(
     # 1) rationale:
     #    - above, each explorer produces nsteps samples
     #    - here, every tour each explorer runs twice on average
-    #      => ntours=nsteps/(2nexpls) gives same comp cost
-    #    - but in each of those runs, a explorer returns only 1 sample
-    #    - if we split the long runs above into tours, we would get 
-    #      nsteps/(2ntours) = nexpls samples per tour per explorer.
-    #      => to get same accuracy, need to multiply ntours by sqrt(nexpls)
+    #      => ntours=nsteps/(2mean(nexpls)) gives same comp cost on avg
+    #    - quadruple it to be safe
     # 2) heuristic for when nexpls→∞, where 1) fails
-    ntours_f = max(0.5*nsteps/sqrt(mean(ns.np.nexpls)), 150*nsteps^(1/4))
+    ntours_f = max(2nsteps/mean(ns.np.nexpls), 150*nsteps^(1/4))
     ntours   = max(min_ntours, min(2nsteps, ceil(Int, ntours_f)))
     if do_stage_2
         verbose && println(
@@ -47,10 +44,10 @@ function tune!(
     np::NRSTProblem{T,K},
     xpls::Vector{<:ExplorationKernel};
     max_s1_rounds::Int = 19,
-    max_ar_ratio::Real = 0.060,     # limit on std(ar)/mean(ar), ar: average of up/down rejection prob
+    max_ar_ratio::Real = 0.075,     # limit on std(ar)/mean(ar), ar: average of up/down rejection prob
     max_Δβs::Real      = np.N^(-2), # limit on max change in grid
     max_relΔcone::Real = 0.0015,    # limit on rel change in c(1)
-    max_relΔΛ::Real    = 0.015,     # limit on rel change in Λ = Λ(1)
+    max_relΔΛ::Real    = 0.018,     # limit on rel change in Λ = Λ(1)
     nsteps_init::Int   = 32,
     max_nsteps::Int    = 8_388_608,
     maxcor::Real       = 0.8,

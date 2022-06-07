@@ -25,7 +25,7 @@ using ColorSchemes: seaborn_colorblind
 using NRST
 
 # Define the basics of the model
-const S   = 4;
+const S   = 8;
 const Ssq = S*S;
 const sq  = Square(S,S); # define a square lattice
 const J   = 2;           # coupling constant to force βᶜ < 1 in our parametrization, since βᶜ = 1.1199 for J=1: https://iopscience.iop.org/article/10.1088/0305-4470/38/26/003
@@ -56,7 +56,7 @@ ns, ts = NRSTSampler(
     V,
     Vref,
     randref,
-    N = 6,
+    N = 12,
     verbose = true
 )
 res   = parallel_run(ns, ntours = ts.ntours)

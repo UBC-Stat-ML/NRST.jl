@@ -105,7 +105,7 @@ end
 # copy-constructor, using a given NRSTSampler (usually already tuned)
 function Base.copy(ns::NRSTSampler)
     newtm = copy(ns.np.tm)                   # the only element in np that we (may) need to copy
-    newnp = NRSTProblem(ns.np, newtm)        # build new Problem using new tm
+    newnp = NRSTProblem(ns.np, newtm)        # build new Problem using new tm and old Problem
     newx  = copy(ns.x)
     ncurV = Ref(V(newtm, newx))
     nuxpl = copy(ns.xpl, newtm, newx, ncurV) # copy ns.xpl sharing stuff with the new sampler

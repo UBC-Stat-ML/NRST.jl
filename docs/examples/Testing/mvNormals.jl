@@ -82,7 +82,7 @@ using Plots.PlotMeasures: px
 using ColorSchemes: okabe_ito
 using NRST
 
-const d    = 2
+const d    = 32
 const s0   = 2.
 const m    = 4.
 const s0sq = s0*s0;
@@ -94,7 +94,7 @@ function F(b)
     ssq = sbsq(b)
     -0.5*d*( log(2*pi*ssq) - b*m*m*(1-b*ssq) )
 end
-V(x)      = 0.5sum(abs2,x .- m)
+V(x)      = 0.5mapreduce(xi -> abs2(xi - m), +, x) # 0 allocs, versus "x .- m" which allocates a temp
 Vref(x)   = 0.5sum(abs2,x)/s0sq
 randref() = s0*randn(d);
 
@@ -107,7 +107,7 @@ ns, ts = NRSTSampler(
     V,
     Vref,
     randref,
-    N = 3,
+    N = 12,
     verbose = true,
     do_stage_2 = false
 );
@@ -132,11 +132,11 @@ function get_scaled_V_dist(b)
     μ  = m*(b*sbsq(b)-1)/s
     NoncentralChisq(d,d*μ*μ)
 end
-xpls    = NRST.replicate(ns.xpl, ns.np.betas);
-trVs, _ = NRST.collectVs(ns.np, xpls, ts.nsteps);
-resser  = NRST.SerialRunResults(NRST.run!(ns, nsteps=2*ns.np.N*ts.ntours));
-restur  = NRST.run_tours!(ns, ntours=ts.ntours, keep_xs=false);
-parr    = []
+xpls   = NRST.replicate(ns.xpl, ns.np.betas);
+trVs   = NRST.collectVs(ns.np, xpls, ts.nsteps);
+resser = NRST.SerialRunResults(NRST.run!(ns, nsteps=2*ns.np.N*ts.ntours));
+restur = NRST.run_tours!(ns, ntours=ts.ntours, keep_xs=false);
+parr   = []
 for (i,trV) in enumerate(trVs)
     β     = ns.np.betas[i]
     sctrV = (2/sbsq(β)) .* trV
