@@ -29,27 +29,6 @@ struct NRSTSampler{T,I<:Int,K<:AbstractFloat,TXp<:ExplorationKernel,TProb<:NRSTP
     curV::Base.RefValue{K} # current energy V(x) (stored as ref to make it mutable)
 end
 
-# raw trace of a serial run
-struct SerialNRSTTrace{T,TI<:Int,TF<:AbstractFloat}
-    trX::Vector{T}
-    trIP::Vector{SVector{2,TI}}
-    trV::Vector{TF}
-    trRP::Vector{TF}
-    trXplAP::Vector{Vector{TF}}
-end
-get_N(tr::SerialNRSTTrace) = length(tr.trXplAP) # recover N. cant do N=N(tr) because julia gets dizzy
-nsteps(tr::SerialNRSTTrace) = length(tr.trV)    # recover nsteps
-
-# processed output
-struct SerialRunResults{T,TI<:Int,TF<:AbstractFloat} <: RunResults
-    tr::SerialNRSTTrace{T,TI} # raw trace
-    xarray::Vector{Vector{T}} # i-th entry has samples at state i
-    trVs::Vector{Vector{TF}}  # i-th entry has Vs corresponding to xarray[i]
-    visits::Matrix{TI}        # total number of visits to each (i,eps)
-    rpacc::Matrix{TF}         # accumulates rejection probs of swaps started from each (i,eps)
-    xplapac::Vector{TF}       # length N. accumulates explorers' acc probs
-end
-
 ###############################################################################
 # constructors and initialization methods
 ###############################################################################
@@ -185,21 +164,18 @@ end
 
 # run for fixed number of steps
 function run!(ns::NRSTSampler{T,I,K}; nsteps::Int) where {T,I,K}
-    trX     = Vector{T}(undef, nsteps)
-    trIP    = Vector{SVector{2,I}}(undef, nsteps) # can use a vector of SVectors since traces should not be modified
-    trV     = Vector{K}(undef, nsteps)
-    trRP    = similar(trV)
-    trXplAP = [K[] for _ in 1:ns.np.N]            # cant predict number of visits to each level
+    tr = NRSTTrace(T, ns.np.N, K, nsteps)
+    @unpack trX, trIP, trV, trRP, trXplAP = tr
     for n in 1:nsteps
-        trX[n]     = copy(ns.x)                   # needs copy o.w. pushes a ref to ns.x
-        trIP[n]    = copy(ns.ip)
-        trV[n]     = ns.curV[]
+        trX[n]  = copy(ns.x)                   # needs copy o.w. pushes a ref to ns.x
+        trIP[n] = copy(ns.ip)
+        trV[n]  = ns.curV[]
         rp, xplap  = step!(ns)
-        trRP[n]    = rp                           # note: since trIP[n] was stored before step!, trRP[n] is rej prob of swap **initiated** from trIP[n]
+        trRP[n] = rp                           # note: since trIP[n] was stored before step!, trRP[n] is rej prob of swap **initiated** from trIP[n]
         l          = ns.ip[1]
-        l >= 1 && push!(trXplAP[l], xplap)        # note: since comm preceeds expl, we're correctly storing the acc prob of the most recent state
+        l >= 1 && push!(trXplAP[l], xplap)     # note: since comm preceeds expl, we're correctly storing the acc prob of the most recent state
     end
-    return SerialNRSTTrace(trX, trIP, trV, trRP, trXplAP)
+    return tr
 end
 
 # run a tour: run the sampler until we reach the atom ip=(0,-1)
@@ -210,18 +186,15 @@ function tour!(
     keep_xs::Bool = true,                 # set to false if xs can be forgotten (useful for tuning to lower mem usage) 
     ) where {T,I,K}
     renew!(ns)
-    trX     = T[]
-    trIP    = SVector{2,I}[]              # can use a vector of SVectors since traces should not be modified
-    trV     = K[]
-    trRP    = K[]
-    trXplAP = [K[] for _ in 1:ns.np.N]
+    tr = NRSTTrace(T, ns.np.N, K)
     while !(ns.ip[1] == 0 && ns.ip[2] == -1)
-        tour_step!(ns, trX, trIP, trV, trRP, trXplAP, keep_xs)
+        tour_step!(ns, tr, keep_xs)
     end
-    tour_step!(ns, trX, trIP, trV, trRP, trXplAP, keep_xs)
-    return SerialNRSTTrace(trX, trIP, trV, trRP, trXplAP)
+    tour_step!(ns, tr, keep_xs)
+    return tr
 end
-function tour_step!(ns::NRSTSampler, trX, trIP, trV, trRP, trXplAP, keep_xs)
+function tour_step!(ns::NRSTSampler, tr, keep_xs)
+    @unpack trX, trIP, trV, trRP, trXplAP = tr
     keep_xs && push!(trX, copy(ns.x)) # needs copy o.w. pushes a ref to ns.x
     push!(trIP, copy(ns.ip))          # same
     push!(trV, ns.curV[])
@@ -237,50 +210,9 @@ function run_tours!(
     ntours::Int,
     kwargs...
     ) where {T,TI,TF}
-    results = Vector{SerialNRSTTrace{T,TI,TF}}(undef, ntours)
+    results = Vector{NRSTTrace{T,TI,TF}}(undef, ntours)
     ProgressMeter.@showprogress 1 "Sampling: " for t in 1:ntours
         results[t] = tour!(ns;kwargs...)
     end
     return ParallelRunResults(results)
 end
-
-###############################################################################
-# trace postprocessing
-###############################################################################
-
-# outer constructor that parses a trace
-function SerialRunResults(tr::SerialNRSTTrace{T,I,K}) where {T,I,K}
-    N       = get_N(tr)
-    xarray  = [T[] for _ in 0:N] # i-th entry has samples at state i
-    trVs    = [K[] for _ in 0:N] # i-th entry has Vs corresponding to xarray[i]
-    visacc  = zeros(I, N+1, 2)   # accumulates visits
-    rpacc   = zeros(K, N+1, 2)   # accumulates rejection probs
-    xplapac = zeros(K, N)        # accumulates explorers' acc probs
-    post_process(tr, xarray, trVs, visacc, rpacc, xplapac)
-    SerialRunResults(tr, xarray, trVs, visacc, rpacc, xplapac)
-end
-
-function post_process(
-    tr::SerialNRSTTrace{T,I,K},
-    xarray::Vector{Vector{T}}, # length = N+1. i-th entry has samples at state i
-    trVs::Vector{Vector{K}},   # length = N+1. i-th entry has Vs corresponding to xarray[i]
-    visacc::Matrix{I},         # size (N+1) × 2. accumulates visits
-    rpacc::Matrix{K},          # size (N+1) × 2. accumulates rejection probs
-    xplapac::Vector{K}         # length = N. accumulates explorers' acc probs
-    ) where {T,I,K}
-    for (n, ip) in enumerate(tr.trIP)
-        l      = ip[1]
-        idx    = l + 1
-        idxeps = (ip[2] == one(I) ? 1 : 2)
-        visacc[idx, idxeps]  += one(I)
-        rpacc[idx, idxeps]   += tr.trRP[n]
-        if l >= 1
-            nvl = visacc[idx,1] + visacc[idx,2] # (>=1) number of visits so far to level l, regardless of eps
-            xplapac[l] += tr.trXplAP[l][nvl]
-        end
-        length(tr.trX) >= n && push!(xarray[idx], tr.trX[n]) # handle case keep_xs=false
-        push!(trVs[idx], tr.trV[n])
-    end
-end
-
-

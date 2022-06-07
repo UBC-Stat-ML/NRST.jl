@@ -4,12 +4,13 @@
 
 const DEF_PAL = seaborn_colorblind # default palette
 
-function diagnostics(ns::NRSTSampler, res::ParallelRunResults)
-    N = ns.np.N
+function diagnostics(ns::NRSTSampler, res::TouringRunResults)
+    N      = ns.np.N
+    ntours = get_ntours(res)
 
     # occupancy rates
     pocc = plot(
-        0:N, vec(sum(res.visits,dims=2) / ntours(res)),
+        0:N, vec(sum(res.visits,dims=2) / ntours),
         ylims = (0., Inf),
         palette=DEF_PAL, label = "", xlabel = "Level", 
         ylabel = "Average number of visits per tour" 
@@ -99,7 +100,7 @@ function diagnostics(ns::NRSTSampler, res::ParallelRunResults)
     sV = median(abs.(Base.Flatten(res.trVs) .- mV))
     inf_df = inference_on_V(res, h = v -> logistic((v-mV)/sV), at = 0:N)
     pvess  = plot(
-        ns.np.betas, inf_df[:,"ESS"] ./ ntours(res), xlabel = "β", 
+        ns.np.betas, inf_df[:,"ESS"] ./ ntours, xlabel = "β", 
         label = "ESS/#tours", palette = DEF_PAL
     )
     plot!(pvess, ns.np.betas, res.toureff, label="Tour Eff.")
@@ -156,16 +157,16 @@ end
 # one for MC-par!
 # TODO: add BouncyMC with imperfect tuning, using asymmetric, non-equi rejections
 # that can be obtained from "res" (see rejrates in rejections plot)
-function plot_ess_time(res::ParallelRunResults, Λ::AbstractFloat)
-    resN   = N(res)
-    resnts = ntours(res)
+function plot_ess_time(res::TouringRunResults, Λ::AbstractFloat)
+    N      = get_N(res)
+    ntours = get_ntours(res)
     labels = String[]
     xs     = Vector{typeof(Λ)}[]
     ys     = Vector{typeof(Λ)}[]
 
     # NRST
     tourls = tourlengths(res) 
-    cuESS  = res.toureff[end]*(1:resnts)
+    cuESS  = res.toureff[end]*(1:ntours)
     push!(xs, log10.(cumsum(tourls)))          # serial
     push!(ys, log10.(cuESS))
     push!(labels, "NRST-ser")
@@ -174,10 +175,10 @@ function plot_ess_time(res::ParallelRunResults, Λ::AbstractFloat)
     push!(labels, "NRST-par")
     
     # BouncyPDMP
-    tourls, vNs  = run_tours!(BouncyPDMP(Λ), resnts)
-    TE           = (sum(vNs) ^ 2) / (resnts*sum(abs2, vNs))
-    cuESS        = TE*(1:resnts)
-    scale_tourls = resN*tourls .+ 2.           # the shortest tour has n(0)=2 and the perfect roundtrip has n(2)=2N+2
+    tourls, vNs  = run_tours!(BouncyPDMP(Λ), ntours)
+    TE           = (sum(vNs) ^ 2) / (ntours*sum(abs2, vNs))
+    cuESS        = TE*(1:ntours)
+    scale_tourls = N*tourls .+ 2.           # the shortest tour has n(0)=2 and the perfect roundtrip has n(2)=2N+2
     push!(xs, log10.(cumsum(scale_tourls)))
     push!(ys, log10.(cuESS))
     push!(labels, "IdCTSer")
@@ -186,9 +187,9 @@ function plot_ess_time(res::ParallelRunResults, Λ::AbstractFloat)
     push!(labels, "IdCTPar")
 
     # BouncyMC: perfect tuning
-    tourls, vNs = run_tours!(BouncyMC(Λ/resN,resN), resnts)
-    TE = (sum(vNs) ^ 2) / (resnts*sum(abs2, vNs))
-    cuESS = TE*(1:resnts)
+    tourls, vNs = run_tours!(BouncyMC(Λ/N,N), ntours)
+    TE = (sum(vNs) ^ 2) / (ntours*sum(abs2, vNs))
+    cuESS = TE*(1:ntours)
     push!(xs, log10.(cumsum(tourls)))
     push!(ys, log10.(cuESS))
     push!(labels, "IdDTPerfSer")
@@ -198,9 +199,9 @@ function plot_ess_time(res::ParallelRunResults, Λ::AbstractFloat)
 
     # BouncyMC: same tuning as NRST
     R = res.rpacc ./ res.visits
-    tourls, vNs = run_tours!(BouncyMC(R), resnts)
-    TE = (sum(vNs) ^ 2) / (resnts*sum(abs2, vNs))
-    cuESS = TE*(1:resnts)
+    tourls, vNs = run_tours!(BouncyMC(R), ntours)
+    TE = (sum(vNs) ^ 2) / (ntours*sum(abs2, vNs))
+    cuESS = TE*(1:ntours)
     push!(xs, log10.(cumsum(tourls)))
     push!(ys, log10.(cuESS))
     push!(labels, "IdDTActSer")
@@ -231,10 +232,12 @@ function plot_ess_time(res::ParallelRunResults, Λ::AbstractFloat)
 end
 
 # function to create a plot of the trace of the (1st comp) of the index process
-function plot_trace_iproc(res::ParallelRunResults)
-    K   = min(floor(Int, 800/(2*ns.np.N+2)), ts.ntours) # choose K so that we see around a given num of steps
+function plot_trace_iproc(res::TouringRunResults{T,TI,TF}) where {T,TI,TF}
+    ntours = get_ntours(res)
+    N   = get_N(res)
+    K   = min(floor(Int, 800/(2*N+2)), ntours) # choose K so that we see around a given num of steps
     len = sum(nsteps.(res.trvec[1:K]))
-    is  = Vector{eltype(ns.ip)}(undef, len)
+    is  = Vector{TI}(undef, len)
     l   = 1
     for tr in res.trvec[1:K]
         for ip in tr.trIP
@@ -242,14 +245,14 @@ function plot_trace_iproc(res::ParallelRunResults)
             l += 1
         end
     end
-    itop = findall(isequal(ns.np.N), is)[1:2:end]
-    ibot = findall(isequal(zero(ns.np.N)), is)[2:2:end]
+    itop = findall(isequal(N), is)[1:2:end]
+    ibot = findall(isequal(zero(N)), is)[2:2:end]
     piproc = plot(
-        is, grid = false, palette = DEF_PAL, ylims = (0,1.04ns.np.N),
+        is, grid = false, palette = DEF_PAL, ylims = (0,1.04N),
         xlabel = "Step", ylabel = "Index", label = "",
         left_margin = 15px, bottom_margin = 15px, size = (675, 225)
     )
-    scatter!(piproc, itop .+ 0.5, [1.025ns.np.N], markershape = :dtriangle, label="")
+    scatter!(piproc, itop .+ 0.5, [1.025N], markershape = :dtriangle, label="")
     vline!(piproc, ibot .+ 0.5, linestyle = :dot, label="", linewidth=2)
     return piproc
 end
