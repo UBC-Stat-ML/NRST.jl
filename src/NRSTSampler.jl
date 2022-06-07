@@ -193,9 +193,9 @@ function tour!(ns::NRSTSampler,tr::NRSTTrace;kwargs...)
     end
     tour_step!(ns, tr;kwargs...)
 end
-function tour!(ns::NRSTSampler{T,I,K};kwargs...) where {T,I,K}
-    tr = NRSTTrace(T, ns.np.N, K)
-    tour!(ns,tr;kwargs...)
+function tour!(ns::NRSTSampler{T,I,K};keep_xs=true,kwargs...) where {T,I,K}
+    tr = NRSTTrace(T, ns.np.N, K, keep_xs)
+    tour!(ns,tr;keep_xs=keep_xs,kwargs...)
     return tr
 end
 function tour_step!(ns::NRSTSampler, tr::NRSTTrace; keep_xs::Bool=true)

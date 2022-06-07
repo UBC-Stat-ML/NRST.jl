@@ -11,9 +11,9 @@ struct NRSTTrace{T,TI<:Int,TF<:AbstractFloat}
 end
 
 # outer constructors that allocate empty arrays with conservative sizehint
-function NRSTTrace(::Type{T}, N::TI,::Type{TF}) where {T,TI<:Int,TF<:AbstractFloat}
+function NRSTTrace(::Type{T}, N::TI,::Type{TF}, keep_xs=true) where {T,TI<:Int,TF<:AbstractFloat}
     M       = 20N                                          # simple conservative estimate = 10E[T]
-    trX     = sizehint!(T[], M)
+    trX     = sizehint!(T[], keep_xs ? M : zero(TI))
     trIP    = sizehint!(SVector{2,TI}[], M)                # can use a vector of SVectors since traces should not be modified
     trV     = sizehint!(TF[], M)
     trRP    = sizehint!(TF[], M)
