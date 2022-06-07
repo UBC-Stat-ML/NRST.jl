@@ -163,9 +163,9 @@ function step!(ns::NRSTSampler)
 end
 
 # run for fixed number of steps
-function run!(ns::NRSTSampler{T,I,K}; nsteps::Int) where {T,I,K}
-    tr = NRSTTrace(T, ns.np.N, K, nsteps)
+function run!(ns::NRSTSampler,tr::NRSTTrace)
     @unpack trX, trIP, trV, trRP, trXplAP = tr
+    nsteps = length(trV)
     for n in 1:nsteps
         trX[n]  = copy(ns.x)                   # needs copy o.w. pushes a ref to ns.x
         trIP[n] = copy(ns.ip)
@@ -175,25 +175,29 @@ function run!(ns::NRSTSampler{T,I,K}; nsteps::Int) where {T,I,K}
         l          = ns.ip[1]
         l >= 1 && push!(trXplAP[l], xplap)     # note: since comm preceeds expl, we're correctly storing the acc prob of the most recent state
     end
+end
+function run!(ns::NRSTSampler{T,I,K}; nsteps::Int) where {T,I,K}
+    tr = NRSTTrace(T, ns.np.N, K, nsteps)
+    run!(ns,tr)
     return tr
 end
 
 # run a tour: run the sampler until we reach the atom ip=(0,-1)
 # note: by finishing at the atom (0,-1) and restarting using the renewal measure,
 # repeatedly calling this function is equivalent to standard sequential sampling 
-function tour!(
-    ns::NRSTSampler{T,I,K};
-    keep_xs::Bool = true,                 # set to false if xs can be forgotten (useful for tuning to lower mem usage) 
-    ) where {T,I,K}
+function tour!(ns::NRSTSampler,tr::NRSTTrace;kwargs...)
     renew!(ns)
-    tr = NRSTTrace(T, ns.np.N, K)
     while !(ns.ip[1] == 0 && ns.ip[2] == -1)
-        tour_step!(ns, tr, keep_xs)
+        tour_step!(ns, tr;kwargs...)
     end
-    tour_step!(ns, tr, keep_xs)
+    tour_step!(ns, tr;kwargs...)
+end
+function tour!(ns::NRSTSampler{T,I,K};kwargs...) where {T,I,K}
+    tr = NRSTTrace(T, ns.np.N, K)
+    tour!(ns,tr;kwargs...)
     return tr
 end
-function tour_step!(ns::NRSTSampler, tr, keep_xs)
+function tour_step!(ns::NRSTSampler, tr::NRSTTrace; keep_xs::Bool=true)
     @unpack trX, trIP, trV, trRP, trXplAP = tr
     keep_xs && push!(trX, copy(ns.x)) # needs copy o.w. pushes a ref to ns.x
     push!(trIP, copy(ns.ip))          # same
