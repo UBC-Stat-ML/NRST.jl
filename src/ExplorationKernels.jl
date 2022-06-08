@@ -130,7 +130,7 @@ function step!(mhs::MHSampler)
     propose!(mhs)                           # propose new state, stored at mhs.xprop
     pvref, pv, pvβ = potentials(mhs, xprop) # compute potentials at proposed location
     ΔU  = pvβ - mhs.curVβ[]                 # compute energy differential
-    acc = ΔU < rand(Exponential())          # twice as fast than -log(rand())
+    acc = ΔU < randexp()                    # twice as fast than -log(rand())
     acc && acc_prop!(mhs, pvref, pv, pvβ)   # if proposal accepted, update state and caches
     ap  = exp(-max(0., ΔU))                 # compute acceptance probability
     return ap

@@ -129,7 +129,7 @@ function comm_step!(ns::NRSTSampler{T,I,K}) where {T,I,K}
     else
         i      = ip[1]                          # current index
         nlaccr = (betas[iprop+1]-betas[i+1])*curV[] - (c[iprop+1]-c[i+1])
-        acc    = (nlaccr < rand(Exponential())) # accept? Note: U<A <=> -log(A) > -log(U) ~ Exp(1) 
+        acc    = nlaccr < randexp()             # accept? Note: U<A <=> -log(A) > -log(U) ~ Exp(1) 
         if acc
             ip[1] = iprop                       # move
         else

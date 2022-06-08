@@ -2,14 +2,14 @@ module NRST
 
 using ColorSchemes: seaborn_colorblind, okabe_ito
 using DataFrames: DataFrame
-using Distributions: Exponential, Normal, Uniform
+using Distributions: Normal, Uniform
 using DynamicPPL: DynamicPPL
-using Interpolations: interpolate, SteffenMonotonicInterpolation, LinearInterpolation
+using Interpolations: interpolate, SteffenMonotonicInterpolation
 using LogExpFunctions: logsumexp, logistic
 using Plots
 using Printf
 using ProgressMeter: ProgressMeter
-using Random: Random
+using Random: Random, randexp, AbstractRNG
 using SmoothingSplines: SmoothingSpline, fit, predict
 using StaticArrays: MVector, SVector
 using Statistics
@@ -22,29 +22,18 @@ using UnPack: @unpack
 export NRSTSampler,
     run!,
     tune!,
-    post_process,
     run_tours!
 
 # ParallelNRST.jl
-export parallel_run,
-    ntours,
-    tourlengths
+export parallel_run
 
 # inference.jl
 export point_estimate,
     inference,
     log_partition
 
-# Turing_interface.jl
-export gen_randref,
-    gen_Vref,
-    gen_V
-
 # tuning.jl
-export tune_explorers!,
-    initialize_c!,
-    initialize!,
-    tune_betas!
+export tune!
 
 # diagnostics.jl
 export diagnostics
