@@ -96,23 +96,25 @@ function F(b)
 end
 V(x)      = 0.5mapreduce(xi -> abs2(xi - m), +, x) # 0 allocs, versus "x .- m" which allocates a temp
 Vref(x)   = 0.5sum(abs2,x)/s0sq
-randref() = s0*randn(d);
+randref(rng) = s0*randn(rng,d);
 
 # This
 # - builds an NRST sampler for the model
 # - initializes it, finding an optimal grid
 # - uses the analytic free-energy to set c
 # - sample tours in paralle to show diagnostics
+rng = SplittableRandom(0x0123456789abcdfe)
 ns, ts = NRSTSampler(
     V,
     Vref,
     randref,
+    rng,
     N = 12,
     verbose = true,
     do_stage_2 = false
 );
 copyto!(ns.np.c, F.(ns.np.betas)) # use optimal tuning
-res   = NRST.parallel_run(ns, ntours=ts.ntours, keep_xs=false);
+res   = NRST.parallel_run(ns, rng, ntours=ts.ntours, keep_xs=false);
 plots = diagnostics(ns, res)
 hl    = ceil(Int, length(plots)/2)
 pdiags=plot(
@@ -133,9 +135,9 @@ function get_scaled_V_dist(b)
     NoncentralChisq(d,d*μ*μ)
 end
 xpls   = NRST.replicate(ns.xpl, ns.np.betas);
-trVs   = NRST.collectVs(ns.np, xpls, ts.nsteps);
-resser = NRST.SerialRunResults(NRST.run!(ns, nsteps=2*ns.np.N*ts.ntours));
-restur = NRST.run_tours!(ns, ntours=ts.ntours, keep_xs=false);
+trVs   = NRST.collectVs(ns.np, xpls, rng, ts.nsteps);
+resser = NRST.SerialRunResults(NRST.run!(ns, rng, nsteps=2*ns.np.N*ts.ntours));
+restur = NRST.run_tours!(ns, rng, ntours=ts.ntours, keep_xs=false);
 parr   = []
 for (i,trV) in enumerate(trVs)
     β     = ns.np.betas[i]

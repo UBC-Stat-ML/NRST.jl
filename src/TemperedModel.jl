@@ -18,5 +18,5 @@ struct SimpleTemperedModel{TV<:Function,TVr<:Function,Tr<:Function} <: TemperedM
 end
 Vref(tm::SimpleTemperedModel, x) = tm.Vref(x)
 V(tm::SimpleTemperedModel, x) = tm.V(x)
-Base.rand(tm::SimpleTemperedModel) = tm.randref()
+Base.rand(tm::SimpleTemperedModel, rng::AbstractRNG) = tm.randref(rng)
 Base.copy(tm::SimpleTemperedModel) = tm # dont do anything

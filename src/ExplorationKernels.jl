@@ -13,6 +13,7 @@ abstract type ExplorationKernel end
 # explorer shares x and curV
 function explore!(
     ex::ExplorationKernel,
+    rng::AbstractRNG,
     β::AbstractFloat,
     params::NamedTuple,
     nsteps::Int
@@ -21,7 +22,7 @@ function explore!(
     set_params!(ex, params)
     acc = zero(typeof(β))
     for _ in 1:nsteps
-        acc += step!(ex)
+        acc += step!(ex, rng)
     end
     return acc/nsteps       # return average acceptance probability
 end
@@ -47,12 +48,6 @@ function set_potentials!(ex::ExplorationKernel, vref::F, v::F, vβ::F) where {F<
     ex.curVref[] = vref
     ex.curV[]    = v
     ex.curVβ[]   = vβ
-end
-
-# tune parameters starting from a given initialization point
-function tune!(ex::ExplorationKernel, params::NamedTuple;kwargs...)
-    set_params!(ex, params)
-    tune!(mhs::MHSampler;kwargs...)
 end
 
 ###############################################################################
@@ -105,9 +100,9 @@ function Base.copy(mh::MHSampler, newtm::TemperedModel, newx, newcurV)
 end
 
 # MH proposal = isotropic normal
-function propose!(mhs::MHSampler)
+function propose!(mhs::MHSampler, rng::AbstractRNG)
     for (i,xi) in enumerate(mhs.x)
-        mhs.xprop[i] = xi + mhs.sigma[]*randn()
+        mhs.xprop[i] = xi + mhs.sigma[]*randn(rng)
     end
 end
 
@@ -125,12 +120,12 @@ end
 # pi(q)/pi(p) = exp(log(pi(q)) - log(pi(p))) = exp(-[U(q) - U(p)]) = exp(-ΔU)
 # => min(1,pi(q)/pi(p)) = min(1,exp(-ΔU)) = exp[log(min(1,exp(-ΔU)))] 
 # = exp[min(0,-ΔU)] = exp[-max(0,ΔU)]
-function step!(mhs::MHSampler)
+function step!(mhs::MHSampler, rng::AbstractRNG)
     @unpack xprop = mhs
-    propose!(mhs)                           # propose new state, stored at mhs.xprop
+    propose!(mhs, rng)                      # propose new state, stored at mhs.xprop
     pvref, pv, pvβ = potentials(mhs, xprop) # compute potentials at proposed location
     ΔU  = pvβ - mhs.curVβ[]                 # compute energy differential
-    acc = ΔU < randexp()                    # twice as fast than -log(rand())
+    acc = ΔU < randexp(rng)                 # twice as fast than -log(rand())
     acc && acc_prop!(mhs, pvref, pv, pvβ)   # if proposal accepted, update state and caches
     ap  = exp(-max(0., ΔU))                 # compute acceptance probability
     return ap
@@ -138,20 +133,24 @@ end
 
 # run sampler keeping track only of cummulative acceptance probability
 # used in tuning
-function run!(mhs::MHSampler, nsteps::Int)
+function run!(mhs::MHSampler, rng::AbstractRNG, nsteps::Int)
     sum_ap = 0.
     for n in 1:nsteps
-        sum_ap += step!(mhs)
+        sum_ap += step!(mhs, rng)
     end
     return (sum_ap/nsteps)
 end
 
 # run sampler keeping track of V
-function run!(mhs::MHSampler{F,K}, trV::AbstractVector{K}) where {F,K}
+function run!(
+    mhs::MHSampler{F,K},
+    rng::AbstractRNG,
+    trV::AbstractVector{K}
+    ) where {F,K}
     sum_ap = zero(K)
     nsteps = length(trV)
     for n in 1:nsteps
-        sum_ap += step!(mhs)
+        sum_ap += step!(mhs, rng)
         trV[n]  = mhs.curV[]
     end
     return (sum_ap/nsteps)
@@ -164,7 +163,8 @@ end
 # - \der{acc}{sigma} is assumed constant
 # - Robbins-Monroe step size sequence is a_r = 10r^α for α<0
 function tune!(
-    mhs::MHSampler{F,K};
+    mhs::MHSampler{F,K},
+    rng::AbstractRNG;
     target_acc = 0.234,
     eps        = 0.05,
     α          = -1.0,
@@ -180,7 +180,7 @@ function tune!(
     verbose && @printf("Tuning initiated at sigma=%.1f\n", mhs.sigma[])
     while (r < min_rounds) || (err >= eps && r < max_rounds)
         r += 1
-        acc          = run!(mhs, nsteps)          # run and get average acceptance probability
+        acc          = run!(mhs, rng, nsteps)     # run and get average acceptance probability
         err          = abs(acc - target_acc)      # absolute error
         mhs.sigma[] += 10(r^α)*(acc - target_acc) # SGD step. "10" should work for most settings since scale is acc ratio, which is universal 
         mhs.sigma[]  = max(minsigma, mhs.sigma[]) # project back to >0

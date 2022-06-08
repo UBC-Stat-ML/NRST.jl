@@ -35,13 +35,14 @@ end
 
 # constructor that also builds an NRSTProblem and does initial tuning
 function NRSTSampler(
-    tm::TemperedModel;
-    betas          = nothing,
-    N::Int         = 3, # best to use N(Λ) = inf{n: Λ/n ≤ 0.5}
-    nexpl::Int     = 50, 
-    use_mean::Bool = true,
-    tune::Bool     = true,
-    verbose::Bool  = false,
+    tm::TemperedModel,
+    rng::AbstractRNG;
+    betas            = nothing,
+    N::Int           = 3, # best to use N(Λ) = inf{n: Λ/n ≤ 0.5}
+    nexpl::Int       = 50, 
+    use_mean::Bool   = true,
+    tune::Bool       = true,
+    verbose::Bool    = false,
     kwargs...
     )
     if isnothing(betas)
@@ -49,7 +50,7 @@ function NRSTSampler(
     else
         N = length(betas) - 1
     end
-    x    = initx(rand(tm))                                      # draw an initial point
+    x    = initx(rand(tm, rng), rng)                            # draw an initial point
     curV = Ref(V(tm, x))
     xpl  = get_explorer(tm, x, curV)
     np   = NRSTProblem(                                         # instantiate an NRSTProblem
@@ -59,7 +60,7 @@ function NRSTSampler(
     ip = MVector(zero(N), one(N))
     ns = NRSTSampler(np, xpl, x, ip, curV)                      # instantiate the NRSTSampler
     if tune
-        tunestats = tune!(ns; verbose = verbose, kwargs...)     # tune explorers, c, and betas
+        tunestats = tune!(ns, rng; verbose = verbose,kwargs...) # tune explorers, c, and betas
     else
         tunestats = NamedTuple()
     end
@@ -71,9 +72,8 @@ init_grid(N::Int) = collect(range(0,1,N+1))
 
 # safe initialization for arrays with float entries
 # robust against disruptions by heavy tailed reference distributions
-function initx(pre_x::AbstractArray{TF}) where {TF<:AbstractFloat}
-    uno = one(TF)
-    rand(Uniform(-uno,uno), size(pre_x))
+function initx(pre_x::AbstractArray{TF}, rng::AbstractRNG) where {TF<:AbstractFloat}
+    rand(rng, Uniform(-one(TF), one(TF)), size(pre_x))
 end
 
 # constructor for a given (V,Vref,randref) triplet
@@ -97,8 +97,8 @@ end
 ###############################################################################
 
 # reset state by sampling from the renewal measure
-function renew!(ns::NRSTSampler{T,I}) where {T,I}
-    copyto!(ns.x, rand(ns.np.tm))
+function renew!(ns::NRSTSampler{T,I}, rng::AbstractRNG) where {T,I}
+    copyto!(ns.x, rand(ns.np.tm, rng))
     ns.ip[1]  = zero(I)
     ns.ip[2]  = one(I)
     ns.curV[] = V(ns.np.tm, ns.x)
@@ -114,7 +114,7 @@ end
 # To get the rejection probability from nlaccr:
 # ap = min(1.,A) = min(1.,exp(-nlaccr)) = exp(min(0.,-nlaccr)) = exp(-max(0.,nlaccr))
 # => rp = 1-ap = 1-exp(-max(0.,nlaccr)) = -[exp(-max(0.,nlaccr))-1] = -expm1(-max(0.,nlaccr))
-function comm_step!(ns::NRSTSampler{T,I,K}) where {T,I,K}
+function comm_step!(ns::NRSTSampler{T,I,K}, rng::AbstractRNG) where {T,I,K}
     @unpack np,ip,curV = ns
     @unpack N,betas,c = np
     iprop = sum(ip)                             # propose i + eps
@@ -129,7 +129,7 @@ function comm_step!(ns::NRSTSampler{T,I,K}) where {T,I,K}
     else
         i      = ip[1]                          # current index
         nlaccr = (betas[iprop+1]-betas[i+1])*curV[] - (c[iprop+1]-c[i+1])
-        acc    = nlaccr < randexp()             # accept? Note: U<A <=> -log(A) > -log(U) ~ Exp(1) 
+        acc    = nlaccr < randexp(rng)          # accept? Note: U<A <=> -log(A) > -log(U) ~ Exp(1) 
         if acc
             ip[1] = iprop                       # move
         else
@@ -141,69 +141,79 @@ function comm_step!(ns::NRSTSampler{T,I,K}) where {T,I,K}
 end
 
 # exploration step
-function expl_step!(ns::NRSTSampler{T,I,K}) where {T,I,K}
+function expl_step!(ns::NRSTSampler{T,I,K}, rng::AbstractRNG) where {T,I,K}
     @unpack np,xpl,ip,curV = ns
     xplap = one(K)
     if ip[1] == zero(I)
-        copyto!(ns.x, rand(np.tm))               # sample new state from the reference
-        curV[] = V(np.tm, ns.x)                  # compute energy at new point
+        copyto!(ns.x, rand(np.tm, rng))               # sample new state from the reference
+        curV[] = V(np.tm, ns.x)                       # compute energy at new point
     else
-        β      = np.betas[ip[1]+1]               # get the β for the level
-        nexpl  = np.nexpls[ip[1]]                # get number of exploration steps needed at this level
-        params = np.xplpars[ip[1]]               # get explorer params for this level 
-        xplap  = explore!(xpl, β, params, nexpl) # explore for nexpl steps. note: ns.x and ns.curV are shared with xpl
+        β      = np.betas[ip[1]+1]                    # get the β for the level
+        nexpl  = np.nexpls[ip[1]]                     # get number of exploration steps needed at this level
+        params = np.xplpars[ip[1]]                    # get explorer params for this level 
+        xplap  = explore!(xpl, rng, β, params, nexpl) # explore for nexpl steps. note: ns.x and ns.curV are shared with xpl
     end
     return xplap
 end
 
 # NRST step = comm_step ∘ expl_step
-function step!(ns::NRSTSampler)
-    rp    = comm_step!(ns) # returns rejection probability
-    xplap = expl_step!(ns) # returns explorers' acceptance probability
+function step!(ns::NRSTSampler, rng::AbstractRNG)
+    rp    = comm_step!(ns, rng) # returns rejection probability
+    xplap = expl_step!(ns, rng) # returns explorers' acceptance probability
     return rp, xplap
 end
 
 # run for fixed number of steps
-function run!(ns::NRSTSampler,tr::NRSTTrace)
+function run!(ns::NRSTSampler, rng::AbstractRNG, tr::NRSTTrace)
     @unpack trX, trIP, trV, trRP, trXplAP = tr
     nsteps = length(trV)
     for n in 1:nsteps
-        trX[n]  = copy(ns.x)                   # needs copy o.w. pushes a ref to ns.x
-        trIP[n] = copy(ns.ip)
-        trV[n]  = ns.curV[]
-        rp, xplap  = step!(ns)
-        trRP[n] = rp                           # note: since trIP[n] was stored before step!, trRP[n] is rej prob of swap **initiated** from trIP[n]
-        l          = ns.ip[1]
+        trX[n]    = copy(ns.x)                 # needs copy o.w. pushes a ref to ns.x
+        trIP[n]   = copy(ns.ip)
+        trV[n]    = ns.curV[]
+        rp, xplap = step!(ns, rng)
+        trRP[n]   = rp                         # note: since trIP[n] was stored before step!, trRP[n] is rej prob of swap **initiated** from trIP[n]
+        l         = ns.ip[1]
         l >= 1 && push!(trXplAP[l], xplap)     # note: since comm preceeds expl, we're correctly storing the acc prob of the most recent state
     end
 end
-function run!(ns::NRSTSampler{T,I,K}; nsteps::Int) where {T,I,K}
+function run!(ns::NRSTSampler{T,I,K}, rng::AbstractRNG; nsteps::Int) where {T,I,K}
     tr = NRSTTrace(T, ns.np.N, K, nsteps)
-    run!(ns,tr)
+    run!(ns, rng, tr)
     return tr
 end
 
 # run a tour: run the sampler until we reach the atom ip=(0,-1)
 # note: by finishing at the atom (0,-1) and restarting using the renewal measure,
 # repeatedly calling this function is equivalent to standard sequential sampling 
-function tour!(ns::NRSTSampler,tr::NRSTTrace;kwargs...)
-    renew!(ns)
+function tour!(ns::NRSTSampler, rng::AbstractRNG, tr::NRSTTrace;kwargs...)
+    renew!(ns, rng)
     while !(ns.ip[1] == 0 && ns.ip[2] == -1)
-        tour_step!(ns, tr;kwargs...)
+        tour_step!(ns, rng, tr;kwargs...)
     end
-    tour_step!(ns, tr;kwargs...)
+    tour_step!(ns, rng, tr;kwargs...)
 end
-function tour!(ns::NRSTSampler{T,I,K};keep_xs=true,kwargs...) where {T,I,K}
+function tour!(
+    ns::NRSTSampler{T,I,K},
+    rng::AbstractRNG;
+    keep_xs=true,
+    kwargs...
+    ) where {T,I,K}
     tr = NRSTTrace(T, ns.np.N, K, keep_xs)
-    tour!(ns,tr;keep_xs=keep_xs,kwargs...)
+    tour!(ns, rng, tr; keep_xs=keep_xs, kwargs...)
     return tr
 end
-function tour_step!(ns::NRSTSampler, tr::NRSTTrace; keep_xs::Bool=true)
+function tour_step!(
+    ns::NRSTSampler,
+    rng::AbstractRNG,
+    tr::NRSTTrace;
+    keep_xs::Bool=true
+    )
     @unpack trX, trIP, trV, trRP, trXplAP = tr
     keep_xs && push!(trX, copy(ns.x)) # needs copy o.w. pushes a ref to ns.x
     push!(trIP, copy(ns.ip))          # same
     push!(trV, ns.curV[])
-    rp, xplap = step!(ns)
+    rp, xplap = step!(ns, rng)
     push!(trRP, rp)
     l = ns.ip[1]
     l >= 1 && push!(trXplAP[l], xplap)
@@ -211,13 +221,14 @@ end
 
 # run multiple tours, return processed output
 function run_tours!(
-    ns::NRSTSampler{T,TI,TF};
+    ns::NRSTSampler{T,TI,TF},
+    rng::AbstractRNG;
     ntours::Int,
     kwargs...
     ) where {T,TI,TF}
     results = Vector{NRSTTrace{T,TI,TF}}(undef, ntours)
     ProgressMeter.@showprogress 1 "Sampling: " for t in 1:ntours
-        results[t] = tour!(ns;kwargs...)
+        results[t] = tour!(ns, rng;kwargs...)
     end
     return TouringRunResults(results)
 end

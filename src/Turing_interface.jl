@@ -1,5 +1,5 @@
 ###############################################################################
-# Minimal interface that lets one obtain randref, Vref and V from a DPPL.Model
+# Minimal interface to obtain potentials and sampling from the prior
 # The transformation 𝕏 → ℝ from constrained to unconstrained Euclidean space
 # is used to simplify the work for exploration kernels 
 ###############################################################################
@@ -44,7 +44,7 @@ end
 #######################################
 
 # sampling from the prior
-function Base.rand(tm::TuringTemperedModel, rng::Random.AbstractRNG=Random.default_rng())
+function Base.rand(tm::TuringTemperedModel, rng::AbstractRNG)
     vi = DPPL.VarInfo(rng, tm.model, tm.spl, DPPL.PriorContext()) # avoids evaluating the likelihood
     DPPL.link!(vi, tm.spl)
     vi[tm.spl]

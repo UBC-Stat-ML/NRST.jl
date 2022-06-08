@@ -11,12 +11,16 @@ using Printf
 using ProgressMeter: ProgressMeter
 using Random: Random, randexp, AbstractRNG
 using SmoothingSplines: SmoothingSpline, fit, predict
+using SplittableRandoms: SplittableRandom, split
 using StaticArrays: MVector, SVector
 using Statistics
 using StatsBase: autocor
 using StatsPlots: density
 using UnicodePlots: UnicodePlots
 using UnPack: @unpack
+
+# reexports
+export SplittableRandom
 
 # NRSTSampler.jl
 export NRSTSampler,

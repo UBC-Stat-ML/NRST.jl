@@ -43,7 +43,7 @@ end
 
 # Define functions for the reference
 const dunif = Uniform(-pi,pi)
-randref() = rand(dunif, Ssq)
+randref(rng) = rand(rng, dunif, Ssq)
 Vref(θ::AbstractFloat) = -logpdf(dunif, θ)
 Vref(θs::Vector{<:AbstractFloat}) = sum(Vref, θs)
 
@@ -52,6 +52,7 @@ Vref(θs::Vector{<:AbstractFloat}) = sum(Vref, θs)
 # - initializes it, finding an optimal grid
 # - sample tours in parallel and uses them to get more accurate estimates of c(β)
 # - sample one last time to show diagnostics
+rng = SplittableRandom(0x0123456789abcdfe)
 ns, ts = NRSTSampler(
     V,
     Vref,
@@ -59,7 +60,7 @@ ns, ts = NRSTSampler(
     N = 12,
     verbose = true
 )
-res   = parallel_run(ns, ntours = ts.ntours)
+res   = parallel_run(ns, rng, ntours = ts.ntours)
 plots = diagnostics(ns, res)
 hl    = ceil(Int, length(plots)/2)
 pdiags=plot(
