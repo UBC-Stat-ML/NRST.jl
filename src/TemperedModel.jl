@@ -7,10 +7,11 @@ abstract type TemperedModel end
 
 # compute and return both potentials
 potentials(tm::TemperedModel, x) = (Vref(tm,x), V(tm,x))
+Base.copy(tm::TemperedModel) = tm # by default don't copy anything
 
 # simple case: user passes proper Functions
 # note: callable structs not allowed since they are probably modified when one
-# evaluates them
+# evaluates them -> need special copy method
 struct SimpleTemperedModel{TV<:Function,TVr<:Function,Tr<:Function} <: TemperedModel
     V::TV       # energy Function
     Vref::TVr   # energy of reference distribution
@@ -19,4 +20,3 @@ end
 Vref(tm::SimpleTemperedModel, x) = tm.Vref(x)
 V(tm::SimpleTemperedModel, x) = tm.V(x)
 Base.rand(tm::SimpleTemperedModel, rng::AbstractRNG) = tm.randref(rng)
-Base.copy(tm::SimpleTemperedModel) = tm # dont do anything
