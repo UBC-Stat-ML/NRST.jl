@@ -74,29 +74,15 @@
 # ```
 # where ``\chi_d^2(\lambda)`` is the non-central chi-squared distribution with parameter ``\lambda``.
 
-
 # ## Implementation using NRST
 
-using Distributions, Plots
+using Plots
 using Plots.PlotMeasures: px
 using ColorSchemes: okabe_ito
 using NRST
+using NRST.ExamplesGallery: MvNormalTM, free_energy, get_scaled_V_dist
 
-const d    = 32
-const s0   = 2.
-const m    = 4.
-const s0sq = s0*s0;
-
-# Using these we can write expressions for ``\mu_b``, ``s_b^2``, and ``\mathcal{F}``
-sbsq(b) = 1/(1/s0sq + b)
-mu(b)   = b*m*sbsq(b)*ones(d)
-function F(b)
-    ssq = sbsq(b)
-    -0.5*d*( log(2*pi*ssq) - b*m*m*(1-b*ssq) )
-end
-V(x)      = 0.5mapreduce(xi -> abs2(xi - m), +, x) # 0 allocs, versus "x .- m" which allocates a temp
-Vref(x)   = 0.5sum(abs2,x)/s0sq
-randref(rng) = s0*randn(rng,d);
+#src # TODO: print source code of MvNormal
 
 # This
 # - builds an NRST sampler for the model
@@ -104,16 +90,15 @@ randref(rng) = s0*randn(rng,d);
 # - uses the analytic free-energy to set c
 # - sample tours in paralle to show diagnostics
 rng = SplittableRandom(0x0123456789abcdfe)
+tm  = MvNormalTM(32,4.,2.) # d, m, s0
 ns, ts = NRSTSampler(
-    V,
-    Vref,
-    randref,
+    tm,
     rng,
     N = 12,
     verbose = true,
     do_stage_2 = false
 );
-copyto!(ns.np.c, F.(ns.np.betas)) # use optimal tuning
+copyto!(ns.np.c, free_energy(tm, ns.np.betas)) # use optimal tuning
 res   = parallel_run(ns, rng, ntours=ts.ntours, keep_xs=false);
 plots = diagnostics(ns, res)
 hl    = ceil(Int, length(plots)/2)
@@ -128,12 +113,6 @@ pdiags=plot(
 
 # We compare the sample distribution of ``V(x)`` obtained using various
 # strategies against the analytic distribution.
-function get_scaled_V_dist(b)
-    s² = sbsq(b)
-    s  = sqrt(s²)
-    μ  = m*(b*sbsq(b)-1)/s
-    NoncentralChisq(d,d*μ*μ)
-end
 xpls   = NRST.replicate(ns.xpl, ns.np.betas);
 trVs   = NRST.collectVs(ns.np, xpls, rng, ts.nsteps);
 resser = NRST.SerialRunResults(NRST.run!(ns, rng, nsteps=2*ns.np.N*ts.ntours));
@@ -143,7 +122,7 @@ for (i,trV) in enumerate(trVs)
     β     = ns.np.betas[i]
     sctrV = (2/sbsq(β)) .* trV
     p = plot(
-        get_scaled_V_dist(β), label="True", palette=okabe_ito,
+        get_scaled_V_dist(tm,β), label="True", palette=okabe_ito,
         title="β=$(round(β,digits=2))"
     )
     density!(p, sctrV, label="IndExps", linestyle =:dash)

@@ -55,7 +55,9 @@ include("tuning.jl")
 
 # sub-modules
 include("IdealIndexProcesses/IdealIndexProcesses.jl")
+include("ExamplesGallery/ExamplesGallery.jl")
 using .IdealIndexProcesses
+
 
 # load remaining files
 include("diagnostics.jl")
