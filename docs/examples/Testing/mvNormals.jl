@@ -114,7 +114,7 @@ ns, ts = NRSTSampler(
     do_stage_2 = false
 );
 copyto!(ns.np.c, F.(ns.np.betas)) # use optimal tuning
-res   = NRST.parallel_run(ns, rng, ntours=ts.ntours, keep_xs=false);
+res   = parallel_run(ns, rng, ntours=ts.ntours, keep_xs=false);
 plots = diagnostics(ns, res)
 hl    = ceil(Int, length(plots)/2)
 pdiags=plot(

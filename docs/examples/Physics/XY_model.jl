@@ -57,6 +57,7 @@ ns, ts = NRSTSampler(
     V,
     Vref,
     randref,
+    rng,
     N = 12,
     verbose = true
 )

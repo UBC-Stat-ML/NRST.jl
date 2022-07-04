@@ -155,8 +155,6 @@ end
 # NOTE: as maxcor → 0, the tours lengths become more 
 # consistent, so the NRST-par curve in the ESS/cost plot converges to the
 # one for MC-par!
-# TODO: add BouncyMC with imperfect tuning, using asymmetric, non-equi rejections
-# that can be obtained from "res" (see rejrates in rejections plot)
 function plot_ess_time(res::TouringRunResults, Λ::AbstractFloat)
     N      = get_N(res)
     ntours = get_ntours(res)
