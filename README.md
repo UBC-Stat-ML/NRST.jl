@@ -38,7 +38,7 @@ Pkg.add(url="git@github.com:miguelbiron/SplittableRandoms.jl.git")
 ```
 3. Install NRST
 ```julia
-Pkg.add(url="git@github.com:UBC-Stat-ML/NRST.jl")
+Pkg.add(url="git@github.com:UBC-Stat-ML/NRST.jl.git")
 ```
 
 After this, you should be able to load the package
