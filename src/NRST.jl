@@ -22,6 +22,9 @@ using UnPack: @unpack
 # reexports
 export SplittableRandom
 
+# RunResults.jl
+export tourlengths
+
 # NRSTSampler.jl
 export NRSTSampler,
     run!,
