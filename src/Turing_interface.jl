@@ -50,7 +50,7 @@ function Base.rand(tm::TuringTemperedModel, rng::AbstractRNG)
     vi[tm.spl]
 end
 
-# evaluate reference potential
+# evaluate reference potential + logabsdetjac of the bijection
 function Vref(tm::TuringTemperedModel, x)
     vi  = tm.viout                            # this helps with the re-binding+Boxing issue: https://invenia.github.io/blog/2019/10/30/julialang-features-part-1/#an-aside-on-boxing
     vi  = DPPL.setindex!!(vi, x, tm.spl)
