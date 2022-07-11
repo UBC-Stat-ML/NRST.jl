@@ -1,22 +1,9 @@
-using NRST
-using NRST.ExamplesGallery
-using Plots
-using Plots.PlotMeasures: px
 
-tm  = XYModel(8)
-rng = SplittableRandom(0x0123456789abcdfe)
-ns, ts = NRSTSampler(
-    tm,
-    rng,
-    N = 12,
-    verbose = true
+# ## Notes on the results
+# ### Inspecting within and between-group std. devs.
+X = hcat([exp.(0.5*x[1:2]) for x in res.xarray[end]]...)
+pcover = scatter(
+    X[1,:],X[2,:], xlabel="τ: between-groups std. dev.",
+    markeralpha = min(1., max(0.08, 1000/size(X,2))),
+    ylabel="σ: within-group std. dev.", label=""
 )
-res   = parallel_run(ns, rng, ntours = ts.ntours)
-plots = diagnostics(ns, res)
-hl    = ceil(Int, length(plots)/2)
-pdiags=plot(
-    plots..., layout = (hl,2), size = (900,hl*333),left_margin = 40px,
-    right_margin = 40px
-)
-
-# Λ=5.27

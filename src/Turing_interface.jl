@@ -67,29 +67,18 @@ function Vref(tm::TuringTemperedModel, x)
     return pot
 end
 
-# evaluate target potential *AND* log(det(jacobian))
-# Note: logdetjac is about transforming the prior volume so should really be
-# passed with the prior context and not here. IOW, if model had no data,
-# there would be no point for calling LikelihoodContext, but then I would miss
-# the logdetjac portion. IOW, prior \noteq posterior even if likelihood==1
-# Note: this is double the cost of getting the logjoint
-# without LikelihoodContext() and with LikelihoodContext()
-# 5.506 μs (11 allocations: 608 bytes)
-# 9.047 μs (88 allocations: 10.73 KiB)
-# obviosuly we need LikelihoodContext() so wtf the difference in allocs
+# evaluate target potential
 function V(tm::TuringTemperedModel, x)
-    vi  = tm.viout # this helps with the re-binding+Boxing issue: https://invenia.github.io/blog/2019/10/30/julialang-features-part-1/#an-aside-on-boxing
+    vi  = tm.viout                                 # this helps with the re-binding+Boxing issue: https://invenia.github.io/blog/2019/10/30/julialang-features-part-1/#an-aside-on-boxing
     vi  = DPPL.setindex!!(vi, x, tm.spl)
+    DPPL.invlink!(vi, tm.spl)                      # this is to avoid getting the logabsdetjac, which is already in the Vref
     vi  = last(
-        DPPL.evaluate_threadunsafe!!(           # we copy vi when doing stuff in parallel so it's ok
-            tm.model, vi, DPPL.SamplingContext(
-                Random.RandomDevice(),          # state of rng is not modified so it doesnt matter which we use and this is lightweight
-                tm.spl,
-                DPPL.LikelihoodContext()
-            )
+        DPPL.evaluate_threadunsafe!!(              # we copy vi when doing stuff in parallel so it's ok
+            tm.model, vi, DPPL.LikelihoodContext()
         )
     )
     pot = -DPPL.getlogp(vi)
+    DPPL.link!(vi, tm.spl)                         # undo the invlink
     return pot
 end
 

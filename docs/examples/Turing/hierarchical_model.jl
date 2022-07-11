@@ -48,8 +48,8 @@ model = HierarchicalModel(Y)
 # - tunes it
 # - runs tours in parallel
 # - shows diagnostics
-rng = SplittableRandom(0x0123456789abcdfe)
-ns, ts= NRSTSampler(model, rng, N = 12, verbose = true)
+rng   = SplittableRandom(0x0123456789abcdfe)
+ns, ts= NRSTSampler(model, rng, N = 10, verbose = true)
 res   = parallel_run(ns, rng, ntours = ts.ntours)
 plots = diagnostics(ns, res)
 hl    = ceil(Int, length(plots)/2)
