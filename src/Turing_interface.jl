@@ -52,15 +52,11 @@ end
 
 # evaluate reference potential
 function Vref(tm::TuringTemperedModel, x)
-    vi  = tm.viout # this helps with the re-binding+Boxing issue: https://invenia.github.io/blog/2019/10/30/julialang-features-part-1/#an-aside-on-boxing
+    vi  = tm.viout                            # this helps with the re-binding+Boxing issue: https://invenia.github.io/blog/2019/10/30/julialang-features-part-1/#an-aside-on-boxing
     vi  = DPPL.setindex!!(vi, x, tm.spl)
     vi  = last(
-        DPPL.evaluate_threadunsafe!!(           # we copy vi when doing stuff in parallel so it's ok
-            tm.model, vi, DPPL.SamplingContext(
-                Random.RandomDevice(),          # state of rng is not modified so it doesnt matter which we use and this is lightweight
-                tm.spl,
-                DPPL.PriorContext()
-            )
+        DPPL.evaluate_threadunsafe!!(         # we copy vi when doing stuff in parallel so it's ok
+            tm.model, vi, DPPL.PriorContext()
         )
     )
     pot = -DPPL.getlogp(vi)
