@@ -1,8 +1,17 @@
 module ExamplesGallery
 
+using DelimitedFiles: readdlm
+using Distributions
+using DynamicPPL
+using IrrationalConstants: twoπ, log2π
+using Lattices: Square, edges
 using UnPack: @unpack
-import ..NRST: TemperedModel, V, Vref
+import ..NRST: NRST, TemperedModel, TuringTemperedModel, V, Vref
 import Base: rand
+
+# Turing
+include("Turing/hierarchical_model.jl")
+export HierarchicalModel
 
 # Physics
 include("Physics/XY_model.jl")

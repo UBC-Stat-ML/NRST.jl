@@ -1,6 +1,3 @@
-using Lattices: Square, edges
-using IrrationalConstants: twoπ, log2π
-
 abstract type LatticeTemperedModel <: TemperedModel end
 
 struct XYModel{TF<:AbstractFloat, TSq<:Square, TI<:Int} <: LatticeTemperedModel

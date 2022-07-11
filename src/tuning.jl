@@ -26,9 +26,9 @@ function tune!(
     #    - above, each explorer produces nsteps samples
     #    - here, every tour each explorer runs twice on average
     #      => ntours=nsteps/(2mean(nexpls)) gives same comp cost on avg
-    #    - double it to be safe
+    #    - increase by 50% to be safe: 1/2 * 3/2 = 3/4 = .75 factor in front
     # 2) heuristic for when nexpls→∞, where 1) fails
-    ntours_f = max(nsteps/mean(ns.np.nexpls), 150*nsteps^(1/4))
+    ntours_f = max(0.75*nsteps/mean(ns.np.nexpls), 150*nsteps^(1/4))
     ntours   = max(min_ntours, min(2nsteps, ceil(Int, ntours_f)))
     if do_stage_2
         verbose && println(
