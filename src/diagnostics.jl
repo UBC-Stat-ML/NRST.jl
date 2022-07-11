@@ -82,10 +82,6 @@ function diagnostics(ns::NRSTSampler, res::TouringRunResults)
         density!(pdens, res.trVs[i], color = colorgrad[i], label="")
     end
 
-    # ESS versus computational cost
-    # compares serial v. parallel NRST and against idealizations of the index process
-    pcs = plot_ess_time(res, Λs[end])
-
     # ESS/ntours versus toureff for a bounded function
     # note: TE bound is for true ESS and true TE. Sample estimates might not work. 
     # use logistic(Z(V)) where Z is standardization using median
@@ -111,7 +107,7 @@ function diagnostics(ns::NRSTSampler, res::TouringRunResults)
     # plot_trace_iproc(res)
     return (
         occ=pocc, rrs=prrs, expap=pexpap, nexpl=pnexpl, lam=plam, lpart=plp,
-        tourlens=ptlens, dens=pdens, esscost=pcs, esspertour=pvess
+        tourlens=ptlens, dens=pdens, esspertour=pvess
     )
 end
 
@@ -149,84 +145,6 @@ function make_log_ticks(lxs::AbstractVector{<:Real}, idealdiv::Int=5)
     divisors     = candidates[findall([width % c == 0 for c in candidates])]
     bestdiv      = divisors[argmin(abs.(divisors .- idealdiv))] # ideal div implies div+1 actual ticks  
     return tlmin:(width÷bestdiv):tlmax
-end
-
-# utility for the ess/time plot
-# NOTE: as maxcor → 0, the tours lengths become more 
-# consistent, so the NRST-par curve in the ESS/cost plot converges to the
-# one for MC-par!
-function plot_ess_time(res::TouringRunResults, Λ::AbstractFloat)
-    N      = get_N(res)
-    ntours = get_ntours(res)
-    labels = String[]
-    xs     = Vector{typeof(Λ)}[]
-    ys     = Vector{typeof(Λ)}[]
-
-    # NRST
-    tourls = tourlengths(res) 
-    cuESS  = res.toureff[end]*(1:ntours)
-    push!(xs, log10.(cumsum(tourls)))          # serial
-    push!(ys, log10.(cuESS))
-    push!(labels, "NRST-ser")
-    push!(xs, log10.(accumulate(max, tourls))) # parallel
-    push!(ys, log10.(cuESS))
-    push!(labels, "NRST-par")
-    
-    # BouncyPDMP
-    tourls, vNs  = run_tours!(BouncyPDMP(Λ), ntours)
-    TE           = (sum(vNs) ^ 2) / (ntours*sum(abs2, vNs))
-    cuESS        = TE*(1:ntours)
-    scale_tourls = N*tourls .+ 2.           # the shortest tour has n(0)=2 and the perfect roundtrip has n(2)=2N+2
-    push!(xs, log10.(cumsum(scale_tourls)))
-    push!(ys, log10.(cuESS))
-    push!(labels, "IdCTSer")
-    push!(xs, log10.(accumulate(max, scale_tourls)))
-    push!(ys, log10.(cuESS))
-    push!(labels, "IdCTPar")
-
-    # BouncyMC: perfect tuning
-    tourls, vNs = run_tours!(BouncyMC(Λ/N,N), ntours)
-    TE = (sum(vNs) ^ 2) / (ntours*sum(abs2, vNs))
-    cuESS = TE*(1:ntours)
-    push!(xs, log10.(cumsum(tourls)))
-    push!(ys, log10.(cuESS))
-    push!(labels, "IdDTPerfSer")
-    push!(xs, log10.(accumulate(max, tourls)))
-    push!(ys, log10.(cuESS))
-    push!(labels, "IdDTPerfPar")
-
-    # BouncyMC: same tuning as NRST
-    R = res.rpacc ./ res.visits
-    tourls, vNs = run_tours!(BouncyMC(R), ntours)
-    TE = (sum(vNs) ^ 2) / (ntours*sum(abs2, vNs))
-    cuESS = TE*(1:ntours)
-    push!(xs, log10.(cumsum(tourls)))
-    push!(ys, log10.(cuESS))
-    push!(labels, "IdDTActSer")
-    push!(xs, log10.(accumulate(max, tourls)))
-    push!(ys, log10.(cuESS))
-    push!(labels, "IdDTActPar")
-
-    # plot
-    xlticks = make_log_ticks(collect(Base.Flatten([extrema(x) for x in xs])))
-    ylticks = make_log_ticks(collect(Base.Flatten([extrema(y) for y in ys])))
-    pcs     = plot(
-        xlabel = "Computational time",
-        ylabel = "ESS bound @ cold level",# palette = DEF_PAL, 
-        legend = :bottomright,
-        xticks = (xlticks, ["10^{$e}" for e in xlticks]),
-        yticks = (ylticks, ["10^{$e}" for e in ylticks])
-    )
-    for (i,l) in enumerate(labels)
-        c = (i-1)÷2
-        s = i-2c
-        plot!(
-            pcs, xs[i], ys[i], label = l,# linewidth=2,
-            linecolor = okabe_ito[c+1],
-            linestyle = s==1 ? :dash : :solid
-        )
-    end
-    return pcs
 end
 
 # function to create a plot of the trace of the (1st comp) of the index process
