@@ -58,7 +58,6 @@ include("tuning.jl")
 include("diagnostics.jl")
 
 # sub-modules
-include("IdealIndexProcesses/IdealIndexProcesses.jl")
 include("ExamplesGallery/ExamplesGallery.jl")
 
 end
