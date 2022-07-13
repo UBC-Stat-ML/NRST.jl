@@ -59,6 +59,5 @@ include("diagnostics.jl")
 
 # sub-modules
 include("ExamplesGallery/ExamplesGallery.jl")
-using .ExamplesGallery
 
 end
