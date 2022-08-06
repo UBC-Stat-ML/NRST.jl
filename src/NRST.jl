@@ -57,7 +57,4 @@ include("inference.jl")
 include("tuning.jl")
 include("diagnostics.jl")
 
-# sub-modules
-include("ExamplesGallery/ExamplesGallery.jl")
-
 end
