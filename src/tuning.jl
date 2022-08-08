@@ -294,7 +294,7 @@ function get_lambda(betas::Vector{K}, R::Matrix{K}) where {K<:AbstractFloat}
     Λs      = pushfirst!(cumsum(averej), zero(K))
     Λsnorm  = Λs/Λs[end]
     f_Λnorm = interpolate(betas, Λsnorm, SteffenMonotonicInterpolation())
-    err     = maximum(abs, f_Λnorm.(betas) - Λsnorm)
+    err     = maximum(abs, map(f_Λnorm, betas) - Λsnorm) # note: using map because dot-broadcasting "f_Λnorm." is broken for interpolations 
     err > 10eps(K) && @warn "get_lambda: high interpolation error = " err
     return (f_Λnorm, Λsnorm, Λs)
 end
