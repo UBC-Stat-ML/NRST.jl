@@ -36,16 +36,12 @@ function NRSTSampler(model::DPPL.Model, args...;kwargs...)
 end
 
 #######################################
-# utilities
-#######################################
-
-#######################################
 # methods
 #######################################
 
 # sampling from the prior
 function Base.rand(tm::TuringTemperedModel, rng::AbstractRNG)
-    vi = DPPL.VarInfo(rng, tm.model, tm.spl, DPPL.PriorContext()) # avoids evaluating the likelihood
+    vi = DPPL.VarInfo(rng, tm.model, tm.spl, DPPL.PriorContext())
     DPPL.link!(vi, tm.spl)
     vi[tm.spl]
 end
