@@ -29,10 +29,11 @@ export tourlengths
 export NRSTSampler,
     run!,
     tune!,
-    run_tours!
+    run_tours!,
+    parallel_run
 
-# ParallelNRST.jl
-export parallel_run
+# NRPTSampler.jl
+export NRPTSampler
 
 # inference.jl
 export point_estimate,
@@ -51,7 +52,7 @@ include("log_partition_utils.jl")
 include("TemperedModel.jl")
 include("ExplorationKernels.jl")
 include("NRSTSampler.jl")
-include("ParallelNRST.jl")
+include("NRPTSampler.jl")
 include("Turing_interface.jl")
 include("inference.jl")
 include("tuning.jl")

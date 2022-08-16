@@ -38,7 +38,7 @@ function NRSTSampler(
     tm::TemperedModel,
     rng::AbstractRNG;
     betas            = nothing,
-    N::Int           = 3, # best to use N(Λ) = inf{n: Λ/n ≤ 0.5}
+    N::Int           = 3,
     nexpl::Int       = 50, 
     use_mean::Bool   = true,
     tune::Bool       = true,
@@ -129,7 +129,7 @@ function comm_step!(ns::NRSTSampler{T,I,K}, rng::AbstractRNG) where {T,I,K}
     else
         i      = ip[1]                          # current index
         nlaccr = (betas[iprop+1]-betas[i+1])*curV[] - (c[iprop+1]-c[i+1])
-        acc    = nlaccr < randexp(rng)          # accept? Note: U<A <=> -log(A) > -log(U) ~ Exp(1) 
+        acc    = nlaccr < randexp(rng)          # accept? Note: U<A <=> A>U <=> -log(A) < -log(U) ~ Exp(1) 
         if acc
             ip[1] = iprop                       # move
         else
@@ -232,3 +232,31 @@ function run_tours!(
     end
     return TouringRunResults(results)
 end
+
+###############################################################################
+# run NRST in parallel exploiting regenerations
+###############################################################################
+
+# multithreading method
+# note: ns itself is never used to sample so its state should be exactly the
+# same after this returns
+function parallel_run(
+    ns::TS,
+    rng::AbstractRNG;
+    ntours::Int,
+    keep_xs::Bool=true,
+    verbose::Bool=true,
+    kwargs...
+    ) where {T,TI,TF,TS<:NRSTSampler{T,TI,TF}}
+    verbose && println("\nRunning $ntours tours in parallel using $(Threads.nthreads()) threads.\n")
+    # nss  = [copy(ns) for _ in 1:ntours]                                     # get one copy of ns per task. copying is fast relative to cost of a tour, and size(ns) ~ size(ns.x) 
+    res  = [NRSTTrace(T,ns.np.N,TF,keep_xs) for _ in 1:ntours]                # get one empty trace for each task
+    rngs = [split(rng) for _ in 1:ntours]                                     # split rng into ntours copies. must be done outside of loop because split changes rng state.
+    p    = ProgressMeter.Progress(ntours; desc="Sampling: ", enabled=verbose) # prints a progress bar
+    Threads.@threads for t in 1:ntours
+        tour!(copy(ns), rngs[t], res[t]; keep_xs=keep_xs, kwargs...)          # run a tour with tasks' own sampler, rng, and trace, avoiding race conditions. note: writing to separate locations in a common vector is fine. see: https://discourse.julialang.org/t/safe-loop-with-push-multi-threading/41892/6, and e.g. https://stackoverflow.com/a/8978397/5443023
+        ProgressMeter.next!(p)
+    end
+    TouringRunResults(res)                                                    # post-process and return 
+end
+
