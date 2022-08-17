@@ -18,6 +18,7 @@ function diagnostics(ns::NRSTSampler, res::TouringRunResults)
 
     # rejection rates
     rejrates=res.rpacc ./ res.visits
+    averej  = 0.5*(rejrates[1:(end-1),1]+rejrates[2:end,2])
     prrs = plot(
         0:(N-1), rejrates[1:(end-1),1],#push!(rejrates[1:(end-1),1],NaN),
         ylims = (0., Inf), legend = :bottomright, linestyle = :dash,
@@ -29,8 +30,7 @@ function diagnostics(ns::NRSTSampler, res::TouringRunResults)
         palette=DEF_PAL, label = "Down-to", linestyle = :dash
     )
     plot!(prrs,
-        0:(N-1), 0.5*(rejrates[1:(end-1),1]+rejrates[2:end,2]),
-        palette=DEF_PAL, label = "Average"
+        0:(N-1), averej, palette=DEF_PAL, label = "Average"
     )
 
     # plot explorers acceptance probabilities and nexpls
@@ -46,7 +46,7 @@ function diagnostics(ns::NRSTSampler, res::TouringRunResults)
 
     # Lambda Plot
     betas = ns.np.betas
-    f_Λnorm, Λsnorm, Λs = NRST.get_lambda(betas, rejrates)
+    f_Λnorm, Λsnorm, Λs = NRST.get_lambda(betas, averej)
     plam = plot_lambda(β->Λs[end]*f_Λnorm(β),betas,"")
 
     # Plot of the log-partition function
