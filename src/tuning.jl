@@ -193,7 +193,8 @@ tune_c!(np::NRSTProblem, res::RunResults) = tune_c!(np, res.trVs)
 function tune_betas!(np::NRSTProblem, R::Matrix{<:Real})
     betas    = np.betas
     oldbetas = copy(betas)                       # store old betas to check convergence
-    _, _, Λs = optimize_grid!(betas, R)          # tune using the inverse of Λ(β)
+    averej   = (R[1:(end-1),1] + R[2:end,2])/2   # average up and down rejections
+    _, _, Λs = optimize_grid!(betas, averej)     # tune using the inverse of Λ(β)
     return (maximum(abs,betas-oldbetas),Λs[end]) # return max change in grid and Λ=Λ(1) to check convergence
 end
 
@@ -267,9 +268,9 @@ end
 
 # optimize the grid using the equirejection approach
 # returns estimates of Λ(β) at the grid locations
-function optimize_grid!(betas::Vector{K}, R::Matrix{K}) where {K<:AbstractFloat}
+function optimize_grid!(betas::Vector{K}, averej::Vector{K}) where {K<:AbstractFloat}
     # estimate Λ at current betas using rejections rates, normalize, and interpolate
-    f_Λnorm, Λsnorm, Λs = get_lambda(betas, R) # note: this the only place where R is used
+    f_Λnorm, Λsnorm, Λs = get_lambda(betas, averej) # note: this the only place where averej is used
 
     # find newbetas by inverting f_Λnorm with a uniform grid on the range
     N           = length(betas)-1
@@ -289,8 +290,7 @@ function optimize_grid!(betas::Vector{K}, R::Matrix{K}) where {K<:AbstractFloat}
 end
 
 # estimate Λ at current betas using rejections rates, normalize, and interpolate
-function get_lambda(betas::Vector{K}, R::Matrix{K}) where {K<:AbstractFloat}
-    averej  = (R[1:(end-1),1] + R[2:end,2])/2 # average up and down rejections
+function get_lambda(betas::Vector{K}, averej::Vector{K}) where {K<:AbstractFloat}
     Λs      = pushfirst!(cumsum(averej), zero(K))
     Λsnorm  = Λs/Λs[end]
     f_Λnorm = interpolate(betas, Λsnorm, SteffenMonotonicInterpolation())
