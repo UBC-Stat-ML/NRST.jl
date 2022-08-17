@@ -237,7 +237,7 @@ end
 # by smoothing across explorers
 function smooth_params!(xpls::Vector{<:MHSampler})
     betas     = [xpl.curβ[] for xpl in xpls] # note: this is length N
-    logσs     = [log(NRST.params(xpl)[1]) for xpl in xpls]
+    logσs     = [log(params(xpl)[1]) for xpl in xpls]
     spl       = fit(SmoothingSpline, log.(betas), logσs, 20.)
     logσspred = predict(spl)
     for (i,xpl) in enumerate(xpls)

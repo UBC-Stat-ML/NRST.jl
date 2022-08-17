@@ -4,16 +4,19 @@
 struct NRPTSampler{TS<:NRSTSampler}
     nss::Vector{TS} # vector of N+1 NRSTSamplers
 end
-function NRPTSampler(ns::NRSTSampler)
-    N   = ns.np.N
-    nss = [copy(ns) for _ in 1:(N+1)]
-    for (n, ns) in enumerate(nss)     # init samplers with identity permutation of levels 0:N
-        ns.ip[1] = n-1
+function NRPTSampler(oldns::NRSTSampler)
+    N     = oldns.np.N
+    betas = oldns.np.betas
+    nss   = [copy(oldns) for _ in 1:(N+1)]
+    for (n, ns) in enumerate(nss)
+        ns.ip[1] = n-1              # init sampler with identity permutation of levels 0:N
+        update_β!(ns.xpl, betas[n]) # set its explorer's beta to match (similar to replicate function)
     end
     NRPTSampler(nss)
 end
 get_N(nrpt::NRPTSampler) = nrpt.nss[1].np.N
 get_perm(nrpt::NRPTSampler) = [ns.ip[1] for ns in nrpt.nss]
+get_xpls(nrpt::NRPTSampler) = [ns.xpl for ns in nrpt.nss[get_perm(nrpt) .> 0]] # get only explorers with beta>0 for compatibility with code for NRSTSampler
 
 # struct for storing minimal info about an nsteps run
 struct NRPTTrace{TF<:AbstractFloat,TI<:Int}
@@ -25,7 +28,8 @@ function NRPTTrace(N::Int, nsteps::Int)
     NRPTTrace(Ref(0), Matrix{Float64}(undef, N+1, nsteps), zeros(Float64, N))
 end
 Base.size(tr::NRPTTrace) = size(tr.Vs)
-
+averej(tr::NRPTTrace) = tr.rpsum/(tr.n[]/2) # compute average rejection, using that DEO uses each swap half the time
+mat2vecs
 # inhomogeneous NRPT step(n) = expl ∘ deo(n)
 function step!(nrpt::NRPTSampler, rng::AbstractRNG, tr::NRPTTrace)
     deo_step!(nrpt, rng, tr)
