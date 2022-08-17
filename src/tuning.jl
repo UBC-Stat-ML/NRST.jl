@@ -7,12 +7,17 @@ function tune!(
     ns::NRSTSampler,
     rng::AbstractRNG;
     min_ntours::Int  = 2_048,
+    stage_1::String  = "NRPT",
     do_stage_2::Bool = true,
     verbose::Bool    = true,
     kwargs...
     )
-    ens   = replicate(ns.xpl, ns.np.betas)                    # create a vector of explorers, fully independent of ns and its own explorer
-    nsteps = tune!(ns.np, ens, rng;verbose=verbose,kwargs...) # stage I: bootstrap tuning using only independent runs of explorers
+    if stage_1 == "NRPT"
+        ens = NRPTSampler(ns)                                 # PT sampler, whose state is fully independent of ns
+    else
+        ens = replicate(ns.xpl, ns.np.betas)                  # create a vector of explorers, whose states are fully independent of ns and its own explorer
+    end
+    nsteps = tune!(ns.np, ens, rng;verbose=verbose,kwargs...) # stage I: bootstrap with the help of the ensemble
 
     #################################################################
     # Stage II: final c tuning using parallel runs of NRST tours
@@ -80,10 +85,14 @@ function tune!(
         oldcone  = np.c[end]
         relΔΛ    = abs(Λ - oldΛ) / abs(oldΛ)
         oldΛ     = Λ
-        verbose && @printf( # the following line cannot be cut with concat ("*") because @printf only accepts string literals
+        if verbose 
+            @printf( # the following line cannot be cut with concat ("*") because @printf only accepts string literals
             "done!\n\t\tAR std/mean=%.3f\n\t\tmax(Δbetas)=%.3f\n\t\tc(1)=%.2f (relΔ=%.2f%%)\n\t\tΛ=%.2f (relΔ=%.1f%%)\n\t\tElapsed: %.1fs\n\n", 
             ar_ratio, Δβs, np.c[end], 100*relΔcone, Λ, 100*relΔΛ, res.time
-        ); show(plot_grid(np.betas, title="Histogram of βs: round $rnd")); println("\n")
+            )
+            show(plot_grid(np.betas, title="Histogram of βs: round $rnd"))
+            println("\n")
+        end
 
         # check convergence
         conv = !isnan(relΔcone) && (relΔcone<max_relΔcone) && 
@@ -101,9 +110,7 @@ function tune!(
     tune_explorers!(ens, rng, verbose = false)
     store_params!(np, ens) # need to store tuned params in np for later use with ns.xpl
     verbose && print("done!\n\tTuning c and nexpls using $nsteps steps per explorer...")
-    res  = @timed tune_c!(np, ens, rng, nsteps)
-    trVs = res.value
-    tune_nexpls!(np.nexpls, trVs, maxcor)
+    res = @timed tune_c_nexpls!(np, ens, rng, nsteps, maxcor)
     verbose && @printf("done!\n\t\tElapsed: %.1fs\n\n", res.time)
     verbose && show(lineplot_term(
         np.betas[2:end], np.nexpls, xlabel = "β",
@@ -152,6 +159,9 @@ function store_params!(np::NRSTProblem, xpls::Vector{<:ExplorationKernel})
     end
 end
 
+# method for NRPTSampler
+store_params!(np::NRSTProblem, nrpt::NRPTSampler)=store_params!(np, get_xpls(nrpt))
+
 #######################################
 # utilities for jointly tuning c and grid
 #######################################
@@ -173,14 +183,8 @@ function tune_c_betas!(
 end
 
 # method for NRPTSampler
-function tune_c_betas!(
-    np::NRSTProblem,
-    nrpt::NRPTSampler,
-    rng::AbstractRNG,
-    nsteps::Int
-    )
-    tr  = run!(nrpt, rng, nsteps)
-    tune_c!(np, [tr.Vs[i, :] for i in 1:size(tr.Vs, 1)]) # need to convert matrix to vector of vectors
+function tune_c_betas!(np::NRSTProblem, nrpt::NRPTSampler, args...)
+    tr  = tune_c!(np, nrpt, args...)
     ar  = averej(tr)
     out = tune_betas!(np, ar)
     (out..., ar)
@@ -207,6 +211,13 @@ function tune_c!(
     trVs = collectVs(np, xpls, rng, nsteps)
     tune_c!(np, trVs)
     return trVs
+end
+
+# method for NRPTSampler
+function tune_c!(np::NRSTProblem,nrpt::NRPTSampler,rng::AbstractRNG,nsteps::Int)
+    tr = run!(nrpt, rng, nsteps)
+    tune_c!(np, rows2vov(tr.Vs))  # need to convert matrix to vector of vectors
+    return tr
 end
 
 # method for proper runs of NRST
@@ -360,6 +371,33 @@ function tune_nexpls!(
             nexpls[i] = ceil(TI, exp(lognxspred[i]))
         end
     end
+end
+
+# jointly tune c and nexpls: makes sense because both need samples form V
+# method for ensemble of iid explorers
+function tune_c_nexpls!(
+    np::NRSTProblem,
+    xpls::Vector{<:ExplorationKernel},
+    rng::AbstractRNG,
+    nsteps::Int,
+    maxcor::AbstractFloat
+    )
+    tune_nexpls!(np.nexpls, tune_c!(np, xpls, rng, nsteps), maxcor)
+end
+
+# method for NRPT: use NRPT for tuning c (higher quality), and then extract
+# explorers and run the method above for tuning nexpls. This is needed because
+# NRPT traces are "contaminated" with swaps.
+function tune_c_nexpls!(
+    np::NRSTProblem,
+    nrpt::NRPTSampler,
+    rng::AbstractRNG,
+    nsteps::Int,
+    maxcor::AbstractFloat
+    )
+    _    = tune_c!(np, nrpt, rng, nsteps)
+    trVs = collectVs(np, get_xpls(nrpt), rng, 4*nsteps) # times 4 because nsteps corresponds to NRPT steps, which are much more accurate
+    tune_nexpls!(np.nexpls, trVs, maxcor)
 end
 
 #######################################

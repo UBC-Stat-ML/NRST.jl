@@ -28,7 +28,8 @@ function NRPTTrace(N::Int, nsteps::Int)
     NRPTTrace(Ref(0), Matrix{Float64}(undef, N+1, nsteps), zeros(Float64, N))
 end
 Base.size(tr::NRPTTrace) = size(tr.Vs)
-averej(tr::NRPTTrace) = tr.rpsum/(tr.n[]/2) # compute average rejection, using that DEO uses each swap half the time
+averej(tr::NRPTTrace) = tr.rpsum/(tr.n[]/2)                   # compute average rejection, using that DEO uses each swap half the time
+rows2vov(M::AbstractMatrix) = [M[i, :] for i in 1:size(M, 1)] # used for converting the tr.Vs matrix to vector of (row) vectors
 
 # inhomogeneous NRPT step(n) = expl ∘ deo(n)
 function step!(nrpt::NRPTSampler, rng::AbstractRNG, tr::NRPTTrace)
@@ -39,8 +40,10 @@ end
 
 # store in trace
 function store_results!(nrpt::NRPTSampler, tr::NRPTTrace)
-    for (i, ns) in enumerate(nrpt.nss)
-        tr.Vs[i, tr.n[]] = ns.curV[]
+    # copy the i-th machine's V to the l(i)+1 position in storage, where l(i)
+    # is the level the i-th machine is currently in charge of 
+    for (i, l) in enumerate(get_perm(nrpt))
+        tr.Vs[l+1, tr.n[]] = nrpt.nss[i].curV[]
     end
 end
 

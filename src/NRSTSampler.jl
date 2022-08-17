@@ -42,7 +42,6 @@ function NRSTSampler(
     nexpl::Int       = 50, 
     use_mean::Bool   = true,
     tune::Bool       = true,
-    verbose::Bool    = false,
     kwargs...
     )
     if isnothing(betas)
@@ -60,7 +59,7 @@ function NRSTSampler(
     ip = MVector(zero(N), one(N))
     ns = NRSTSampler(np, xpl, x, ip, curV)                      # instantiate the NRSTSampler
     if tune
-        tunestats = tune!(ns, rng; verbose = verbose,kwargs...) # tune explorers, c, and betas
+        tunestats = tune!(ns, rng; kwargs...) # tune explorers, c, and betas
     else
         tunestats = NamedTuple()
     end
