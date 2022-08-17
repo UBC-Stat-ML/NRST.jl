@@ -11,8 +11,8 @@ function tune!(
     verbose::Bool    = true,
     kwargs...
     )
-    xpls   = replicate(ns.xpl, ns.np.betas)                    # create a vector of explorers, fully independent of ns and its own explorer
-    nsteps = tune!(ns.np, xpls, rng;verbose=verbose,kwargs...) # stage I: bootstrap tuning using only independent runs of explorers
+    ens   = replicate(ns.xpl, ns.np.betas)                    # create a vector of explorers, fully independent of ns and its own explorer
+    nsteps = tune!(ns.np, ens, rng;verbose=verbose,kwargs...) # stage I: bootstrap tuning using only independent runs of explorers
 
     #################################################################
     # Stage II: final c tuning using parallel runs of NRST tours
@@ -43,7 +43,7 @@ end
 # stage I tuning: bootstrap independent runs of explorers
 function tune!(
     np::NRSTProblem{T,K},
-    xpls,                                     # Either a ::Vector{<:ExplorationKernel} or ::NRPTSampler
+    ens,                                      # ensemble of exploration kernels: either Vector{<:ExplorationKernel} (indep sampling) or NRPTSampler
     rng::AbstractRNG;
     max_s1_rounds::Int = 19,
     max_ar_ratio::Real = 0.075,               # limit on std(ar)/mean(ar), ar: average of up/down rejection prob
@@ -68,12 +68,12 @@ function tune!(
         rnd += 1
         nsteps = min(max_nsteps,2nsteps)
         verbose && print("Round $rnd:\n\tTuning explorers...")
-        tune_explorers!(xpls, rng, verbose = false)
+        tune_explorers!(ens, rng, verbose = false)
         verbose && println("done!")
         
         # tune c and betas
         verbose && print("\tTuning c and grid using $nsteps steps per explorer...")
-        res      = @timed tune_c_betas!(np, xpls, rng, nsteps)
+        res      = @timed tune_c_betas!(np, ens, rng, nsteps)
         Δβs,Λ,ar = res.value # note: average rejections are before grid adjustment, so they are technically stale, but are still useful to assess convergence. compute std dev of average of up and down rejs
         ar_ratio = std(ar)/mean(ar)
         relΔcone = abs(np.c[end] - oldcone) / abs(oldcone)
@@ -98,10 +98,10 @@ function tune!(
         "\n\nFinal round of stage I: adjusting settings to new grid...\n" *
         "\tTuning explorers..."
     )
-    tune_explorers!(xpls, rng, verbose = false)
-    store_params!(np, xpls) # need to store tuned params in np for later use with ns.xpl
+    tune_explorers!(ens, rng, verbose = false)
+    store_params!(np, ens) # need to store tuned params in np for later use with ns.xpl
     verbose && print("done!\n\tTuning c and nexpls using $nsteps steps per explorer...")
-    res  = @timed tune_c!(np, xpls, rng, nsteps)
+    res  = @timed tune_c!(np, ens, rng, nsteps)
     trVs = res.value
     tune_nexpls!(np.nexpls, trVs, maxcor)
     verbose && @printf("done!\n\t\tElapsed: %.1fs\n\n", res.time)
@@ -169,7 +169,7 @@ function tune_c_betas!(
     R    = est_rej_probs(trVs, np.betas, np.c) # compute average rejection probabilities
     ar   = (R[1:(end-1),1] + R[2:end,2])/2 
     out  = tune_betas!(np, ar)
-    (out..., R)
+    (out..., ar)
 end
 
 # method for NRPTSampler
@@ -179,12 +179,11 @@ function tune_c_betas!(
     rng::AbstractRNG,
     nsteps::Int
     )
-    tr   = run!(nrpt, rng, nsteps)
-    trVs = [tr.Vs[i, :] for i in 1:size(tr.Vs, 1)]
-    tune_c!(np, trVs)
-    ar   = averej(tr)
-    out  = tune_betas!(np, ar)
-    (out..., R)
+    tr  = run!(nrpt, rng, nsteps)
+    tune_c!(np, [tr.Vs[i, :] for i in 1:size(tr.Vs, 1)]) # need to convert matrix to vector of vectors
+    ar  = averej(tr)
+    out = tune_betas!(np, ar)
+    (out..., ar)
 end
 
 #######################################

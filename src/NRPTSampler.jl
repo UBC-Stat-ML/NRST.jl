@@ -29,7 +29,7 @@ function NRPTTrace(N::Int, nsteps::Int)
 end
 Base.size(tr::NRPTTrace) = size(tr.Vs)
 averej(tr::NRPTTrace) = tr.rpsum/(tr.n[]/2) # compute average rejection, using that DEO uses each swap half the time
-mat2vecs
+
 # inhomogeneous NRPT step(n) = expl ∘ deo(n)
 function step!(nrpt::NRPTSampler, rng::AbstractRNG, tr::NRPTTrace)
     deo_step!(nrpt, rng, tr)
