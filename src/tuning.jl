@@ -19,12 +19,14 @@ function tune!(
     end
     nsteps = tune!(ns.np, ens, rng;verbose=verbose,kwargs...) # stage I: bootstrap with the help of the ensemble
 
-    # Stage II: final c tuning using parallel runs of NRST tours
-    # Note: only needed if not using NRPT in the first part.
-    # This is desirable particularly for difficult targets, where independent
-    # exploration can become stuck. In contrast, true NRST sampling is less prone
-    # to getting stuck due to the renewal property.
-    if stage_1 != "NRPT" && do_stage_2
+    # Stage II: use the pre-tuned NRST to improve tuning
+    if stage_1 == "NRPT" && do_stage_2
+        ntours = 2*nsteps
+        verbose && println("\nStage II: tuning grid using $ntours NRST tours and then correcting c using NRPT runs.\n")
+        res = parallel_run(ns, rng; ntours = ntours, keep_xs = false)
+        _   = tune_betas!(ns, res)
+        tune_c!(ns.np, ens, rng, ntours)
+    elseif stage_1 != "NRPT" && do_stage_2
         # two heuristics for determining appropriate number of tours, choose max of both:
         # 1) rationale:
         #    - above, each explorer produces nsteps samples
@@ -34,9 +36,7 @@ function tune!(
         # 2) heuristic for when nexpls→∞, where 1) fails
         ntours_f = max(0.75*nsteps/mean(ns.np.nexpls), 150*nsteps^(1/4))
         ntours   = max(min_ntours, min(2nsteps, ceil(Int, ntours_f)))
-        verbose && println(
-            "\nStage II: tune c(β) using $ntours NRST tours.\n"
-        )
+        verbose && println("\nStage II: tune c(β) using $ntours NRST tours.\n")
         tune_c!(ns.np, parallel_run(ns, rng; ntours = ntours, keep_xs = false))
     end
     println("\nTuning completed.\n")
@@ -48,7 +48,7 @@ function tune!(
     ens,                                      # ensemble of exploration kernels: either Vector{<:ExplorationKernel} (indep sampling) or NRPTSampler
     rng::AbstractRNG;
     max_s1_rounds::Int = 19,
-    max_ar_ratio::Real = 0.075,               # limit on std(ar)/mean(ar), ar: average of up/down rejection prob
+    max_ar_ratio::Real = 0.05,                # limit on std(ar)/mean(ar), ar: average of up/down rejection prob
     max_Δβs::Real      = max(.01, np.N^(-2)), # limit on max change in grid
     max_relΔcone::Real = 0.003,               # limit on rel change in c(1)
     max_relΔΛ::Real    = 0.02,                # limit on rel change in Λ = Λ(1)
@@ -76,7 +76,7 @@ function tune!(
         rnd += 1
         nsteps = min(max_nsteps,2nsteps)
         verbose && print("Round $rnd:\n\tTuning explorers...")
-        tune_explorers!(ens, rng, verbose = false)
+        tune_explorers!(np, ens, rng, verbose = false)
         verbose && println("done!")
         
         # tune c and betas
@@ -111,7 +111,7 @@ function tune!(
         "\n\nAdjusting settings to new grid...\n" *
         "\tTuning explorers..."
     )
-    tune_explorers!(ens, rng, verbose = false)
+    tune_explorers!(np, ens, rng, verbose = false)
     store_params!(np, ens) # need to store tuned params in np for later use with ns.xpl
     verbose && print("done!\n\tTuning c and nexpls using $nsteps steps...")
     res = @timed tune_c_nexpls!(np, ens, rng, nsteps, maxcor)
@@ -136,6 +136,7 @@ end
 
 # tune the explorers' parameters
 function tune_explorers!(
+    np::NRSTProblem,
     xpls::Vector{<:ExplorationKernel},
     rng::AbstractRNG;
     smooth=true,
@@ -144,16 +145,17 @@ function tune_explorers!(
     N    = length(xpls)
     rngs = [split(rng) for _ in 1:N]
     Threads.@threads for i in 1:N
-        tune!(xpls[i],rngs[i];kwargs...)
+        update_β!(xpls[i], np.betas[i+1]) # needed because most likely the grid was updated 
+        tune!(xpls[i], rngs[i];kwargs...)
     end
     smooth && smooth_params!(xpls)
 end
 
 # method for NRPTSampler
-function tune_explorers!(nrpt::NRPTSampler, args...;kwargs...)
+function tune_explorers!(np::NRSTProblem, nrpt::NRPTSampler, args...;kwargs...)
     xpls = get_xpls(nrpt)
-    tune_explorers!(xpls,args...;kwargs...)
-    store_params!(nrpt.nss[1].np, xpls)     # need to immediately store them if we want to 
+    tune_explorers!(np, xpls, args...;kwargs...)
+    store_params!(np, xpls)                      # need to immediately store them because they are overwritten in next call to expl_step(nrpt)
 end
 
 # transfer params from xpls to np for later use 
@@ -244,7 +246,7 @@ end
 function tune_betas!(ns::NRSTSampler, res::RunResults)
     R  = res.rpacc ./ res.visits
     ar = (R[1:(end-1),1] + R[2:end,2])/2 
-    tune_betas!(ns, ar)
+    tune_betas!(ns.np, ar)
 end
 
 # collect samples of V(x) at each of the levels, running explorers independently
@@ -336,7 +338,7 @@ end
 function gen_lambda_fun(betas::Vector{K}, averej::Vector{K}) where {K<:AbstractFloat}
     Λs      = get_lambdas(averej)
     Λsnorm  = Λs/Λs[end]
-    f_Λnorm = interpolate(betas, Λsnorm, SteffenMonotonicInterpolation())
+    f_Λnorm = interpolate(betas, Λsnorm, FritschButlandMonotonicInterpolation()) # more natural fit than SteffenMonotonicInterpolation
     err     = maximum(abs, map(f_Λnorm, betas) - Λsnorm)
     err > 10eps(K) && @warn "gen_lambda_fun: high interpolation error = " err
     return (f_Λnorm, Λsnorm, Λs)
@@ -405,7 +407,7 @@ function tune_c_nexpls!(
     maxcor::AbstractFloat
     )
     _    = tune_c!(np, nrpt, rng, nsteps)
-    trVs = collectVs(np, get_xpls(nrpt), rng, 4*nsteps) # times 4 because nsteps corresponds to NRPT steps, which are much more accurate
+    trVs = collectVs(np, get_xpls(nrpt), rng, np.nexpls[1]*nsteps) # make equivalent effort to an NRPT step
     tune_nexpls!(np.nexpls, trVs, maxcor)
 end
 
