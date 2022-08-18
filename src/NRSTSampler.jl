@@ -58,12 +58,8 @@ function NRSTSampler(
     ) 
     ip = MVector(zero(N), one(N))
     ns = NRSTSampler(np, xpl, x, ip, curV)                      # instantiate the NRSTSampler
-    if tune
-        tunestats = tune!(ns, rng; kwargs...) # tune explorers, c, and betas
-    else
-        tunestats = NamedTuple()
-    end
-    return ns, tunestats
+    tune && tune!(ns, rng; kwargs...)                           # tune explorers, c, and betas
+    return ns
 end
 
 # grid initialization

@@ -19,30 +19,27 @@ function tune!(
     end
     nsteps = tune!(ns.np, ens, rng;verbose=verbose,kwargs...) # stage I: bootstrap with the help of the ensemble
 
-    #################################################################
     # Stage II: final c tuning using parallel runs of NRST tours
-    # Note: this is desirable particularly in multimodal settings, where independent
-    # exploration can be stuck in one mode. In contrast, true NRST sampling is not bound
-    # to get stuck in single modes due to the renewal property.
-    #################################################################
-    
-    # two heuristics, choose max of both:
-    # 1) rationale:
-    #    - above, each explorer produces nsteps samples
-    #    - here, every tour each explorer runs twice on average
-    #      => ntours=nsteps/(2mean(nexpls)) gives same comp cost on avg
-    #    - increase by 50% to be safe: 1/2 * 3/2 = 3/4 = .75 factor in front
-    # 2) heuristic for when nexpls→∞, where 1) fails
-    ntours_f = max(0.75*nsteps/mean(ns.np.nexpls), 150*nsteps^(1/4))
-    ntours   = max(min_ntours, min(2nsteps, ceil(Int, ntours_f)))
-    if do_stage_2
+    # Note: only needed if not using NRPT in the first part.
+    # This is desirable particularly for difficult targets, where independent
+    # exploration can become stuck. In contrast, true NRST sampling is less prone
+    # to getting stuck due to the renewal property.
+    if stage_1 != "NRPT" && do_stage_2
+        # two heuristics for determining appropriate number of tours, choose max of both:
+        # 1) rationale:
+        #    - above, each explorer produces nsteps samples
+        #    - here, every tour each explorer runs twice on average
+        #      => ntours=nsteps/(2mean(nexpls)) gives same comp cost on avg
+        #    - increase by 50% to be safe: 1/2 * 3/2 = 3/4 = .75 factor in front
+        # 2) heuristic for when nexpls→∞, where 1) fails
+        ntours_f = max(0.75*nsteps/mean(ns.np.nexpls), 150*nsteps^(1/4))
+        ntours   = max(min_ntours, min(2nsteps, ceil(Int, ntours_f)))
         verbose && println(
             "\nStage II: tune c(β) using $ntours NRST tours.\n"
         )
         tune_c!(ns.np, parallel_run(ns, rng; ntours = ntours, keep_xs = false))
     end
     println("\nTuning completed.\n")
-    return (nsteps=nsteps, ntours=ntours)
 end
 
 # stage I tuning: bootstrap independent runs of explorers
@@ -60,11 +57,17 @@ function tune!(
     maxcor::Real       = 0.8,
     verbose::Bool      = true
     ) where {T,K}
-    verbose && println("Tuning started ($(Threads.nthreads()) threads).\n")
-
-    verbose && println(
-        "Stage I: Bootstrapping the sampler using independent runs from the explorers.\n"
-    ); show(plot_grid(np.betas, title="Histogram of βs: initial grid")); println("\n")
+    if verbose
+        println(
+            "Tuning started ($(Threads.nthreads()) threads).\n\n" *
+            "Bootstrapping NRST using " *
+            (isa(ens, NRPTSampler) ? 
+            "NRPT.\n" : 
+            "independent runs from the explorers.\n")
+        )
+        show(plot_grid(np.betas, title="Histogram of βs: initial grid"))
+        println("\n")
+    end
     rnd     = 0
     nsteps  = nsteps_init÷2                  # nsteps is doubled at the beginning of the loop
     oldcone = relΔcone = oldΛ = relΔΛ = NaN
@@ -99,25 +102,26 @@ function tune!(
             !isnan(relΔΛ) && (relΔΛ < max_relΔΛ) && (Δβs<max_Δβs) &&
             (ar_ratio < max_ar_ratio)
     end
+
     # at this point, ns has a fresh new grid, so explorers params, c, and  
     # nexpls are stale => we need to tune them
     verbose && print(
         (conv ? "Grid converged!" :
                 "max_rounds=$max_s1_rounds reached.") *
-        "\n\nFinal round of stage I: adjusting settings to new grid...\n" *
+        "\n\nAdjusting settings to new grid...\n" *
         "\tTuning explorers..."
     )
     tune_explorers!(ens, rng, verbose = false)
     store_params!(np, ens) # need to store tuned params in np for later use with ns.xpl
-    verbose && print("done!\n\tTuning c and nexpls using $nsteps steps per explorer...")
+    verbose && print("done!\n\tTuning c and nexpls using $nsteps steps...")
     res = @timed tune_c_nexpls!(np, ens, rng, nsteps, maxcor)
     verbose && @printf("done!\n\t\tElapsed: %.1fs\n\n", res.time)
     verbose && show(lineplot_term(
         np.betas[2:end], np.nexpls, xlabel = "β",
         title="Exploration steps needed to get correlation ≤ $maxcor"
     )); println("\n")
-    # after these steps, NRST is coherently tuned and can be used to sample
 
+    # after these steps, NRST is coherently tuned and can be used to sample
     return nsteps
 end
 
@@ -309,7 +313,7 @@ end
 # returns estimates of Λ(β) at the grid locations
 function optimize_grid!(betas::Vector{K}, averej::Vector{K}) where {K<:AbstractFloat}
     # estimate Λ at current betas using rejections rates, normalize, and interpolate
-    f_Λnorm, Λsnorm, Λs = get_lambda(betas, averej) # note: this the only place where averej is used
+    f_Λnorm, Λsnorm, Λs = gen_lambda_fun(betas, averej) # note: this the only place where averej is used
 
     # find newbetas by inverting f_Λnorm with a uniform grid on the range
     N           = length(betas)-1
@@ -328,14 +332,19 @@ function optimize_grid!(betas::Vector{K}, averej::Vector{K}) where {K<:AbstractF
     return (f_Λnorm, Λsnorm, Λs)
 end
 
-# estimate Λ at current betas using rejections rates, normalize, and interpolate
-function get_lambda(betas::Vector{K}, averej::Vector{K}) where {K<:AbstractFloat}
-    Λs      = pushfirst!(cumsum(averej), zero(K))
+# estimate Λ, normalize, and interpolate
+function gen_lambda_fun(betas::Vector{K}, averej::Vector{K}) where {K<:AbstractFloat}
+    Λs      = get_lambdas(averej)
     Λsnorm  = Λs/Λs[end]
     f_Λnorm = interpolate(betas, Λsnorm, SteffenMonotonicInterpolation())
-    err     = maximum(abs, map(f_Λnorm, betas) - Λsnorm) # note: using map because dot-broadcasting "f_Λnorm." is broken for interpolations 
-    err > 10eps(K) && @warn "get_lambda: high interpolation error = " err
+    err     = maximum(abs, map(f_Λnorm, betas) - Λsnorm)
+    err > 10eps(K) && @warn "gen_lambda_fun: high interpolation error = " err
     return (f_Λnorm, Λsnorm, Λs)
+end
+
+# estimate Λs at current betas using rejections rates
+function get_lambdas(averej::Vector{K}) where {K<:AbstractFloat}
+    pushfirst!(cumsum(averej), zero(K))
 end
 
 # tune nexpls by imposing a threshold on autocorrelation
@@ -405,11 +414,7 @@ end
 #######################################
 
 # find root for monotonic univariate functions
-function monoroot(
-    f, l::F, u::F;
-    tol   = eps(F),
-    maxit = 30
-    ) where {F<:AbstractFloat}
+function monoroot(f, l::F, u::F; tol = eps(F), maxit = 30) where {F<:AbstractFloat}
     fl = f(l)
     fu = f(u)
     if sign(fl) == sign(fu)     # f monotone & same sign at both ends => no root in interval

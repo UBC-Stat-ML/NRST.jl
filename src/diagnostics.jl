@@ -46,7 +46,7 @@ function diagnostics(ns::NRSTSampler, res::TouringRunResults)
 
     # Lambda Plot
     betas = ns.np.betas
-    f_Λnorm, Λsnorm, Λs = NRST.get_lambda(betas, averej)
+    f_Λnorm, Λsnorm, Λs = gen_lambda_fun(betas, averej)
     plam = plot_lambda(β->Λs[end]*f_Λnorm(β),betas,"")
 
     # Plot of the log-partition function

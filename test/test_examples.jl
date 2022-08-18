@@ -11,8 +11,8 @@ end
 model = Lnmodel(randn(30))
 tm    = NRST.TuringTemperedModel(model);
 rng   = SplittableRandom(4)
-ns, ts = NRSTSampler(tm, rng, N=4);
-res   = parallel_run(ns, rng, ntours = ts.ntours)
+ns    = NRSTSampler(tm, rng, N=4);
+res   = parallel_run(ns, rng, ntours = 4096)
 plots = diagnostics(ns, res)
 hl    = ceil(Int, length(plots)/2)
 pdiags=plot(
