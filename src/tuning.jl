@@ -151,9 +151,7 @@ end
 
 # method for NRPTSampler
 function tune_explorers!(np::NRSTProblem, nrpt::NRPTSampler, args...;kwargs...)
-    xpls = get_xpls(nrpt)
-    tune_explorers!(np, xpls, args...;kwargs...)
-    store_params!(np, xpls)                      # need to immediately store them because they are overwritten in next call to expl_step(nrpt)
+    tune_explorers!(np, get_xpls(nrpt), args...;kwargs...)
 end
 
 # transfer params from xpls to np for later use
