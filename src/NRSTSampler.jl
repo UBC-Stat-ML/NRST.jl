@@ -39,7 +39,7 @@ function NRSTSampler(
     rng::AbstractRNG;
     betas          = nothing,
     N::Int         = 3,
-    nexpl::Int     = 5, 
+    nexpl::Int     = 10, 
     use_mean::Bool = true,
     tune::Bool     = true,
     kwargs...
