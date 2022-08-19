@@ -137,7 +137,7 @@ function tune_explorers!(
     np::NRSTProblem,
     xpls::Vector{<:ExplorationKernel},
     rng::AbstractRNG;
-    smooth=true,
+    smooth=false,
     kwargs...
     )
     N    = length(xpls)
