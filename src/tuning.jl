@@ -43,7 +43,7 @@ function tune!(
     rng::AbstractRNG;
     max_rounds::Int    = 19,
     max_ar_ratio::Real = 0.05,      # limit on std(ar)/mean(ar), ar: average of Ru and Rd, the directional rejection rates
-    max_dr_ratio::Real = 0.10,      # limit on std(Ru-Rd)/mean(ar). Note: this only makes sense for use_mean=true
+    max_dr_ratio::Real = 0.08,      # limit on std(Ru-Rd)/mean(ar). Note: this only makes sense for use_mean=true
     max_Δβs::Real      = 0.15,      # limit on max change in grid. Note: this is not a great indicator, so the limit is quite loose
     max_relΔcone::Real = 0.003,     # limit on rel change in c(1)
     max_relΔΛ::Real    = 0.02,      # limit on rel change in Λ = Λ(1)
@@ -110,7 +110,6 @@ function tune!(
         "\tTuning explorers..."
     )
     tune_explorers!(np, ens, rng, verbose = false)
-    store_params!(np, ens) # need to store tuned params in np for later use with ns.xpl
     verbose && print("done!\n\tTuning c and nexpls using $nsteps steps...")
     res = @timed tune_c_nexpls!(np, ens, rng, nsteps, maxcor)
     verbose && @printf("done!\n\t\tElapsed: %.1fs\n\n", res.time)
@@ -147,6 +146,7 @@ function tune_explorers!(
         tune!(xpls[i], rngs[i];kwargs...)
     end
     smooth && smooth_params!(xpls)
+    store_params!(np, xpls)               # need to store tuned params in np for later use with ns.xpl
 end
 
 # method for NRPTSampler
@@ -163,9 +163,6 @@ function store_params!(np::NRSTProblem, xpls::Vector{<:ExplorationKernel})
         np.xplpars[i] = params(xpl)
     end
 end
-
-# method for NRPTSampler
-store_params!(np::NRSTProblem, nrpt::NRPTSampler)=store_params!(np, get_xpls(nrpt))
 
 ##############################################################################
 # utilities for jointly tuning c and grid, exploiting computational savings

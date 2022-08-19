@@ -37,11 +37,11 @@ end
 function NRSTSampler(
     tm::TemperedModel,
     rng::AbstractRNG;
-    betas            = nothing,
-    N::Int           = 3,
-    nexpl::Int       = 50, 
-    use_mean::Bool   = true,
-    tune::Bool       = true,
+    betas          = nothing,
+    N::Int         = 3,
+    nexpl::Int     = 5, 
+    use_mean::Bool = true,
+    tune::Bool     = true,
     kwargs...
     )
     if isnothing(betas)
