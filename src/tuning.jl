@@ -2,31 +2,25 @@
 # tuning routines
 ###############################################################################
 
-# full tuning
+# full tuning: bootstraps using ensembles of explorers (NRPT or independent)
 function tune!(
     ns::NRSTSampler,
     rng::AbstractRNG;
     min_ntours::Int  = 2_048,
-    stage_1::String  = "NRPT",
+    ensemble::String = "NRPT",
     do_stage_2::Bool = true,
     verbose::Bool    = true,
     kwargs...
     )
-    if stage_1 == "NRPT"
+    if ensemble == "NRPT"
         ens = NRPTSampler(ns)                                 # PT sampler, whose state is fully independent of ns
     else
         ens = replicate(ns.xpl, ns.np.betas)                  # create a vector of explorers, whose states are fully independent of ns and its own explorer
     end
-    nsteps = tune!(ns.np, ens, rng;verbose=verbose,kwargs...) # stage I: bootstrap with the help of the ensemble
+    nsteps = tune!(ns.np, ens, rng;verbose=verbose,kwargs...)
 
-    # Stage II: use the pre-tuned NRST to improve tuning
-    if stage_1 == "NRPT" && do_stage_2
-        ntours = 2*nsteps
-        verbose && println("\nStage II: tuning grid using $ntours NRST tours and then correcting c using NRPT runs.\n")
-        res = parallel_run(ns, rng; ntours = ntours, keep_xs = false)
-        _   = tune_betas!(ns, res)
-        tune_c!(ns.np, ens, rng, ntours)
-    elseif stage_1 != "NRPT" && do_stage_2
+    # If using independent samplers, need to run NRST once to improve c,Λ estimates
+    if ensemble != "NRPT" && do_stage_2
         # two heuristics for determining appropriate number of tours, choose max of both:
         # 1) rationale:
         #    - above, each explorer produces nsteps samples
@@ -36,7 +30,7 @@ function tune!(
         # 2) heuristic for when nexpls→∞, where 1) fails
         ntours_f = max(0.75*nsteps/mean(ns.np.nexpls), 150*nsteps^(1/4))
         ntours   = max(min_ntours, min(2nsteps, ceil(Int, ntours_f)))
-        verbose && println("\nStage II: tune c(β) using $ntours NRST tours.\n")
+        verbose && println("\nImproving c(β) using $ntours NRST tours.\n")
         tune_c!(ns.np, parallel_run(ns, rng; ntours = ntours, keep_xs = false))
     end
     println("\nTuning completed.\n")
@@ -47,8 +41,9 @@ function tune!(
     np::NRSTProblem{T,K},
     ens,                                      # ensemble of exploration kernels: either Vector{<:ExplorationKernel} (indep sampling) or NRPTSampler
     rng::AbstractRNG;
-    max_s1_rounds::Int = 19,
+    max_rounds::Int    = 19,
     max_ar_ratio::Real = 0.05,                # limit on std(ar)/mean(ar), ar: average of up/down rejection prob
+    max_dr_ratio::Real = 0.10,                # limit on std(Ru-Rd)/mean(ar), where Ru,Rd are the directional rejections. Note: this only makes sense for use_mean=true
     max_Δβs::Real      = max(.01, np.N^(-2)), # limit on max change in grid
     max_relΔcone::Real = 0.003,               # limit on rel change in c(1)
     max_relΔΛ::Real    = 0.02,                # limit on rel change in Λ = Λ(1)
@@ -57,6 +52,7 @@ function tune!(
     maxcor::Real       = 0.8,
     verbose::Bool      = true
     ) where {T,K}
+    !np.use_mean && (max_dr_ratio = Inf)      # equality of directional rejections only holds for the mean strategy
     if verbose
         println(
             "Tuning started ($(Threads.nthreads()) threads).\n\n" *
@@ -72,7 +68,7 @@ function tune!(
     nsteps  = nsteps_init÷2                  # nsteps is doubled at the beginning of the loop
     oldcone = relΔcone = oldΛ = relΔΛ = NaN
     conv    = false
-    while !conv && (rnd < max_s1_rounds)
+    while !conv && (rnd < max_rounds)
         rnd += 1
         nsteps = min(max_nsteps,2nsteps)
         verbose && print("Round $rnd:\n\tTuning explorers...")
@@ -81,17 +77,19 @@ function tune!(
         
         # tune c and betas
         verbose && print("\tTuning c and grid using $nsteps steps per explorer...")
-        res      = @timed tune_c_betas!(np, ens, rng, nsteps)
-        Δβs,Λ,ar = res.value # note: average rejections are before grid adjustment, so they are technically stale, but are still useful to assess convergence. compute std dev of average of up and down rejs
-        ar_ratio = std(ar)/mean(ar)
-        relΔcone = abs(np.c[end] - oldcone) / abs(oldcone)
-        oldcone  = np.c[end]
-        relΔΛ    = abs(Λ - oldΛ) / abs(oldΛ)
-        oldΛ     = Λ
+        res        = @timed tune_c_betas!(np, ens, rng, nsteps)
+        Δβs,Λ,ar,R = res.value # note: rejections are before grid adjustment, so they are technically stale, but are still useful to assess convergence. compute std dev of average of up and down rejs
+        mar        = mean(ar)
+        ar_ratio   = std(ar)/mar
+        dr_ratio   = std(R[1:(end-1),1] - R[2:end,2])/mar
+        relΔcone   = abs(np.c[end] - oldcone) / abs(oldcone)
+        oldcone    = np.c[end]
+        relΔΛ      = abs(Λ - oldΛ) / abs(oldΛ)
+        oldΛ       = Λ
         if verbose 
             @printf( # the following line cannot be cut with concat ("*") because @printf only accepts string literals
-            "done!\n\t\tAR std/mean=%.3f\n\t\tmax(Δbetas)=%.3f\n\t\tc(1)=%.2f (relΔ=%.2f%%)\n\t\tΛ=%.2f (relΔ=%.1f%%)\n\t\tElapsed: %.1fs\n\n", 
-            ar_ratio, Δβs, np.c[end], 100*relΔcone, Λ, 100*relΔΛ, res.time
+                "done!\n\t\tAR std/mean=%.3f\n\t\tstd(Ru-Rd)/mean=%.3f\n\t\tmax(Δbetas)=%.3f\n\t\tc(1)=%.2f (relΔ=%.2f%%)\n\t\tΛ=%.2f (relΔ=%.1f%%)\n\t\tElapsed: %.1fs\n\n", 
+                ar_ratio, dr_ratio, Δβs, np.c[end], 100*relΔcone, Λ, 100*relΔΛ, res.time
             )
             show(plot_grid(np.betas, title="Histogram of βs: round $rnd"))
             println("\n")
@@ -100,14 +98,14 @@ function tune!(
         # check convergence
         conv = !isnan(relΔcone) && (relΔcone<max_relΔcone) && 
             !isnan(relΔΛ) && (relΔΛ < max_relΔΛ) && (Δβs<max_Δβs) &&
-            (ar_ratio < max_ar_ratio)
+            (ar_ratio < max_ar_ratio) && (dr_ratio < max_dr_ratio)
     end
 
     # at this point, ns has a fresh new grid, so explorers params, c, and  
     # nexpls are stale => we need to tune them
     verbose && print(
         (conv ? "Grid converged!" :
-                "max_rounds=$max_s1_rounds reached.") *
+                "max_rounds=$max_rounds reached.") *
         "\n\nAdjusting settings to new grid...\n" *
         "\tTuning explorers..."
     )
@@ -130,11 +128,11 @@ end
 # under the hood
 ##############################################################################
 
-#######################################
-# tune explorers
-#######################################
+##############################################################################
+# tune explorers' parameters
+##############################################################################
 
-# tune the explorers' parameters
+# method for ensemble of independent explorers
 function tune_explorers!(
     np::NRSTProblem,
     xpls::Vector{<:ExplorationKernel},
@@ -158,7 +156,8 @@ function tune_explorers!(np::NRSTProblem, nrpt::NRPTSampler, args...;kwargs...)
     store_params!(np, xpls)                      # need to immediately store them because they are overwritten in next call to expl_step(nrpt)
 end
 
-# transfer params from xpls to np for later use 
+# transfer params from xpls to np for later use
+# note: it assumes that xpls are sorted according to levels
 function store_params!(np::NRSTProblem, xpls::Vector{<:ExplorationKernel})
     for (i,xpl) in enumerate(xpls)
         np.xplpars[i] = params(xpl)
@@ -168,37 +167,19 @@ end
 # method for NRPTSampler
 store_params!(np::NRSTProblem, nrpt::NRPTSampler)=store_params!(np, get_xpls(nrpt))
 
-#######################################
-# utilities for jointly tuning c and grid
-#######################################
+##############################################################################
+# utilities for jointly tuning c and grid, exploiting computational savings
+##############################################################################
 
-# Tune c and betas using independent runs of the explorers
-# note: explorers must be tuned already before running this
-# note: need to tune c first because this is used for estimating rejections (R)
-function tune_c_betas!(
-    np::NRSTProblem,
-    xpls::Vector{<:ExplorationKernel},
-    rng::AbstractRNG,
-    nsteps::Int
-    )
-    trVs = tune_c!(np, xpls, rng, nsteps)      # collects Vs, tunes c, and returns Vs
-    R    = est_rej_probs(trVs, np.betas, np.c) # compute average rejection probabilities
-    ar   = (R[1:(end-1),1] + R[2:end,2])/2 
-    out  = tune_betas!(np, ar)
-    (out..., ar)
-end
+# Tune c and betas using an ensemble of explorers (independent or NRPT)
+# note: explorers should be tuned before running this
+# note the order: first tune c, then grid. This because c is used for 
+# estimating NRST rejections
+tune_c_betas!(np::NRSTProblem, ens, args...) = tune_betas!(np, tune_c!(np, ens, args...))
 
-# method for NRPTSampler
-function tune_c_betas!(np::NRSTProblem, nrpt::NRPTSampler, args...)
-    tr  = tune_c!(np, nrpt, args...)
-    ar  = averej(tr)
-    out = tune_betas!(np, ar)
-    (out..., ar)
-end
-
-#######################################
+##############################################################################
 # tune c
-#######################################
+##############################################################################
 
 # tune the c vector using samples of the potential function
 function tune_c!(np::NRSTProblem{T,K}, trVs::Vector{Vector{K}}) where {T,K}
@@ -207,46 +188,45 @@ function tune_c!(np::NRSTProblem{T,K}, trVs::Vector{Vector{K}}) where {T,K}
     return
 end
 
-# method for collecting samples using explorers
+# method for collecting samples using ensembles of explorers (indep or NRPT)
 function tune_c!(
-    np::NRSTProblem,
-    xpls::Vector{<:ExplorationKernel},
-    rng::AbstractRNG,
-    nsteps::Int
+    np::NRSTProblem, 
+    ens::Union{NRPTSampler, Vector{<:ExplorationKernel}},
+    args...
     )
-    trVs = collectVs(np, xpls, rng, nsteps)
+    trVs = collectVs(np, ens, args...)
     tune_c!(np, trVs)
     return trVs
 end
 
-# method for NRPTSampler
-function tune_c!(np::NRSTProblem,nrpt::NRPTSampler,rng::AbstractRNG,nsteps::Int)
-    tr = run!(nrpt, rng, nsteps)
-    tune_c!(np, rows2vov(tr.Vs))  # need to convert matrix to vector of vectors
-    return tr
-end
-
-# method for proper runs of NRST
+# method for proper runs of NRST, which contain samples of V
 tune_c!(np::NRSTProblem, res::RunResults) = tune_c!(np, res.trVs)
 
-#######################################
+##############################################################################
 # tune betas
-#######################################
+##############################################################################
 
+# uses the average of the up and down rates of rejection
 function tune_betas!(np::NRSTProblem, ar::Vector{<:Real})
     betas    = np.betas
     oldbetas = copy(betas)                       # store old betas to check convergence
-    _, _, Λs = optimize_grid!(betas, ar)     # tune using the inverse of Λ(β)
+    _, _, Λs = optimize_grid!(betas, ar)         # tune using the inverse of Λ(β)
     return (maximum(abs,betas-oldbetas),Λs[end]) # return max change in grid and Λ=Λ(1) to check convergence
 end
 
-# Tune betas using the output of NRST
-# this has the advantage of getting a more accurate representation of the points
-# where rejections are higher
-function tune_betas!(ns::NRSTSampler, res::RunResults)
+# method for the raw traces of V along the levels
+function tune_betas!(np::NRSTProblem{T,K}, trVs::Vector{Vector{K}}) where {T,K}
+    R   = est_rej_probs(trVs, np.betas, np.c) # compute average directional NRST rejection probabilities
+    ar  = (R[1:(end-1),1] + R[2:end,2])/2     # average up and down directions
+    out = tune_betas!(np, ar)
+    (out..., ar, R)
+end
+
+# method for the output of NRST
+function tune_betas!(np::NRSTProblem, res::RunResults)
     R  = res.rpacc ./ res.visits
     ar = (R[1:(end-1),1] + R[2:end,2])/2 
-    tune_betas!(ns.np, ar)
+    tune_betas!(np, ar)
 end
 
 # collect samples of V(x) at each of the levels, running explorers independently
@@ -271,6 +251,9 @@ function collectVs(
     end
     return trVs
 end
+
+# method for NRPTSampler
+collectVs(::NRSTProblem, nrpt::NRPTSampler, args...) = rows2vov(run!(nrpt, args...).Vs)
 
 # for each sample V(x) at each level, estimate the conditional rejection
 # probabilities in both directions. Recall that
@@ -349,8 +332,11 @@ function get_lambdas(averej::Vector{K}) where {K<:AbstractFloat}
     pushfirst!(cumsum(averej), zero(K))
 end
 
+##############################################################################
 # tune nexpls by imposing a threshold on autocorrelation
 # warning: do not use with trVs generated from NRST, since those include refreshments!
+##############################################################################
+
 function tune_nexpls!(
     nexpls::Vector{TI},
     trVs::Vector{Vector{TF}},
@@ -411,9 +397,9 @@ function tune_c_nexpls!(
     tune_nexpls!(np.nexpls, trVs, maxcor)
 end
 
-#######################################
+##############################################################################
 # utilities
-#######################################
+##############################################################################
 
 # find root for monotonic univariate functions
 function monoroot(f, l::F, u::F; tol = eps(F), maxit = 30) where {F<:AbstractFloat}
