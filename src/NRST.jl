@@ -48,7 +48,7 @@ export diagnostics
 
 # load core files
 include("RunResults.jl")
-include("log_partition_utils.jl")
+include("utils.jl")
 include("TemperedModel.jl")
 include("ExplorationKernels.jl")
 include("NRSTSampler.jl")

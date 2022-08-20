@@ -159,43 +159,55 @@ end
 # tracev = Vector{Float64}(undef, 1000)
 # nacc = run!(mhs,x->(0.5sum(abs2,x)),tracev)
 
-# tune sigma using a simplified SGD approach targeting 0.5(acc-target)^2, where 
-# - \der{acc}{sigma} is assumed constant
-# - Robbins-Monroe step size sequence is a_r = 10r^α for α<0
+# run sampler keeping track of X
+function run!(
+    mhs::MHSampler{F,K},
+    rng::AbstractRNG,
+    trX::Matrix{K},
+    ) where {F,K,A}
+    sum_ap = zero(K)
+    nsteps = size(trX, 2)
+    for n in 1:nsteps
+        sum_ap  += step!(mhs, rng)
+        trX[:,n] = copy(mhs.x)
+    end
+    return (sum_ap/nsteps)
+end
+
+# tune sigma using a grid search approach
 function tune!(
     mhs::MHSampler{F,K},
     rng::AbstractRNG;
     target_acc = 0.234,
-    eps        = 0.05,
-    α          = -1.0,
-    min_rounds = 2,
-    max_rounds = 16,
-    nsteps     = 400, # ~= p(1-p)(Z/eps)^2 <= (Z/2eps)^2, for Z = quantile(Normal(), 0.975)
-    verbose    = true
+    nsteps     = 512,      # for reference: sample size required computed via p(1-p)(Z/eps)^2 <= (Z/2eps)^2, for Z = quantile(Normal(), 0.975)
+    erange     = (-5.,4.), # range for the e in λ = 2^e 
+    tol        = 0.03,
+    maxit      = 8,
     ) where {F,K}
-    nsteps < 1 && return
-    minsigma = 1e-8
-    err      = 10*eps
-    r        = 0
-    verbose && @printf("Tuning initiated at sigma=%.1f\n", mhs.sigma[])
-    while (r < min_rounds) || (err >= eps && r < max_rounds)
-        r += 1
-        acc          = run!(mhs, rng, nsteps)     # run and get average acceptance probability
-        err          = abs(acc - target_acc)      # absolute error
-        mhs.sigma[] += 10(r^α)*(acc - target_acc) # SGD step. "10" should work for most settings since scale is acc ratio, which is universal 
-        mhs.sigma[]  = max(minsigma, mhs.sigma[]) # project back to >0
-        verbose && @printf(
-            "Round %d: acc=%.3f, err=%.2f, new_sigma=%.1f\n",r, acc, err, mhs.sigma[]
-        )
+    # estimate minimal std dev along all dimensions
+    d   = length(mhs.x)
+    trX = Matrix{K}(undef, d, ceil(Int, sqrt(d))*nsteps);
+    _   = run!(mhs, rng, trX)
+    sds = map(std, eachrow(trX))
+    sd  = minimum(sds)
+    if sd < 1e-10
+        sd = mean(sds)
+        if sd < 1e-10
+            sd = minimum(abs,mhs.x)
+        end
     end
+    # find e so that sigma=sd*2^e produces the acc rate most similar to target
+    # true acc(e) must be monotone in theory. noisy version may not but :shrug:
+    function tfun(e)
+        mhs.sigma[] = sd * (2^e)
+        run!(mhs, rng, nsteps) - target_acc
+    end
+    eopt = monoroot(tfun, erange...; tol = tol, maxit = maxit)
+    mhs.sigma[] = sd * (2^eopt)
+    any(erange .≈ eopt) && @warn "eopt=$eopt is close to boundary, sd=$sd, f(eopt)=$(tfun(eopt))"
+    return
 end
-# # test
-# # approximate V(x)=0.5||x||^2 (energy of N(0,I)) with mhs targetting N(0,b^2I). Then
-# # E[V] = (1/2)E[X1^2+X2^2] = (1/2) b^2 E[(X1/b)^2+(X2/b)^2] = b^2/2E[chi-sq(2)] = b^2
-# mhs = MHSampler(x->(0.125sum(abs2,x)),ones(2),2.3) # b=2 => E[V]=4
-# tune!(mhs,x->(0.5sum(abs2,x)),verbose=true,nsteps=5000)
-# mhs.sigma[] = 4.0 # sigma too high
-# @code_warntype tune!(mhs,x->(0.5sum(abs2,x)))
+
 
 ###############################################################################
 # default kernels for given data types

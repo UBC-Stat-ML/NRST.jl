@@ -1,3 +1,27 @@
+# find root for monotonic univariate functions
+function monoroot(f, l::F, u::F; tol = eps(F), maxit = 30, verbose=false) where {F<:AbstractFloat}
+    fl = f(l)
+    fu = f(u)
+    if sign(fl) == sign(fu)     # f monotone & same sign at both ends => no root in interval. still return something to avoid downstream errors
+        return u
+    end
+    h = l
+    for _ in 1:maxit
+        h  = (l+u)/2
+        fh = f(h)
+        if abs(fh) < tol
+            return h
+        elseif sign(fl) == sign(fh)
+            l  = h
+            fl = fh
+        else
+            u  = h
+            fu = fh
+        end
+    end
+    return h
+end
+
 # trapezoidal approximation
 # want: c[i] = c(x[i]) = int_0^x_i dx f(x)
 # then c[0]=0, and for i>=1 use
