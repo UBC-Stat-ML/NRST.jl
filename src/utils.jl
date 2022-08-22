@@ -71,16 +71,18 @@ end
 # log(Z_N/Z_0) = -[log(Z_0/Z_N)] = - sum_{i=0}^{N-1} log(Z_i/Z_{i+1})
 # but now use,
 # Z_i = E^{0}[e^{-beta_i V}] 
-# = int [pi_0(dx) e^{-beta_{i+1} V(x)}] e^{-(beta_i-beta_{i+1}) V(x)}
-# = Z_{i+1} int pi^{i+1}(dx) e^{-(beta_i-beta_{i+1}) V(x)}
+# = int [pi_0(dx) e^{-beta_{i+1} V(x)}] e^{(beta_{i+1}-beta_i) V(x)}
+# = Z_{i+1} int pi^{i+1}(dx) e^{(beta_{i+1}-beta_i) V(x)}
 # = Z_{i+1} E^{i+1}[e^{(beta_{i+1}-beta_i) V(x)}]
 # Hence
 # Z_i/Z_{i+1} = E^{i+1}[e^{(beta_{i+1}-beta_i) V(x)}]
 # ≈ (1/S_{i+1}) sum_{n=1}^{S_{i+1}} e^{(beta_{i+1}-beta_i) V_n},    V_{1:S_{i+1}} ~ pi^{i+1}
 # <=> log(Z_i/Z_{i+1}) ≈ -log(S_{i+1}) + logsumexp((beta_{i+1}-beta_i) V_{1:S_{i+1}})
-#  => log(Z_N/Z_0) = sum_{i=1}^N [log(S_{i+1}) - logsumexp((beta_{i+1}-beta_i) V_{1:S_{i+1}})]
+#  => log(Z_N/Z_0) = sum_{i=0}^{N-1} log(Z_{i+1}/Z_i) = - sum_{i=0}^{N-1} log(Z_i/Z_{i+1})
+#    ≈ sum_{i=0}^{N-1} [log(S_{i+1}) - logsumexp((beta_{i+1}-beta_i) V_{1:S_{i+1}})]
+#    = sum_{i=1}^{N} [log(S_i) - logsumexp((beta_i-beta_{i-1}) V_{1:S_i})]
 
-# this function uses both forward and backward estimators, taking their mean
+# this function computes both forward and backward estimators, reports their weighted mean
 const STEPSTONE_FWD_WEIGHT = Ref(0.5)
 function stepping_stone!(
     zs::TV,
@@ -88,16 +90,16 @@ function stepping_stone!(
     trVs::Vector{TV}
     ) where {TF<:AbstractFloat, TV<:Vector{TF}}
     w     = STEPSTONE_FWD_WEIGHT[]
+    onemw = one(TF) - w
     zs[1] = zero(TF)
-    acc   = zero(TF)
+    accf  = accb = zero(TF)
     llen  = log(length(trVs[1]))
     for i in 2:length(zs)
         db    = bs[i] - bs[i-1]
-        fwd   = logsumexp(-db*trVs[i-1]) - llen
+        accf += logsumexp(-db*trVs[i-1]) - llen
         llen  = log(length(trVs[i]))
-        bwd   = llen - logsumexp(db*trVs[i])
-        acc  += w*fwd + (1-w)*bwd
-        zs[i] = acc
+        accb += llen - logsumexp(db*trVs[i]) 
+        zs[i] = w*accf + onemw*accb
     end
 end
 function stepping_stone(bs, trVs)
