@@ -180,19 +180,20 @@ function tune!(
     rng::AbstractRNG;
     target_acc = 0.234,
     nsteps     = 512,      # for reference: sample size required computed via p(1-p)(Z/eps)^2 <= (Z/2eps)^2, for Z = quantile(Normal(), 0.975)
-    erange     = (-5.,5.), # range for the e in λ = 2^e 
+    erange     = (-8.,8.), # range for the e in λ = 2^e 
     tol        = 0.03,
     maxit      = 8,
     ) where {F,K}
-    # estimate minimal std dev along all dimensions
+    # estimate minimal std dev along all dimensions, since this is the one that
+    # is most restrictive for the isotropic proposal
     d   = length(mhs.x)
     trX = Matrix{K}(undef, d, ceil(Int, sqrt(d))*nsteps);
     _   = run!(mhs, rng, trX)
     sds = map(std, eachrow(trX))
     sd  = minimum(sds)
-    if sd < 1e-10
+    if sd < 1e-10                    # this can happen particle is at some corner in space
         sd = mean(sds)
-        if sd < 1e-10
+        if sd < 1e-10                # this can happen when no proposals where accepted
             sd = minimum(abs,mhs.x)
         end
     end
