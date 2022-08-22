@@ -113,24 +113,30 @@ pdiags=plot(
 
 # We compare the sample distribution of ``V(x)`` obtained using various
 # strategies against the analytic distribution.
+ntours = 10_000
+sbsq(b)= NRSTExp.ExamplesGallery.sbsq(tm, b)
 xpls   = NRST.replicate(ns.xpl, ns.np.betas);
-trVs   = NRST.collectVs(ns.np, xpls, rng, ts.nsteps);
-resser = NRST.SerialRunResults(NRST.run!(ns, rng, nsteps=2*ns.np.N*ts.ntours));
-restur = NRST.run_tours!(ns, rng, ntours=ts.ntours, keep_xs=false);
+trVs   = NRST.collectVs(ns.np, xpls, rng, ceil(Int, sum(ns.np.nexpls)/ns.np.N)*ntours);
+resser = NRST.SerialRunResults(NRST.run!(ns, rng, nsteps=2*ns.np.N*ntours));
+restur = NRST.run_tours!(ns, rng, ntours=ntours, keep_xs=false);
+resPT  = NRST.rows2vov(NRST.run!(NRST.NRPTSampler(ns),rng,10_000).Vs);
 parr   = []
 for (i,trV) in enumerate(trVs)
     β     = ns.np.betas[i]
-    sctrV = (2/sbsq(β)) .* trV
+    κ     = (2/sbsq(β))    # scaling factor
+    sctrV = κ .* trV
     p = plot(
         get_scaled_V_dist(tm,β), label="True", palette=okabe_ito,
         title="β=$(round(β,digits=2))"
     )
     density!(p, sctrV, label="IndExps", linestyle =:dash)
-    sctrV = (2/sbsq(β)) .* resser.trVs[i]
+    sctrV = κ .* resPT[i]
+    density!(p, sctrV, label="NRPT", linestyle =:dash)
+    sctrV = κ .* resser.trVs[i]
     density!(p, sctrV, label="SerialNRST", linestyle =:dash)
-    sctrV = (2/sbsq(β)) .* restur.trVs[i]
+    sctrV = κ .* restur.trVs[i]
     density!(p, sctrV, label="TourNRST", linestyle =:dash)
-    sctrV = (2/sbsq(β)) .* res.trVs[i]
+    sctrV = κ .* res.trVs[i]
     density!(p, sctrV, label="pTourNRST", linestyle =:dash)
     push!(parr, p)
 end
@@ -143,6 +149,7 @@ end
 pdists = plot(
     parr..., layout = (nr,nc), size = (300*nc,333*nr)
 )
+
 
 #md # ![Bivariate density plots of two neighbors](assets/mvNormals/dists.png)
 
