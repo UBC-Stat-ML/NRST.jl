@@ -180,7 +180,7 @@ function tune!(
     rng::AbstractRNG;
     target_acc = 0.234,
     nsteps     = 512,      # for reference: sample size required computed via p(1-p)(Z/eps)^2 <= (Z/2eps)^2, for Z = quantile(Normal(), 0.975)
-    erange     = (-5.,4.), # range for the e in λ = 2^e 
+    erange     = (-5.,5.), # range for the e in λ = 2^e 
     tol        = 0.03,
     maxit      = 8,
     ) where {F,K}
