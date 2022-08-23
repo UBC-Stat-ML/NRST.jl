@@ -41,7 +41,7 @@ function tune!(
     np::NRSTProblem{T,K},
     ens,                            # ensemble of exploration kernels: either Vector{<:ExplorationKernel} (indep sampling) or NRPTSampler
     rng::AbstractRNG;
-    max_rounds::Int    = 19,
+    max_rounds::Int    = 14,
     max_ar_ratio::Real = 0.035,     # limit on std(ar)/mean(ar), ar: average of Ru and Rd, the directional rejection rates
     max_dr_ratio::Real = 0.035,     # limit on mean(|Ru-Rd|)/mean(ar). Note: this only makes sense for use_mean=true
     max_Δβs::Real      = 0.05,      # limit on max change in grid. Note: this is not a great indicator, so the limit is quite loose. Only helps with potential fake convergence at beginning
