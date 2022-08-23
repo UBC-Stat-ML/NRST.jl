@@ -388,7 +388,7 @@ function tune_c_nexpls!(
     maxcor::AbstractFloat
     )
     _    = tune_c!(np, nrpt, rng, nsteps)
-    trVs = collectVs(np, get_xpls(nrpt), rng, min(np.nexpls[1]*nsteps,32768)) # make equivalent effort to an NRPT step, up to a point
+    trVs = collectVs(np, get_xpls(nrpt), rng, np.nexpls[1]*nsteps) # make equivalent effort to an NRPT step
     tune_nexpls!(np.nexpls, trVs, maxcor)
 end
 

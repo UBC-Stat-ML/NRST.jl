@@ -194,7 +194,7 @@ function tour!(
     keep_xs=true,
     kwargs...
     ) where {T,I,K}
-    tr = NRSTTrace(T, ns.np.N, K, keep_xs)
+    tr = NRSTTrace(T, ns.np.N, K)
     tour!(ns, rng, tr; keep_xs=keep_xs, kwargs...)
     return tr
 end
@@ -233,6 +233,8 @@ end
 ###############################################################################
 
 # multithreading method
+# uses a copy of ns per task, with indep state. copying is fast relative to 
+# cost of a tour, and size(ns) ~ size(ns.x)
 # note: ns itself is never used to sample so its state should be exactly the
 # same after this returns
 function parallel_run(
@@ -243,9 +245,8 @@ function parallel_run(
     verbose::Bool=true,
     kwargs...
     ) where {T,TI,TF,TS<:NRSTSampler{T,TI,TF}}
-    verbose && println("\nRunning $ntours tours in parallel using $(Threads.nthreads()) threads.\n")
-    # nss  = [copy(ns) for _ in 1:ntours]                                     # get one copy of ns per task. copying is fast relative to cost of a tour, and size(ns) ~ size(ns.x) 
-    res  = [NRSTTrace(T,ns.np.N,TF,keep_xs) for _ in 1:ntours]                # get one empty trace for each task
+    verbose && println("\nRunning $ntours tours in parallel using $(Threads.nthreads()) threads.\n") 
+    res  = [NRSTTrace(T,ns.np.N,TF) for _ in 1:ntours]                        # get one empty trace for each task
     rngs = [split(rng) for _ in 1:ntours]                                     # split rng into ntours copies. must be done outside of loop because split changes rng state.
     p    = ProgressMeter.Progress(ntours; desc="Sampling: ", enabled=verbose) # prints a progress bar
     Threads.@threads for t in 1:ntours
@@ -254,4 +255,3 @@ function parallel_run(
     end
     TouringRunResults(res)                                                    # post-process and return 
 end
-

@@ -10,17 +10,17 @@ struct NRSTTrace{T,TI<:Int,TF<:AbstractFloat}
     trXplAP::Vector{Vector{TF}}
 end
 
-# outer constructors that allocate empty arrays with conservative sizehint
-function NRSTTrace(::Type{T}, N::TI,::Type{TF}, keep_xs=true) where {T,TI<:Int,TF<:AbstractFloat}
-    M       = 20N                                          # simple conservative estimate = 10E[T]
-    trX     = sizehint!(T[], keep_xs ? M : zero(TI))
-    trIP    = sizehint!(SVector{2,TI}[], M)                # can use a vector of SVectors since traces should not be modified
-    trV     = sizehint!(TF[], M)
-    trRP    = sizehint!(TF[], M)
-    trXplAP = [sizehint!(TF[], M) for _ in 1:N]
+# outer constructors that allocate empty arrays
+function NRSTTrace(::Type{T}, N::TI, ::Type{TF}) where {T,TI<:Int,TF<:AbstractFloat}
+    trX     = T[]
+    trIP    = SVector{2,TI}[]                # can use a vector of SVectors since traces should not be modified
+    trV     = TF[]
+    trRP    = TF[]
+    trXplAP = [TF[] for _ in 1:N]
     NRSTTrace(trX, trIP, trV, trRP, trXplAP)
 end
-function NRSTTrace(::Type{T}, N::TI,::Type{TF}, nsteps::Int) where {T,TI<:Int,TF<:AbstractFloat}
+# outer constructors that allocate fixed size arrays
+function NRSTTrace(::Type{T}, N::TI, ::Type{TF}, nsteps::Int) where {T,TI<:Int,TF<:AbstractFloat}
     trX     = Vector{T}(undef, nsteps)
     trIP    = Vector{SVector{2,TI}}(undef, nsteps) # can use a vector of SVectors since traces should not be modified
     trV     = Vector{TF}(undef, nsteps)
@@ -140,7 +140,7 @@ function TouringRunResults(results::Vector{TST}) where {T,I,K,TST<:NRSTTrace{T,I
     xplapac = zeros(K, N)                # accumulates explorers' acc probs
     
     # iterate tours
-    for (_, tr) in enumerate(results)
+    for tr in results
         fill!(curvis, zero(I))                                 # reset tour visits
         post_process(tr, xarray, trVs, curvis, rpacc, xplapac) # parse tour trace
         totvis .+= curvis                                      # accumulate total visits
