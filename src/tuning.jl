@@ -42,11 +42,11 @@ function tune!(
     ens,                            # ensemble of exploration kernels: either Vector{<:ExplorationKernel} (indep sampling) or NRPTSampler
     rng::AbstractRNG;
     max_rounds::Int    = 19,
-    max_ar_ratio::Real = 0.05,      # limit on std(ar)/mean(ar), ar: average of Ru and Rd, the directional rejection rates
-    max_dr_ratio::Real = 0.04,      # limit on mean(|Ru-Rd|)/mean(ar). Note: this only makes sense for use_mean=true
+    max_ar_ratio::Real = 0.035,     # limit on std(ar)/mean(ar), ar: average of Ru and Rd, the directional rejection rates
+    max_dr_ratio::Real = 0.035,     # limit on mean(|Ru-Rd|)/mean(ar). Note: this only makes sense for use_mean=true
     max_Δβs::Real      = 0.05,      # limit on max change in grid. Note: this is not a great indicator, so the limit is quite loose. Only helps with potential fake convergence at beginning
-    max_relΔcone::Real = 0.003,     # limit on rel change in c(1)
-    max_relΔΛ::Real    = 0.02,      # limit on rel change in Λ = Λ(1)
+    max_relΔcone::Real = 0.0025,    # limit on rel change in c(1)
+    max_relΔΛ::Real    = 0.01,      # limit on rel change in Λ = Λ(1)
     nsteps_init::Int   = 32,
     max_nsteps::Int    = 8_388_608,
     maxcor::Real       = 0.8,
@@ -70,9 +70,9 @@ function tune!(
     conv    = false
     while !conv && (rnd < max_rounds)
         rnd += 1
-        nsteps = min(max_nsteps,2nsteps)
+        nsteps = min(max_nsteps,2nsteps)        
         verbose && print("Round $rnd:\n\tTuning explorers...")
-        tune_explorers!(np, ens, rng)
+        tune_explorers!(np, ens, rng) # note: this function forces an update to betas in ens, since grid changed in last round
         verbose && println("done!")
         
         # tune c and betas
@@ -136,7 +136,7 @@ function tune_explorers!(
     np::NRSTProblem,
     xpls::Vector{<:ExplorationKernel},
     rng::AbstractRNG;
-    smooth=false,
+    smooth=false, # doesn't work well in practice 
     kwargs...
     )
     N    = length(xpls)

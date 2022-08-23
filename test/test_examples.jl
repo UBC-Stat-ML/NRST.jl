@@ -48,8 +48,8 @@ function HierarchicalModel()
 end
 tm    = HierarchicalModel();
 rng   = SplittableRandom(4)
-ns    = NRSTSampler(tm, rng, N=10, max_dr_ratio = 0.05);
-res   = parallel_run(ns, rng, ntours = 10000);
+ns    = NRSTSampler(tm, rng, N=10);
+res   = parallel_run(ns, rng, ntours = 32_768);
 plots = diagnostics(ns, res)
 hl    = ceil(Int, length(plots)/2)
 pdiags=plot(
