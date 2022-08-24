@@ -30,31 +30,9 @@ function NRSTTrace(::Type{T}, N::TI, ::Type{TF}, nsteps::Int) where {T,TI<:Int,T
 end
 get_N(tr::NRSTTrace) = length(tr.trXplAP)  # recover N. cant do N=N(tr) because julia gets dizzy
 get_nsteps(tr::NRSTTrace) = length(tr.trV) # recover nsteps
-# NRSTTrace(tr::NRSTTrace{T,TI,TF}) where {T,TI,TF} = NRSTTrace(T, get_N(tr), TF) # construct empty trace of the same type that another
-# function Base.empty!(tr::NRSTTrace{T,TI,TF}) where {T,TI,TF}
-#     empty!(tr.trX)
-#     empty!(tr.trIP)
-#     empty!(tr.trV)
-#     empty!(tr.trRP)
-#     empty!.(tr.trXplAP) # empty the component vectors not the outer vector, so that it retains length N
-#     return
-# end
-# function Base.resize!(tr::NRSTTrace{T,TI,TF}, n::Int) where {T,TI,TF}
-#     resize!(tr.trX, n)
-#     resize!(tr.trIP, n)
-#     resize!(tr.trV, n)
-#     resize!(tr.trRP, n)
-#     return
-# end
-# function Base.copy(tr::NRSTTrace{T,TI,TF}) where {T,TI,TF}
-#     NRSTTrace(
-#         copy(tr.trX),
-#         copy(tr.trIP),
-#         copy(tr.trV),
-#         copy(tr.trRP),
-#         copy.(tr.trXplAP)
-#     )
-# end
+function tournexpls(tr::NRSTTrace{T,TI}, nexpls::AbstractVector) where {T,TI<:Int} # compute total number of exploration steps in a tour
+    mapreduce(ip -> ip[1]>zero(TI) ? nexpls[ip[1]] : zero(TI), +, tr.trIP)
+end
 
 #######################################
 # trace postprocessing
@@ -117,12 +95,12 @@ end
 
 struct TouringRunResults{T,TI,TF} <: RunResults{T,TI,TF}
     trvec::Vector{NRSTTrace{T,TI,TF}} # vector of raw traces from each tour
-    xarray::Vector{Vector{T}}               # length = N+1. i-th entry has samples at level i
-    trVs::Vector{Vector{TF}}                # length = N+1. i-th entry has Vs corresponding to xarray[i]
-    visits::Matrix{TI}                      # total number of visits to each (i,eps)
-    rpacc::Matrix{TF}                       # accumulates rejection probs of swaps started from each (i,eps)
-    xplapac::Vector{TF}                     # length N. accumulates explorers' acc probs
-    toureff::Vector{TF}                     # tour effectiveness for each i ∈ 0:N
+    xarray::Vector{Vector{T}}         # length = N+1. i-th entry has samples at level i
+    trVs::Vector{Vector{TF}}          # length = N+1. i-th entry has Vs corresponding to xarray[i]
+    visits::Matrix{TI}                # total number of visits to each (i,eps)
+    rpacc::Matrix{TF}                 # accumulates rejection probs of swaps started from each (i,eps)
+    xplapac::Vector{TF}               # length N. accumulates explorers' acc probs
+    toureff::Vector{TF}               # tour effectiveness for each i ∈ 0:N
 end
 get_ntours(res::TouringRunResults) = length(res.trvec)
 tourlengths(res::TouringRunResults) = get_nsteps.(res.trvec)
