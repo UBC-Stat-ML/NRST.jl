@@ -42,13 +42,13 @@ function tune!(
     ens,                            # ensemble of exploration kernels: either Vector{<:ExplorationKernel} (indep sampling) or NRPTSampler
     rng::AbstractRNG;
     max_rounds::Int    = 14,
-    max_ar_ratio::Real = 0.035,     # limit on std(ar)/mean(ar), ar: average of Ru and Rd, the directional rejection rates
-    max_dr_ratio::Real = 0.035,     # limit on mean(|Ru-Rd|)/mean(ar). Note: this only makes sense for use_mean=true
+    max_ar_ratio::Real = 0.03,      # limit on std(ar)/mean(ar), ar: average of Ru and Rd, the directional rejection rates
+    max_dr_ratio::Real = 0.03,      # limit on mean(|Ru-Rd|)/mean(ar). Note: this only makes sense for use_mean=true
     max_Δβs::Real      = 0.05,      # limit on max change in grid. Note: this is not a great indicator, so the limit is quite loose. Only helps with potential fake convergence at beginning
     max_relΔcone::Real = 0.0025,    # limit on rel change in c(1)
     max_relΔΛ::Real    = 0.01,      # limit on rel change in Λ = Λ(1)
     nsteps_init::Int   = 32,
-    max_nsteps::Int    = 8_388_608,
+    max_nsteps::Int    = 262144,
     maxcor::Real       = 0.8,
     verbose::Bool      = true
     ) where {T,K}
