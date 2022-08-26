@@ -342,7 +342,7 @@ function tune_nexpls!(
     L   = log(maxcor)
     for i in eachindex(nexpls)
         ac  = acs[i]
-        idx = findfirst(x->isless(x,maxcor), ac) # attempt to find maxcor in acs
+        idx = findfirst(a -> a<=maxcor, ac)      # attempt to find maxcor in acs
         if !isnothing(idx)
             nexpls[i] = idx - one(TI)            # acs starts at lag 0
         else                                     # extrapolate with model ac[n]=exp(ρn)
@@ -354,7 +354,7 @@ function tune_nexpls!(
         end
     end
     if smooth
-        # smooth the results
+        # smooth the results. note: not very useful in practice
         N          = length(nexpls)
         lognxs     = log.(nexpls)
         spl        = fit(SmoothingSpline, 1/N:1/N:1, lognxs, .0001)
