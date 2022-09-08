@@ -219,7 +219,7 @@ end
 
 # method for the output of NRST
 function tune_betas!(np::NRSTProblem, res::RunResults)
-    R  = res.rpacc ./ res.visits
+    R  = rejrates(res)
     ar = (R[1:(end-1),1] + R[2:end,2])/2 
     tune_betas!(np, ar)
 end

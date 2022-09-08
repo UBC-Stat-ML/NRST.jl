@@ -17,16 +17,16 @@ function diagnostics(ns::NRSTSampler, res::TouringRunResults)
     )
 
     # rejection rates
-    rejrates=res.rpacc ./ res.visits
-    averej  = 0.5*(rejrates[1:(end-1),1]+rejrates[2:end,2])
+    R = rejrates(res)
+    averej  = 0.5*(R[1:(end-1),1]+R[2:end,2])
     prrs = plot(
-        0:(N-1), rejrates[1:(end-1),1],#push!(rejrates[1:(end-1),1],NaN),
+        0:(N-1), R[1:(end-1),1],#push!(R[1:(end-1),1],NaN),
         ylims = (0., Inf), legend = :bottomright, linestyle = :dash,
         palette=DEF_PAL, label = "Up-from", xlabel = "Level", 
         ylabel = "Rejection probability"#, legend_foreground_color = nothing
     )
     plot!(prrs,
-        0:(N-1), rejrates[2:end,2],#pushfirst!(rejrates[2:end,2],NaN),
+        0:(N-1), R[2:end,2],#pushfirst!(R[2:end,2],NaN),
         palette=DEF_PAL, label = "Down-to", linestyle = :dash
     )
     plot!(prrs,

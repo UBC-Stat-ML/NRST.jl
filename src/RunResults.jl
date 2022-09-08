@@ -4,7 +4,7 @@
 
 struct NRSTTrace{T,TI<:Int,TF<:AbstractFloat}
     trX::Vector{T}
-    trIP::Vector{SVector{2,TI}}
+    trIP::Vector{SVector{2,TI}} # can use a vector of SVectors since traces should not be modified
     trV::Vector{TF}
     trRP::Vector{TF}
     trXplAP::Vector{Vector{TF}}
@@ -13,7 +13,7 @@ end
 # outer constructors that allocate empty arrays
 function NRSTTrace(::Type{T}, N::TI, ::Type{TF}) where {T,TI<:Int,TF<:AbstractFloat}
     trX     = T[]
-    trIP    = SVector{2,TI}[]                # can use a vector of SVectors since traces should not be modified
+    trIP    = SVector{2,TI}[]                
     trV     = TF[]
     trRP    = TF[]
     trXplAP = [TF[] for _ in 1:N]
@@ -22,7 +22,7 @@ end
 # outer constructors that allocate fixed size arrays
 function NRSTTrace(::Type{T}, N::TI, ::Type{TF}, nsteps::Int) where {T,TI<:Int,TF<:AbstractFloat}
     trX     = Vector{T}(undef, nsteps)
-    trIP    = Vector{SVector{2,TI}}(undef, nsteps) # can use a vector of SVectors since traces should not be modified
+    trIP    = Vector{SVector{2,TI}}(undef, nsteps)
     trV     = Vector{TF}(undef, nsteps)
     trRP    = similar(trV)
     trXplAP = [TF[] for _ in 1:N]                  # cant predict number of visits to each level
@@ -41,6 +41,7 @@ end
 abstract type RunResults{T,TI<:Int,TF<:AbstractFloat} end
 
 get_N(res::RunResults) = length(res.trVs)-1 # retrieve max tempering level
+rejrates(res::RunResults) = res.rpacc ./ res.visits # matrix of rejection rates
 
 #######################################
 # serial

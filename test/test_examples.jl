@@ -11,16 +11,38 @@ end
 model = Lnmodel(randn(30))
 tm    = NRST.TuringTemperedModel(model);
 rng   = SplittableRandom(4)
-ns    = NRSTSampler(tm, rng, N=4);
+ns    = NRSTSampler(tm, rng, N=2);
 res   = parallel_run(ns, rng, ntours = 10000);
-plots = diagnostics(ns, res)
-hl    = ceil(Int, length(plots)/2)
-pdiags=plot(
-    plots..., layout = (hl,2), size = (900,hl*333),left_margin = 40px,
-    right_margin = 40px
-)
-map(tr -> NRST.tournexpls(tr,ns.np.nexpls), res.trvec)
 
+
+# build transition matrix for the index process
+# convention:
+# P = [(probs move up)           (probs of reject move up)]
+#     [(probs of reject move dn) (probs move dn)          ]
+# fill order: clockwise
+# then, atom (0,-) is at index nlvls+1
+using SparseArrays
+using LinearAlgebra
+R = NRST.rejrates(res)
+nlvls   = size(R,1)
+N       = nlvls-1
+nstates = 2nlvls
+IP = vcat(1:N, 1:nlvls, (nlvls+2):nstates, (nlvls+1):nstates)
+JP = vcat(2:nstates, (nlvls+1):(nstates-1), 1:nlvls) # skip zero at (nlvls,nlvls+1). quadrants 1+2 combined, 
+VP = vcat(1 .- R[1:(end-1),1], R[:,1], 1 .- R[2:end,2], R[:,2])
+# any(iszero,VP)
+P = sparse(IP,JP,VP,nstates,nstates)
+# show(IOContext(stdout, :limit=>false), MIME"text/plain"(), P)
+# all(isequal(1),sum(P,dims=2))
+
+# build Q matrix by dropping the row and column for the atom
+qidxs = setdiff(1:nstates, nlvls+1)
+Q = P[qidxs,qidxs]
+# show(IOContext(stdout, :limit=>false), MIME"text/plain"(), Q)
+# sum(x->x>0, 1 .- sum(Q,dims=2)) == 2 # must be only two ways to get to atom: 1) reject up move from (0,+), or 2) accept dn move from (1,-)
+F = inv(Matrix(I - Q)) # fundamental matrix
+F[1,1:nlvls] + pushfirst!(F[1,(nlvls+1):(nstates-1)],1.) # expected number of visits to a level when started at (0,+), regardless of direction
+vec(sum(res.visits,dims=2) / NRST.get_ntours(res))# compare to sample estimates
 ###############################################################################
 ###############################################################################
 using NRST
