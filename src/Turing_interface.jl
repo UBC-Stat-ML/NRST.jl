@@ -7,7 +7,6 @@
 const DPPL = DynamicPPL
 
 # TemperedModel built from a Turing model
-# struct TuringTemperedModel{TV,TVr,Tr,Tmod,Tspl,TVi} <: TemperedModel
 struct TuringTemperedModel{Tm<:DPPL.Model,Ts<:DPPL.AbstractSampler,TVi<:DPPL.AbstractVarInfo} <: TemperedModel
     model::Tm  # a DPPL.Model
     spl::Ts    # a DPPL.Sampler
