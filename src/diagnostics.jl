@@ -115,16 +115,18 @@ function diagnostics(ns::NRSTSampler, res::TouringRunResults)
     )
 
     # histogram of tour lengths
-    ltlns  = log10.(tourlengths(res))
+    tlens  = tourlengths(res)
+    ltlns  = log10.(tlens)
     lticks = make_log_ticks(ltlns)
     ptlens = histogram(
         ltlns, normalize=true, palette = DEF_PAL, #xaxis = :log10, xlims = extrema(tourlens),
         xlabel = "Tour length", ylabel = "Density", label = "",
         xticks = (collect(lticks), ["10^{$e}" for e in lticks])
     );
+    meantlen = mean(tlens)
     vline!(ptlens,
-        [log10(2*(N+1))], palette = DEF_PAL, linestyle = :dot,
-        label = "2N+2=$(2*(N+1))", linewidth = 4
+        [log10(meantlen)], palette = DEF_PAL, linestyle = :dot,
+        label = "Mean=$(round(meantlen,digits=1))", linewidth = 4
     )
 
     # Density plots for V

@@ -2,6 +2,7 @@
 # Minimal interface to obtain potentials and sampling from the prior
 # The transformation 𝕏 → ℝ from constrained to unconstrained Euclidean space
 # is used to simplify the work for exploration kernels 
+# TODO: update to new Turing interface for logdensities: https://github.com/TuringLang/Turing.jl/blob/416f9685c5cb911c956b5a69c97f1489919a5c38/src/inference/hmc.jl#L268
 ###############################################################################
 
 const DPPL = DynamicPPL

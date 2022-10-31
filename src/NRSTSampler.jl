@@ -58,8 +58,8 @@ function NRSTSampler(
     ) 
     ip = MVector(zero(N), one(N))
     ns = NRSTSampler(np, xpl, x, ip, curV)                      # instantiate the NRSTSampler
-    tune && tune!(ns, rng; kwargs...)                           # tune explorers, c, and betas
-    return ns
+    TE = tune ? tune!(ns, rng; kwargs...) : NaN                 # tune explorers, c, and betas
+    return ns, TE
 end
 
 # grid initialization
@@ -214,7 +214,7 @@ function tour_step!(
     l >= 1 && push!(trXplAP[l], xplap)
 end
 
-# run multiple tours, return processed output
+# run multiple tours (serially), return processed output
 function run_tours!(
     ns::NRSTSampler{T,TI,TF},
     rng::AbstractRNG;
@@ -240,11 +240,15 @@ end
 function parallel_run(
     ns::TS,
     rng::AbstractRNG;
-    ntours::Int,
-    keep_xs::Bool=true,
-    verbose::Bool=true,
+    TE::AbstractFloat = NaN,
+    α::AbstractFloat  = .9,
+    δ::AbstractFloat  = .05,
+    ntours::Int       = -one(TI),
+    keep_xs::Bool     = true,
+    verbose::Bool     = true,
     kwargs...
     ) where {T,TI,TF,TS<:NRSTSampler{T,TI,TF}}
+    ntours < zero(TI) && (ntours = min_ntours(TE,α,δ))
     verbose && println("\nRunning $ntours tours in parallel using $(Threads.nthreads()) threads.\n") 
     res  = [NRSTTrace(T,ns.np.N,TF) for _ in 1:ntours]                        # get one empty trace for each task
     rngs = [split(rng) for _ in 1:ntours]                                     # split rng into ntours copies. must be done outside of loop because split changes rng state.
@@ -255,3 +259,5 @@ function parallel_run(
     end
     TouringRunResults(res)                                                    # post-process and return 
 end
+
+min_ntours(TE,α,δ) = ceil(Int, (4/TE) * abs2(norminvcdf((1+α)/2)/δ))

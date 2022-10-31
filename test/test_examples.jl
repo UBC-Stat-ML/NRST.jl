@@ -11,11 +11,14 @@ end
 model = Lnmodel(randn(30))
 tm    = NRST.TuringTemperedModel(model);
 rng   = SplittableRandom(4)
-ns    = NRSTSampler(tm, rng, N=3, use_mean=false);
-res   = parallel_run(ns, rng, ntours = 10000);
-
-
-
+ns, TE= NRSTSampler(tm, rng, N=3, use_mean=false);
+res   = parallel_run(ns, rng, TE=TE);
+plots = diagnostics(ns, res)
+hl    = ceil(Int, length(plots)/2)
+pdiags=plot(
+    plots..., layout = (hl,2), size = (900,hl*333),left_margin = 40px,
+    right_margin = 40px
+)
 
 ###############################################################################
 ###############################################################################

@@ -15,6 +15,7 @@ using SplittableRandoms: SplittableRandom, split
 using StaticArrays: MVector, SVector
 using Statistics
 using StatsBase: autocor
+using StatsFuns: norminvcdf
 using StatsPlots: density
 using UnicodePlots: UnicodePlots
 using UnPack: @unpack

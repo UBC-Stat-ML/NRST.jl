@@ -30,10 +30,17 @@ function tune!(
         # 2) heuristic for when nexpls→∞, where 1) fails
         ntours_f = max(0.75*nsteps/mean(ns.np.nexpls), 150*nsteps^(1/4))
         ntours   = max(min_ntours, min(2nsteps, ceil(Int, ntours_f)))
-        verbose && println("\nImproving c(β) using $ntours NRST tours.\n")
-        tune_c!(ns.np, parallel_run(ns, rng; ntours = ntours, keep_xs = false))
+        verbose && println("\nImproving c(β) and estimating TE using $ntours NRST tours.\n")
+        res = parallel_run(ns, rng; ntours = ntours, keep_xs = false)
+        tune_c!(ns.np, res)
+    else
+        ntours = nsteps # equivalent number of expl steps would be this times N+1, but we only need to estimate visits not energies (harder)
     end
+    verbose && println("\nEstimating Tour Effectiveness (TE) using $ntours NRST tours.\n")
+    res = parallel_run(ns, rng; ntours = ntours, keep_xs = false)
+    
     println("\nTuning completed.\n")
+    return last(res.toureff)
 end
 
 # stage I tuning: bootstrap independent runs of explorers
@@ -48,7 +55,6 @@ function tune!(
     max_relΔcone::Real = 0.0025,    # limit on rel change in c(1)
     max_relΔΛ::Real    = 0.01,      # limit on rel change in Λ = Λ(1)
     nsteps_init::Int   = 32,
-    max_nsteps::Int    = 262144,
     maxcor::Real       = 0.8,
     verbose::Bool      = true
     ) where {T,K}
@@ -69,8 +75,8 @@ function tune!(
     oldcone = relΔcone = oldΛ = relΔΛ = NaN
     conv    = false
     while !conv && (rnd < max_rounds)
-        rnd += 1
-        nsteps = min(max_nsteps,2nsteps)        
+        rnd    += 1
+        nsteps *= 2        
         verbose && print("Round $rnd:\n\tTuning explorers...")
         tune_explorers!(np, ens, rng) # note: this function forces an update to betas in ens, since grid changed in last round
         verbose && println("done!")
