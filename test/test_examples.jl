@@ -8,10 +8,10 @@ using Plots.PlotMeasures: px
     s ~ LogNormal()
     x .~ Normal(0.,s)
 end
-model = Lnmodel(randn(30))
-tm    = NRST.TuringTemperedModel(model);
 rng   = SplittableRandom(4)
-ns, TE, Λ = NRSTSampler(tm, rng, N=3, use_mean=true);
+model = Lnmodel(randn(rng,30))
+tm    = NRST.TuringTemperedModel(model);
+ns, TE, Λ = NRSTSampler(tm, rng, N=3, use_mean=false);
 res   = parallel_run(ns, rng, TE=TE);
 plots = diagnostics(ns, res)
 hl    = ceil(Int, length(plots)/2)

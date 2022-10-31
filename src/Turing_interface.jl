@@ -2,7 +2,6 @@
 # Minimal interface to obtain potentials and sampling from the prior
 # The transformation 𝕏 → ℝ from constrained to unconstrained Euclidean space
 # is used to simplify the work for exploration kernels 
-# TODO: update to new Turing interface for logdensities: https://github.com/TuringLang/Turing.jl/blob/416f9685c5cb911c956b5a69c97f1489919a5c38/src/inference/hmc.jl#L268
 ###############################################################################
 
 const DPPL = DynamicPPL
@@ -17,9 +16,9 @@ end
 
 # outer constructor
 function TuringTemperedModel(model::DPPL.Model)
-    viout   = DPPL.VarInfo(model)            # build a TypedVarInfo
-    spl     = DPPL.SampleFromPrior()         # used for sampling and to "link!" (transform to unrestricted space)
-    DPPL.link!(viout, spl)                   # force transformation 𝕏 → ℝ
+    viout = DPPL.VarInfo(model)            # build a TypedVarInfo
+    spl   = DPPL.SampleFromPrior()         # used for sampling and to "link!" (transform to unrestricted space)
+    DPPL.link!(viout, spl)                 # force transformation 𝕏 → ℝ
     TuringTemperedModel(model, spl, viout)
 end
 
@@ -42,36 +41,30 @@ end
 
 # sampling from the prior
 function Base.rand(tm::TuringTemperedModel, rng::AbstractRNG)
-    vi = DPPL.VarInfo(rng, tm.model, tm.spl, DPPL.PriorContext())
-    DPPL.link!(vi, tm.spl)
+    vi = DPPL.VarInfo(rng, tm.model, tm.spl, DPPL.PriorContext()) # one-liner of the following, after filling-in the missing context variable: https://github.com/TuringLang/DynamicPPL.jl/blob/715526ffa70292436e479e18d762e7ebf31c9181/src/sampler.jl#L86
+    DPPL.link!(vi, tm.spl)                                        # these two steps are same as the following except avoid re-computing logjoint (not needed now): https://github.com/TuringLang/Turing.jl/blob/5990fae9f176e84d83bd119fa4a6b0e68f028493/src/inference/hmc.jl#L153
     vi[tm.spl]
 end
 
 # evaluate reference potential + logabsdetjac of the bijection
 function Vref(tm::TuringTemperedModel, x)
-    vi  = tm.viout                            # this helps with the re-binding+Boxing issue: https://invenia.github.io/blog/2019/10/30/julialang-features-part-1/#an-aside-on-boxing
-    vi  = DPPL.setindex!!(vi, x, tm.spl)
-    vi  = last(
-        DPPL.evaluate_threadunsafe!!(         # we copy vi when doing stuff in parallel so it's ok
-            tm.model, vi, DPPL.PriorContext()
+    -DPPL.getlogp(last(
+        DPPL.evaluate_threadunsafe!!(                             # we copy vi when doing stuff in parallel so it's ok
+            tm.model, DPPL.VarInfo(tm.viout, tm.spl, x), DPPL.PriorContext()
         )
-    )
-    pot = -DPPL.getlogp(vi)
-    return pot
+    ))
 end
 
 # evaluate target potential
 function V(tm::TuringTemperedModel, x)
-    vi  = tm.viout                                 # this helps with the re-binding+Boxing issue: https://invenia.github.io/blog/2019/10/30/julialang-features-part-1/#an-aside-on-boxing
-    vi  = DPPL.setindex!!(vi, x, tm.spl)
+    vi  = DPPL.VarInfo(tm.viout, tm.spl, x)
     DPPL.invlink!(vi, tm.spl)                      # this is to avoid getting the logabsdetjac, which is already in the Vref
-    vi  = last(
+    pot = -DPPL.getlogp(last(
         DPPL.evaluate_threadunsafe!!(              # we copy vi when doing stuff in parallel so it's ok
             tm.model, vi, DPPL.LikelihoodContext()
         )
-    )
-    pot = -DPPL.getlogp(vi)
-    DPPL.link!(vi, tm.spl)                         # undo the invlink
+    ))
+    DPPL.link!(vi, tm.spl)                         # need to re-link because apparently vi and viout share the same metadata field: https://github.com/TuringLang/DynamicPPL.jl/blob/715526ffa70292436e479e18d762e7ebf31c9181/src/varinfo.jl#L113
     return pot
 end
 
