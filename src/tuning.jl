@@ -178,8 +178,12 @@ tune_c_betas!(np::NRSTProblem, ens, args...) = tune_betas!(np, tune_c!(np, ens, 
 
 # tune the c vector using samples of the potential function
 function tune_c!(np::NRSTProblem{T,K}, trVs::Vector{Vector{K}}) where {T,K}
-    stepping_stone!(np.c, np.betas, trVs) # compute log(Z(b)/Z0) and store it in c
-    np.c .*= (-one(K))                    # c(b) = -log(Z(b)/Z0)
+    if np.use_mean                             # use mean strategy => can use thermo. ident. to use stepping stone, which is simulation consistent
+        stepping_stone!(np.c, np.betas, trVs)  # compute log(Z(b)/Z0) and store it in c
+        np.c .*= (-one(K))                     # c(b) = -log(Z(b)/Z0)
+    else
+        trapez!(np.c, np.betas, median.(trVs)) # use trapezoidal approx of int_0^beta med(b)db
+    end
     return
 end
 

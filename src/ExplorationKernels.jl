@@ -164,7 +164,7 @@ function run!(
     mhs::MHSampler{F,K},
     rng::AbstractRNG,
     trX::Matrix{K},
-    ) where {F,K,A}
+    ) where {F,K}
     sum_ap = zero(K)
     nsteps = size(trX, 2)
     for n in 1:nsteps
