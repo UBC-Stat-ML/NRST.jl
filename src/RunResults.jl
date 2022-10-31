@@ -42,6 +42,8 @@ abstract type RunResults{T,TI<:Int,TF<:AbstractFloat} end
 
 get_N(res::RunResults) = length(res.trVs)-1 # retrieve max tempering level
 rejrates(res::RunResults) = res.rpacc ./ res.visits # matrix of rejection rates
+averej(res::RunResults) = averej(rejrates(res))
+averej(R::Matrix) = (R[1:(end-1),1] + R[2:end,2])/2
 
 #######################################
 # serial

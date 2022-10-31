@@ -17,7 +17,7 @@ function tune!(
     else
         ens = replicate(ns.xpl, ns.np.betas)                  # create a vector of explorers, whose states are fully independent of ns and its own explorer
     end
-    nsteps = tune!(ns.np, ens, rng;verbose=verbose,kwargs...)
+    nsteps, Λ = tune!(ns.np, ens, rng;verbose=verbose,kwargs...)
 
     # If using independent samplers, need to run NRST once to improve c,Λ estimates
     if ensemble != "NRPT" && do_stage_2
@@ -36,11 +36,12 @@ function tune!(
     else
         ntours = nsteps # equivalent number of expl steps would be this times N+1, but we only need to estimate visits not energies (harder)
     end
+    # cannot estimate TE with the ensembles, since this is inherently a regenerative property
     verbose && println("\nEstimating Tour Effectiveness (TE) using $ntours NRST tours.\n")
     res = parallel_run(ns, rng; ntours = ntours, keep_xs = false)
-    
-    println("\nTuning completed.\n")
-    return last(res.toureff)
+    TE  = last(res.toureff)
+    @printf("\nTuning completed! Summary:\n\tTE = %.2f\n\tΛ  = %.2f\n",TE, Λ)
+    return TE, Λ
 end
 
 # stage I tuning: bootstrap independent runs of explorers
@@ -125,7 +126,7 @@ function tune!(
     )); println("\n")
 
     # after these steps, NRST is coherently tuned and can be used to sample
-    return nsteps
+    return nsteps, oldΛ
 end
 
 
@@ -222,17 +223,13 @@ end
 # method for the raw traces of V along the levels
 function tune_betas!(np::NRSTProblem{T,K}, trVs::Vector{Vector{K}}) where {T,K}
     R   = est_rej_probs(trVs, np.betas, np.c) # compute average directional NRST rejection probabilities
-    ar  = (R[1:(end-1),1] + R[2:end,2])/2     # average up and down directions
+    ar  = averej(R)                           # average up and down directions
     out = tune_betas!(np, ar)
     (out..., ar, R)
 end
 
 # method for the output of NRST
-function tune_betas!(np::NRSTProblem, res::RunResults)
-    R  = rejrates(res)
-    ar = (R[1:(end-1),1] + R[2:end,2])/2 
-    tune_betas!(np, ar)
-end
+tune_betas!(np::NRSTProblem, res::RunResults) = tune_betas!(np, averej(res))
 
 # collect samples of V(x) at each of the levels, running explorers independently
 # also compute V aggregate
