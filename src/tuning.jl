@@ -2,6 +2,10 @@
 # tuning routines
 ###############################################################################
 
+# "optimal" value for N for a given Λ. γ is a multiplicative constant for 
+# correcting the formula when asymptotic assumptions don't hold
+optimal_N(Λ, γ) = ceil(Int, γ*Λ*(1+sqrt(1 + inv(1+2Λ))))
+
 # full tuning: bootstraps using ensembles of explorers (NRPT or independent)
 function tune!(
     ns::NRSTSampler,
@@ -57,6 +61,7 @@ function tune!(
     max_relΔΛ::Real    = 0.01,      # limit on rel change in Λ = Λ(1)
     nsteps_init::Int   = 32,
     maxcor::Real       = 0.8,
+    γ::Real            = 1.0,       # correction for the optimal_N formula
     verbose::Bool      = true
     ) where {T,K}
     !np.use_mean && (max_dr_ratio = Inf)      # equality of directional rejections only holds for the mean strategy
@@ -100,6 +105,12 @@ function tune!(
             )
             show(plot_grid(np.betas, title="Histogram of βs: round $rnd"))
             println("\n")
+        end
+
+        # check if N is too low / high
+        if rnd == 5
+            Nopt = optimal_N(Λ, γ)
+            abs(np.N-Nopt) > 2 && throw(BadNException(Nopt))
         end
 
         # check convergence

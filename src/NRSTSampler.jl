@@ -5,7 +5,7 @@
 # encapsulates all the specifics of the tempered problem
 struct NRSTProblem{TTM<:TemperedModel,K<:AbstractFloat,A<:Vector{K},TInt<:Int,TNT<:NamedTuple}
     tm::TTM              # a TemperedModel
-    N::TInt              # number of states additional to reference (N+1 in total)
+    N::TInt              # number of states no counting reference (N+1 in total)
     betas::A             # vector of tempering parameters (length N+1)
     c::A                 # vector of parameters for the pseudoprior
     use_mean::Bool       # should we use "mean" (true) or "median" (false) for tuning c?
@@ -33,33 +33,55 @@ end
 # constructors and initialization methods
 ###############################################################################
 
+struct BadNException{TI<:Int} <: Exception
+    Nopt::TI
+end
+
 # constructor that also builds an NRSTProblem and does initial tuning
 function NRSTSampler(
     tm::TemperedModel,
     rng::AbstractRNG;
-    betas          = nothing,
-    N::Int         = 3,
+    N::Int         = 10,
     nexpl::Int     = 10, 
     use_mean::Bool = true,
     tune::Bool     = true,
     kwargs...
     )
-    if isnothing(betas)
-        betas = init_grid(N)
-    else
-        N = length(betas) - 1
+    ns    = init_sampler(tm, rng, N, nexpl, use_mean)
+    TE, Λ = (NaN,NaN)
+    while tune
+        try
+            TE, Λ = tune!(ns, rng; kwargs...)
+            tune  = false
+        catch e
+            if e isa BadNException
+                @warn "N=$N too " * (e.Nopt > N ? "low" : "high") * ". Setting N=$(e.Nopt) and restarting."
+                ns = init_sampler(tm, rng, e.Nopt, nexpl, use_mean)
+            else
+                rethrow(e)
+            end
+        end        
     end
-    x    = initx(rand(tm, rng), rng)                            # draw an initial point
-    curV = Ref(V(tm, x))
-    xpl  = get_explorer(tm, x, curV)
-    np   = NRSTProblem(                                         # instantiate an NRSTProblem
+    return ns, TE, Λ
+end
+
+function init_sampler(
+    tm::TemperedModel,
+    rng::AbstractRNG,
+    N::Int,
+    nexpl::Int, 
+    use_mean::Bool
+    )
+    betas = init_grid(N)
+    x     = initx(rand(tm, rng), rng)                            # draw an initial point
+    curV  = Ref(V(tm, x))
+    xpl   = get_explorer(tm, x, curV)
+    np    = NRSTProblem(                                         # instantiate an NRSTProblem
         tm, N, betas, similar(betas), use_mean, fill(nexpl,N), 
         fill(params(xpl), N)
     ) 
-    ip = MVector(zero(N), one(N))
-    ns = NRSTSampler(np, xpl, x, ip, curV)                      # instantiate the NRSTSampler
-    TE, Λ = tune ? tune!(ns, rng; kwargs...) : (NaN,NaN)        # tune explorers, c, and betas
-    return ns, TE, Λ
+    ip    = MVector(zero(N), one(N))
+    return NRSTSampler(np, xpl, x, ip, curV)
 end
 
 # grid initialization
@@ -79,6 +101,16 @@ end
 
 # copy-constructor, using a given NRSTSampler (usually already tuned)
 function Base.copy(ns::NRSTSampler)
+    newtm = copy(ns.np.tm)                   # the only element in np that we (may) need to copy
+    newnp = NRSTProblem(ns.np, newtm)        # build new Problem from the old one but using new tm
+    newx  = copy(ns.x)
+    ncurV = Ref(V(newtm, newx))
+    nuxpl = copy(ns.xpl, newtm, newx, ncurV) # copy ns.xpl sharing stuff with the new sampler
+    NRSTSampler(newnp, nuxpl, newx, MVector(0,1), ncurV)
+end
+
+# create a new sampler from an old one, changing N
+function resize(ns::NRSTSampler)
     newtm = copy(ns.np.tm)                   # the only element in np that we (may) need to copy
     newnp = NRSTProblem(ns.np, newtm)        # build new Problem from the old one but using new tm
     newx  = copy(ns.x)

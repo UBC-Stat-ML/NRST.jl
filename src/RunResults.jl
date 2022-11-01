@@ -30,9 +30,6 @@ function NRSTTrace(::Type{T}, N::TI, ::Type{TF}, nsteps::Int) where {T,TI<:Int,T
 end
 get_N(tr::NRSTTrace) = length(tr.trXplAP)  # recover N. cant do N=N(tr) because julia gets dizzy
 get_nsteps(tr::NRSTTrace) = length(tr.trV) # recover nsteps
-function get_nvevals(tr::NRSTTrace{T,TI}, nexpls::AbstractVector) where {T,TI<:Int} # compute number of V evaluations per tour. assume 1 per explorer step
-    mapreduce(ip -> ip[1]>zero(TI) ? nexpls[ip[1]] : one(TI), +, tr.trIP)
-end
 
 #######################################
 # trace postprocessing
