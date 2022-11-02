@@ -42,6 +42,11 @@ rejrates(res::RunResults) = res.rpacc ./ res.visits # matrix of rejection rates
 averej(res::RunResults) = averej(rejrates(res))
 averej(R::Matrix) = (R[1:(end-1),1] + R[2:end,2])/2
 
+# tour effectiveness estimator under ELE assumption
+toureffELE(ar::AbstractVector) = inv(1 + 2*sum(r->r/(1-r), ar)) # special case of symmetric rejections
+toureffELE(R::AbstractMatrix)  = toureffELE(averej(R))          # TODO: implement general formula, instead of defaulting to symmetric case
+toureffELE(res::RunResults)    = toureffELE(rejrates(res))
+
 #######################################
 # serial
 #######################################

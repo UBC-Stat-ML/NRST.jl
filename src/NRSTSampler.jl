@@ -264,6 +264,13 @@ end
 # run NRST in parallel exploiting regenerations
 ###############################################################################
 
+# automatic determination of required number of tours
+DEFAULT_α = .9   # probability of the mean of indicators to be inside interval
+DEFAULT_δ = .025 # half-width of interval
+function min_ntours_TE(TE,α=DEFAULT_α,δ=DEFAULT_δ) 
+    ceil(Int, (4/TE) * abs2(norminvcdf((1+α)/2) / δ))
+end
+
 # multithreading method
 # uses a copy of ns per task, with indep state. copying is fast relative to 
 # cost of a tour, and size(ns) ~ size(ns.x)
@@ -273,14 +280,14 @@ function parallel_run(
     ns::TS,
     rng::AbstractRNG;
     TE::AbstractFloat = NaN,
-    α::AbstractFloat  = .9,
-    δ::AbstractFloat  = .05,
+    α::AbstractFloat  = DEFAULT_α,
+    δ::AbstractFloat  = DEFAULT_δ,
     ntours::Int       = -one(TI),
     keep_xs::Bool     = true,
     verbose::Bool     = true,
     kwargs...
     ) where {T,TI,TF,TS<:NRSTSampler{T,TI,TF}}
-    ntours < zero(TI) && (ntours = min_ntours(TE,α,δ))
+    ntours < zero(TI) && (ntours = min_ntours_TE(TE,α,δ))
     verbose && println("\nRunning $ntours tours in parallel using $(Threads.nthreads()) threads.\n") 
     res  = [NRSTTrace(T,ns.np.N,TF) for _ in 1:ntours]                        # get one empty trace for each task
     rngs = [split(rng) for _ in 1:ntours]                                     # split rng into ntours copies. must be done outside of loop because split changes rng state.
@@ -291,5 +298,3 @@ function parallel_run(
     end
     TouringRunResults(res)                                                    # post-process and return 
 end
-
-min_ntours(TE,α,δ) = ceil(Int, (4/TE) * abs2(norminvcdf((1+α)/2)/δ))

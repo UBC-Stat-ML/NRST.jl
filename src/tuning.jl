@@ -21,7 +21,7 @@ function tune!(
     else
         ens = replicate(ns.xpl, ns.np.betas)                  # create a vector of explorers, whose states are fully independent of ns and its own explorer
     end
-    nsteps, Λ = tune!(ns.np, ens, rng;verbose=verbose,kwargs...)
+    nsteps, Λ, TE_ELE = tune!(ns.np, ens, rng;verbose=verbose,kwargs...)
 
     # If using independent samplers, need to run NRST once to improve c,Λ estimates
     if ensemble != "NRPT" && do_stage_2
@@ -38,7 +38,7 @@ function tune!(
         res = parallel_run(ns, rng; ntours = ntours, keep_xs = false)
         tune_c!(ns.np, res)
     else
-        ntours = nsteps # equivalent number of expl steps would be this times N+1, but we only need to estimate visits not energies (harder)
+        ntours = min_ntours_TE(TE_ELE)
     end
     # cannot estimate TE with the ensembles, since this is inherently a regenerative property
     verbose && println("\nEstimating Tour Effectiveness (TE) using $ntours NRST tours.\n")
@@ -77,8 +77,9 @@ function tune!(
         println("\n")
     end
     rnd     = 0
-    nsteps  = nsteps_init÷2                  # nsteps is doubled at the beginning of the loop
+    nsteps  = nsteps_init÷2                 # nsteps is doubled at the beginning of the loop
     oldcone = relΔcone = oldΛ = relΔΛ = NaN
+    Rout    = Matrix{K}(undef, np.N+1, 2)   # capture R matrix generated inside the loop
     conv    = false
     while !conv && (rnd < max_rounds)
         rnd    += 1
@@ -91,6 +92,7 @@ function tune!(
         verbose && print("\tTuning c and grid using $nsteps steps per explorer...")
         res        = @timed tune_c_betas!(np, ens, rng, nsteps)
         Δβs,Λ,ar,R = res.value # note: rejections are before grid adjustment, so they are technically stale, but are still useful to assess convergence. compute std dev of average of up and down rejs
+        copyto!(Rout, R)
         mar        = mean(ar)
         ar_ratio   = std(ar)/mar
         dr_ratio   = mean(abs, R[1:(end-1),1] - R[2:end,2])/mar
@@ -137,7 +139,7 @@ function tune!(
     )); println("\n")
 
     # after these steps, NRST is coherently tuned and can be used to sample
-    return nsteps, oldΛ
+    return nsteps, oldΛ, toureffELE(Rout)
 end
 
 
