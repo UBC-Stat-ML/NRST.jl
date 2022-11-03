@@ -34,6 +34,7 @@ end
 ###############################################################################
 
 struct BadNException{TI<:Int} <: Exception
+    Ncur::TI
     Nopt::TI
 end
 
@@ -41,22 +42,26 @@ end
 function NRSTSampler(
     tm::TemperedModel,
     rng::AbstractRNG;
-    N::Int         = 10,
-    nexpl::Int     = 10, 
-    use_mean::Bool = true,
-    tune::Bool     = true,
+    N::Int              = 10,
+    nexpl::Int          = 10, 
+    use_mean::Bool      = true,
+    tune::Bool          = true,
+    adapt_N_rounds::Int = 3, 
     kwargs...
     )
-    ns    = init_sampler(tm, rng, N, nexpl, use_mean)
-    TE, Λ = (NaN,NaN)
+    ns      = init_sampler(tm, rng, N, nexpl, use_mean)
+    TE, Λ   = (NaN,NaN)
+    adapt_N = 0
     while tune
         try
-            TE, Λ = tune!(ns, rng; kwargs...)
+            TE, Λ = tune!(ns, rng; check_N=(adapt_N<adapt_N_rounds), kwargs...)
             tune  = false
         catch e
             if e isa BadNException
-                @warn "N=$N too " * (e.Nopt > N ? "low" : "high") * ". Setting N=$(e.Nopt) and restarting."
-                ns = init_sampler(tm, rng, e.Nopt, nexpl, use_mean)
+                @warn "N=$(e.Ncur) too " * (e.Nopt > e.Ncur ? "low" : "high") * 
+                      ". Setting N=$(e.Nopt) and restarting."
+                ns       = init_sampler(tm, rng, e.Nopt, nexpl, use_mean)
+                adapt_N += 1
             else
                 rethrow(e)
             end

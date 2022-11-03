@@ -62,6 +62,7 @@ function tune!(
     nsteps_init::Int   = 32,
     maxcor::Real       = 0.8,
     γ::Real            = 1.0,       # correction for the optimal_N formula
+    check_N::Bool      = true,
     verbose::Bool      = true
     ) where {T,K}
     !np.use_mean && (max_dr_ratio = Inf)      # equality of directional rejections only holds for the mean strategy
@@ -110,9 +111,10 @@ function tune!(
         end
 
         # check if N is too low / high
-        if rnd == 5
+        if rnd == 5 && check_N 
             Nopt = optimal_N(Λ, γ)
-            abs(np.N-Nopt) > 2 && throw(BadNException(Nopt))
+            dN   = abs(np.N-Nopt)
+            dN > 1 && dN > .1*Nopt && throw(BadNException(np.N,Nopt))
         end
 
         # check convergence
