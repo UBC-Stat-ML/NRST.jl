@@ -28,9 +28,9 @@ end
 # c[i] ≈ sum_{j=1}^i 0.5(f(x_j) + f(x_{j-1}))(x_j - x_{j-1})
 # Or recursively,
 # c[i] = c[i-1] + 0.5(f(x_i) + f(x_{i-1}))(x_i - x_{i-1})
-function trapez!(c::T,xs::T,ys::T) where {K<:AbstractFloat,T<:Vector{K}}
+function trapez!(c::AbstractVector, xs::AbstractVector, ys::AbstractVector)
     @assert length(c) == length(xs) == length(ys)
-    c[1] = zero(K)
+    c[1] = zero(eltype(c))
     oldx = xs[1]
     oldy = ys[1]
     for i in 2:length(xs)
@@ -42,7 +42,7 @@ function trapez!(c::T,xs::T,ys::T) where {K<:AbstractFloat,T<:Vector{K}}
     end
 end
 function trapez(xs,ys)
-    c = similar(ys)
+    c = similar(xs)
     trapez!(c, xs, ys)
     return c
 end
@@ -85,8 +85,8 @@ end
 # this function computes both forward and backward estimators, reports their weighted mean
 const STEPSTONE_FWD_WEIGHT = Ref(0.5)
 function stepping_stone!(
-    zs::TV,
-    bs::TV,
+    zs::AbstractVector,
+    bs::AbstractVector,
     trVs::Vector{TV}
     ) where {TF<:AbstractFloat, TV<:Vector{TF}}
     w     = STEPSTONE_FWD_WEIGHT[]

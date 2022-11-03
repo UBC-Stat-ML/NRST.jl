@@ -19,7 +19,10 @@ pdiags=plot(
     plots..., layout = (hl,2), size = (900,hl*333),left_margin = 40px,
     right_margin = 40px
 )
-
+using StatsBase
+wTrVs = map(vs -> winsor(vs,prop=.01),res.trVs)
+c = similar(ns.np.betas)
+NRST.trapez(ns.np.betas,wTrVs)
 ###############################################################################
 ###############################################################################
 using NRST
