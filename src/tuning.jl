@@ -47,7 +47,10 @@ function tune!(
         # 1 Tour    = 2sum(nexpl) steps in the exploration kernels
         # replace sum(nexpls) -> ns.np.N*median(nexpls) to be robust to cases 
         # where only 1 level has all the exploration steps 
-        ntours = ceil(Int, nsteps * oldsumnexpl / max(1, 2*ns.np.N*median(ns.np.nexpls)) )
+        ntours = min(
+            DEFAULT_MAX_TOURS,
+            ceil(Int, nsteps * oldsumnexpl / max(1, 2*ns.np.N*median(ns.np.nexpls)) )
+        )
     end
     # cannot estimate TE with the ensembles, since this is inherently a regenerative property
     verbose && println("\nEstimating Tour Effectiveness (TE) using $ntours NRST tours.\n")

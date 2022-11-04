@@ -270,10 +270,11 @@ end
 ###############################################################################
 
 # automatic determination of required number of tours
-DEFAULT_α = .95 # probability of the mean of indicators to be inside interval
-DEFAULT_δ = .05 # half-width of interval
-function min_ntours_TE(TE, α=DEFAULT_α, δ=DEFAULT_δ, TE_min=0.005)
-    # with params (.95,.05,.005), maximum number of tours is 1_229_267
+DEFAULT_α      = .95  # probability of the mean of indicators to be inside interval
+DEFAULT_δ      = .05  # half-width of interval
+DEFAULT_TE_min = .005 # truncate TE's below this value 
+DEFAULT_MAX_TOURS = min_ntours_TE(0.)
+function min_ntours_TE(TE, α=DEFAULT_α, δ=DEFAULT_δ, TE_min=DEFAULT_TE_min)
     ceil(Int, (4/max(TE_min,TE)) * abs2(norminvcdf((1+α)/2) / δ))
 end
 
