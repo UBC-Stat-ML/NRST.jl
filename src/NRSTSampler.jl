@@ -307,5 +307,6 @@ function parallel_run(
         ProgressMeter.next!(p)
         # rand() < .01 && GC.gc(true);
     end
+    GC.gc(true)                                                               # clean-up for next task
     TouringRunResults(res)                                                    # post-process and return 
 end
