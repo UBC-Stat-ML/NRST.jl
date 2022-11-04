@@ -1,67 +1,45 @@
 using NRST
-using DynamicPPL, Distributions
-using Plots
-using Plots.PlotMeasures: px
+using Distributions
 
-# lognormal prior, normal likelihood
-@model function Lnmodel(x)
-    s ~ LogNormal()
-    x .~ Normal(0.,s)
+# Define a `TemperedModel` type and implement `NRST.V`, `NRST.Vref`, and `Base.rand` 
+struct MvNormalTM{TI<:Int,TF<:AbstractFloat} <: NRST.TemperedModel
+    d::TI
+    m::TF
+    s0::TF
+    s0sq::TF
 end
-rng   = SplittableRandom(4)
-model = Lnmodel(randn(rng,30))
-tm    = NRST.TuringTemperedModel(model);
-ns, TE, Λ = NRSTSampler(tm, rng, use_mean=false);
-res   = parallel_run(ns, rng, TE=TE);
-plots = diagnostics(ns, res)
-hl    = ceil(Int, length(plots)/2)
-pdiags=plot(
-    plots..., layout = (hl,2), size = (900,hl*333),left_margin = 40px,
-    right_margin = 40px
-)
-using StatsBase
-wTrVs = map(vs -> winsor(vs,prop=.01),res.trVs)
-c = similar(ns.np.betas)
-NRST.trapez(ns.np.betas,wTrVs)
-###############################################################################
-###############################################################################
-using NRST
-using DynamicPPL, Distributions
-using LinearAlgebra
-using Plots
-using Plots.PlotMeasures: px
-using DelimitedFiles
-using Printf
-using Random
-@model function _HierarchicalModel(Y)
-    N,J= size(Y)
-    τ² ~ InverseGamma(.1,.1)
-    σ² ~ InverseGamma(.1,.1)
-    μ  ~ Cauchy()                  # can't use improper prior in NRST
-    θ  ~ MvNormal(fill(μ,J), τ²*I)
-    for j in 1:J
-        Y[:,j] ~ MvNormal(fill(θ[j], N), σ²*I)
-    end
+MvNormalTM(d,m,s0) = MvNormalTM(d,m,s0,s0*s0)
+NRST.V(tm::MvNormalTM, x) = 0.5mapreduce(xi -> abs2(xi - tm.m), +, x) # 0 allocs, versus "x .- m" which allocates a temp
+NRST.Vref(tm::MvNormalTM, x) = 0.5sum(abs2,x)/tm.s0sq
+Base.rand(tm::MvNormalTM, rng) = tm.s0*randn(rng,tm.d)
+
+# Write methods for the analytical expressions for ``\mu_b``, 
+# ``s_b^2``, and ``\mathcal{F}``
+sbsq(tm,b) = 1/(1/tm.s0sq + b)
+mu(tm,b)   = b*tm.m*sbsq(tm,b)*ones(tm.d)
+function free_energy(tm::MvNormalTM,b::Real)
+    m   = tm.m
+    ssq = sbsq(tm, b)
+    -0.5*tm.d*( log2π + log(ssq) - b*m*m*(1-b*ssq) )
 end
-# Loading the data and instantiating the model
-function HierarchicalModel()
-    Y     = readdlm("/home/mbiron/Documents/RESEARCH/UBC_PhD/NRST/NRSTExp/data/simulated8schools.csv", ',', Float64)
-    model = _HierarchicalModel(Y)
-    return NRST.TuringTemperedModel(model)
+free_energy(tm::MvNormalTM, bs::AbstractVector{<:Real}) = map(b->free_energy(tm,b), bs)
+
+# Distribution of the scaled potential function
+function get_scaled_V_dist(tm,b)
+    s² = sbsq(tm,b)
+    s  = sqrt(s²)
+    μ  = tm.m*(b*s²-1)/s
+    NoncentralChisq(tm.d,tm.d*μ*μ)
 end
-tm    = HierarchicalModel();
-rng   = SplittableRandom(4)
-ns    = NRSTSampler(tm, rng, N=10);
-res   = parallel_run(ns, rng, ntours = 32_768);
-plots = diagnostics(ns, res)
-hl    = ceil(Int, length(plots)/2)
-pdiags=plot(
-    plots..., layout = (hl,2), size = (900,hl*333),left_margin = 40px,
-    right_margin = 40px
-)
-X = hcat([exp.(0.5*x[1:2]) for x in res.xarray[end]]...)
-pcover = scatter(
-    X[1,:],X[2,:], xlabel="τ: between-groups std. dev.",
-    markeralpha = min(1., max(0.08, 1000/size(X,2))),
-    ylabel="σ: within-group std. dev.", label=""
-)
+
+rng = SplittableRandom(3990)
+tm  = MvNormalTM(32,4.,2.)
+ns, TE, Λ = NRSTSampler(
+            tm,
+            rng,
+            use_mean = true,
+            maxcor   = 1.0,
+            γ        = 0.75
+);
+res   = parallel_run(ns, rng, TE=0.1, keep_xs=false, verbose=false); 
+res.toureff

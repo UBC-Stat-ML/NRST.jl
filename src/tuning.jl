@@ -21,10 +21,12 @@ function tune!(
     else
         ens = replicate(ns.xpl, ns.np.betas)                  # create a vector of explorers, whose states are fully independent of ns and its own explorer
     end
+    oldsumnexpl = sum(ns.np.nexpls)
     nsteps, Λ, TE_ELE = tune!(ns.np, ens, rng;verbose=verbose,kwargs...)
 
     # If using independent samplers, need to run NRST once to improve c,Λ estimates
     if ensemble != "NRPT" && do_stage_2
+        # TODO: this is outdated. just delete?
         # two heuristics for determining appropriate number of tours, choose max of both:
         # 1) rationale:
         #    - above, each explorer produces nsteps samples
@@ -38,7 +40,14 @@ function tune!(
         res = parallel_run(ns, rng; ntours = ntours, keep_xs = false)
         tune_c!(ns.np, res)
     else
-        ntours = min_ntours_TE(TE_ELE)
+        # ntours = min_ntours_TE(TE_ELE,0.8,0.1)
+        # cannot use estimated TE_ELE because nexpls changed. if they decreased,
+        # then TE_ELE is too optimistic. 
+        # 1 PT step = oldsumnexpl steps in the exploration kernels
+        # 1 Tour    = 2sum(nexpl) steps in the exploration kernels
+        # replace sum(nexpls) -> ns.np.N*median(nexpls) to be robust to cases 
+        # where only 1 level has all the exploration steps 
+        ntours = ceil(Int, nsteps * oldsumnexpl / max(1, 2*ns.np.N*median(ns.np.nexpls)) )
     end
     # cannot estimate TE with the ensembles, since this is inherently a regenerative property
     verbose && println("\nEstimating Tour Effectiveness (TE) using $ntours NRST tours.\n")

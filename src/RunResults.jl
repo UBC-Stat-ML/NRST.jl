@@ -117,7 +117,7 @@ function TouringRunResults(results::Vector{TST}) where {T,I,K,TST<:NRSTTrace{T,I
     xarray  = [T[] for _ in 0:N]         # i-th entry has samples at level i
     trVs    = [K[] for _ in 0:N]         # i-th entry has Vs corresponding to xarray[i]
     curvis  = Matrix{I}(undef, N+1, 2)   # visits in current tour to each (i,eps) state
-    sumsq   = zeros(I, N+1)              # accumulate squared number of visits for each 0:N state (for tour effectiveness)
+    sumsq   = zeros(K, N+1)              # accumulate (in float to avoid overflow) squared number of visits for each 0:N state (for tour effectiveness)
     totvis  = zeros(I, N+1, 2)           # total visits to each (i,eps) state
     rpacc   = zeros(K, N+1, 2)           # accumulates rejection probs of swaps started from each (i,eps)
     xplapac = zeros(K, N)                # accumulates explorers' acc probs
@@ -132,5 +132,6 @@ function TouringRunResults(results::Vector{TST}) where {T,I,K,TST<:NRSTTrace{T,I
     
     # compute tour effectiveness and return
     toureff = vec(sum(totvis, dims=2).^2) ./ (ntours*sumsq)    # = (sum(totvis, dims=2)/ntours).^2 ./ (sumsq/ntours)
+    map!(TE -> isnan(TE) ? zero(K) : TE, toureff, toureff)     # correction for unvisited levels
     TouringRunResults(results, xarray, trVs, totvis, rpacc, xplapac, toureff)    
 end
