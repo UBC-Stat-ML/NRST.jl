@@ -307,11 +307,12 @@ function parallel_run(
         ProgressMeter.next!(p)
 
         # hack to fix memory management issues
+        GC.safepoint()
         # https://discourse.julialang.org/t/garbage-collector-behaviour-when-memory-is-almost-full/28169
-        if Sys.free_memory() / Sys.total_memory() < 0.1
-            GC.gc()
-            sleep(10)
-        end
+        # if Sys.free_memory() / Sys.total_memory() < 0.1
+        #     GC.gc()
+        #     sleep(10)
+        # end
     end
     GC.gc(true)                                                               # clean-up for next task
     TouringRunResults(res)                                                    # post-process and return 

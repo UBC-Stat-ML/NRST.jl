@@ -41,5 +41,5 @@ ns, TE, Λ = NRSTSampler(
             maxcor   = 1.0,
             γ        = 0.75
 );
-res   = parallel_run(ns, rng, TE=0.1, keep_xs=false, verbose=false); 
+res   = parallel_run(ns, rng, TE=.0, keep_xs=false);
 res.toureff
