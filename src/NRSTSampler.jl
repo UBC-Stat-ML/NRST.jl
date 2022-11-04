@@ -294,16 +294,18 @@ function parallel_run(
     verbose::Bool     = true,
     kwargs...
     ) where {T,TI,TF,TS<:NRSTSampler{T,TI,TF}}
-    GC.gc(true)
+    GC.gc(true)                                                               # setup allocates a lot so we need all mem we can get
     ntours < zero(TI) && (ntours = min_ntours_TE(TE,α,δ))
-    verbose && println("\nRunning $ntours tours in parallel using $(Threads.nthreads()) threads.\n") 
+    verbose && println(
+        "\nRunning $ntours tours in parallel using " *
+        "$(Threads.nthreads()) threads.\n") 
     res  = [NRSTTrace(T,ns.np.N,TF) for _ in 1:ntours]                        # get one empty trace for each task
     rngs = [split(rng) for _ in 1:ntours]                                     # split rng into ntours copies. must be done outside of loop because split changes rng state.
     p    = ProgressMeter.Progress(ntours; desc="Sampling: ", enabled=verbose) # prints a progress bar
     Threads.@threads for t in 1:ntours
         tour!(copy(ns), rngs[t], res[t]; keep_xs=keep_xs, kwargs...)          # run a tour with tasks' own sampler, rng, and trace, avoiding race conditions. note: writing to separate locations in a common vector is fine. see: https://discourse.julialang.org/t/safe-loop-with-push-multi-threading/41892/6, and e.g. https://stackoverflow.com/a/8978397/5443023
         ProgressMeter.next!(p)
-        rand() < .01 && GC.gc();
+        # rand() < .01 && GC.gc(true);
     end
     TouringRunResults(res)                                                    # post-process and return 
 end
