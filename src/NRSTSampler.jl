@@ -294,6 +294,7 @@ function parallel_run(
     verbose::Bool     = true,
     kwargs...
     ) where {T,TI,TF,TS<:NRSTSampler{T,TI,TF}}
+    GC.gc(true)
     ntours < zero(TI) && (ntours = min_ntours_TE(TE,α,δ))
     verbose && println("\nRunning $ntours tours in parallel using $(Threads.nthreads()) threads.\n") 
     res  = [NRSTTrace(T,ns.np.N,TF) for _ in 1:ntours]                        # get one empty trace for each task
