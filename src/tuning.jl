@@ -380,10 +380,13 @@ function tune_nexpls!(
         if !isnothing(idx)
             nexpls[i] = idx - one(TI)            # acs starts at lag 0
         else                                     # extrapolate with model ac[n]=exp(ρn)
-            l = length(ac)
-            X = reshape(collect(0:(l-1)),(l,1))  # build design matrix
-            y = log.(ac)
-            ρ = (X \ y)[1]                       # solve least-squares: Xρ ≈ y
+            @debug "ac:" display(ac)
+            l  = length(ac)
+            xs = 0:(l-1)
+            ys = log.(ac)
+            @debug "ys:" display(ys)
+            ρ = sum(xs .* ys) / sum(abs2, xs)    # solve least-squares: y ≈ Xρ
+            @debug "rho:" display(ρ)
             nexpls[i] = ceil(TI, L/ρ)            # x = e^{ρn} => log(x) = ρn => n = log(x)/ρ
         end
     end
