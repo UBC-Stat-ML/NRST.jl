@@ -373,13 +373,9 @@ function tune_nexpls!(
     smooth::Bool=false
     ) where {TI<:Int, TF<:AbstractFloat}
     L   = log(maxcor)
-    @debug display(trVs)
     for i in eachindex(nexpls)
-        @debug "i=$i"
-        @debug "nans in trV" sum(isnan,trVs[i+1])
-        @debug "trV" display(trVs[i+1])
+        sd(trVs[i+1]) < eps(TF) && throw(ArgumentError("Got zero variance at i=$i."))
         ac  = autocor(trVs[i+1])
-        @debug "ac:" display(ac)
         idx = findfirst(a -> a<=maxcor, ac)      # attempt to find maxcor in acs
         if !isnothing(idx)
             nexpls[i] = idx - one(TI)            # acs starts at lag 0
@@ -387,9 +383,7 @@ function tune_nexpls!(
             l  = length(ac)
             xs = 0:(l-1)
             ys = log.(ac)
-            @debug "ys:" display(ys)
-            ρ = sum(xs .* ys) / sum(abs2, xs)    # solve least-squares: y ≈ Xρ
-            @debug "rho:" display(ρ)
+            ρ  = sum(xs .* ys) / sum(abs2, xs)   # solve least-squares: y ≈ Xρ
             nexpls[i] = ceil(TI, L/ρ)            # x = e^{ρn} => log(x) = ρn => n = log(x)/ρ
         end
     end
@@ -429,7 +423,12 @@ function tune_c_nexpls!(
     )
     _    = tune_c!(np, nrpt, rng, nsteps)
     trVs = collectVs(np, get_xpls(nrpt), rng, np.nexpls[1]*nsteps) # make equivalent effort to an NRPT step
-    tune_nexpls!(np.nexpls, trVs, maxcor)
+    try
+        tune_nexpls!(np.nexpls, trVs, maxcor)
+    catch e
+        display(np.xplpars)
+        rethrow(e)
+    end
 end
 
 ##############################################################################
