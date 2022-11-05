@@ -366,15 +366,19 @@ end
 # warning: do not use with trVs generated from NRST, since those include refreshments!
 ##############################################################################
 
+struct ZeroVarVsException{TI<:Int} <: Exception
+    ibad::TI
+end
+
 function tune_nexpls!(
     nexpls::Vector{TI},
     trVs::Vector{Vector{TF}},
     maxcor::TF;
     smooth::Bool=false
     ) where {TI<:Int, TF<:AbstractFloat}
-    L   = log(maxcor)
+    L = log(maxcor)
     for i in eachindex(nexpls)
-        std(trVs[i+1]) < eps(TF) && throw(ArgumentError("Got zero variance at i=$i."))
+        std(trVs[i+1]) < eps(TF) && throw(ZeroVarVsException(i))
         ac  = autocor(trVs[i+1])
         idx = findfirst(a -> a<=maxcor, ac)      # attempt to find maxcor in acs
         if !isnothing(idx)
@@ -422,12 +426,15 @@ function tune_c_nexpls!(
     maxcor::AbstractFloat
     )
     _    = tune_c!(np, nrpt, rng, nsteps)
-    trVs = collectVs(np, get_xpls(nrpt), rng, np.nexpls[1]*nsteps) # make equivalent effort to an NRPT step
+    xpls = get_xpls(nrpt)
+    trVs = collectVs(np, xpls, rng, np.nexpls[1]*nsteps) # make equivalent effort to an NRPT step
     try
         tune_nexpls!(np.nexpls, trVs, maxcor)
     catch e
-        display(np.xplpars)
-        rethrow(e)
+        if e isa ZeroVarVsException
+            display(xpls[e.ibad])
+        end
+    rethrow(e)
     end
 end
 
