@@ -206,7 +206,7 @@ function tune!(
     eopt, fopt = monoroot(tfun, erange...; tol = tol, maxit = maxit)
     mhs.sigma[] = sd * (2^eopt)
     @debug "tune-xpl: setting σ=$(mhs.sigma[]) with acc=$(fopt+target_acc)"
-    any(erange .≈ eopt) && @warn "eopt=$eopt is close to boundary, sd=$sd, f(eopt)=$fopt"
+    any(erange .≈ eopt) && @warn "eopt=$eopt is close to boundary, sd=$sd, acc=$(fopt+target_acc)"
     return
 end
 

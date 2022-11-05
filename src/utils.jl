@@ -10,7 +10,7 @@ function monoroot(f, l::F, u::F; tol = eps(F), maxit = 30, verbose=false) where 
         h  = (l+u)/2
         fh = f(h)
         if abs(fh) < tol
-            return h
+            return h, fh
         elseif sign(fl) == sign(fh)
             l  = h
             fl = fh
