@@ -373,14 +373,17 @@ function tune_nexpls!(
     smooth::Bool=false
     ) where {TI<:Int, TF<:AbstractFloat}
     L   = log(maxcor)
+    @debug display(trVs)
     for i in eachindex(nexpls)
+        @debug "i=$i"
         @debug "nans in trV" sum(isnan,trVs[i+1])
+        @debug "trV" display(trVs[i+1])
         ac  = autocor(trVs[i+1])
+        @debug "ac:" display(ac)
         idx = findfirst(a -> a<=maxcor, ac)      # attempt to find maxcor in acs
         if !isnothing(idx)
             nexpls[i] = idx - one(TI)            # acs starts at lag 0
         else                                     # extrapolate with model ac[n]=exp(ρn)
-            @debug "ac:" display(ac)
             l  = length(ac)
             xs = 0:(l-1)
             ys = log.(ac)
