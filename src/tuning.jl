@@ -374,7 +374,7 @@ function tune_nexpls!(
     ) where {TI<:Int, TF<:AbstractFloat}
     L   = log(maxcor)
     for i in eachindex(nexpls)
-        sd(trVs[i+1]) < eps(TF) && throw(ArgumentError("Got zero variance at i=$i."))
+        std(trVs[i+1]) < eps(TF) && throw(ArgumentError("Got zero variance at i=$i."))
         ac  = autocor(trVs[i+1])
         idx = findfirst(a -> a<=maxcor, ac)      # attempt to find maxcor in acs
         if !isnothing(idx)
