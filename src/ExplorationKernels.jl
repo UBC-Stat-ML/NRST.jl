@@ -191,7 +191,7 @@ function tune!(
     _   = run!(mhs, rng, trX)
     sds = map(std, eachrow(trX))
     sd  = minimum(sds)
-    if sd < 1e-10                    # this can happen particle is at some corner in space
+    if sd < 1e-10                    # this can happen when the particle is at some corner in space
         sd = mean(sds)
         if sd < 1e-10                # this can happen when no proposals where accepted
             sd = minimum(abs,mhs.x)
@@ -203,9 +203,10 @@ function tune!(
         mhs.sigma[] = sd * (2^e)
         run!(mhs, rng, nsteps) - target_acc
     end
-    eopt = monoroot(tfun, erange...; tol = tol, maxit = maxit)
+    eopt, fopt = monoroot(tfun, erange...; tol = tol, maxit = maxit)
     mhs.sigma[] = sd * (2^eopt)
-    any(erange .≈ eopt) && @warn "eopt=$eopt is close to boundary, sd=$sd, f(eopt)=$(tfun(eopt))"
+    @debug "tune-xpl: setting σ=$(mhs.sigma[]) with acc=$(fopt+target_acc)"
+    any(erange .≈ eopt) && @warn "eopt=$eopt is close to boundary, sd=$sd, f(eopt)=$fopt"
     return
 end
 

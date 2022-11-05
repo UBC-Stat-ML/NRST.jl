@@ -19,7 +19,7 @@ function monoroot(f, l::F, u::F; tol = eps(F), maxit = 30, verbose=false) where 
             fu = fh
         end
     end
-    return h
+    return h, fh
 end
 
 # trapezoidal approximation
