@@ -2,10 +2,11 @@
 function monoroot(f, l::F, u::F; tol = eps(F), maxit = 30, verbose=false) where {F<:AbstractFloat}
     fl = f(l)
     fu = f(u)
-    if sign(fl) == sign(fu)     # f monotone & same sign at both ends => no root in interval. still return something to avoid downstream errors
-        return u
+    if sign(fl) == sign(fu)         # f monotone & same sign at both ends => no root in interval. still return something to avoid downstream errors
+        return u, fl
     end
-    h = l
+    h  = l
+    fh = fl                         # init fh (so that it is available for the return outside the for loop)
     for _ in 1:maxit
         h  = (l+u)/2
         fh = f(h)

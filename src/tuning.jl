@@ -273,10 +273,16 @@ function collectVs(
         trVs[1][i] = V(np.tm, rand(np.tm, rng))
     end
     rngs = [split(rng) for _ in 1:N]
-    Threads.@threads for i in 1:N           # "Threads.@threads for" does not work with enumerate
-        ipone = i+1
-        update_β!(xpls[i], np.betas[ipone]) # needed because most likely the grid was updated 
-        run!(xpls[i], rngs[i], trVs[ipone]) # run keeping track of V
+    Threads.@threads for i in 1:N          # "Threads.@threads for" does not work with enumerate
+        xpl = xpls[i]
+        rng = rngs[i]
+        update_β!(xpl, np.betas[i+1])      # needed because most likely the grid was updated
+        ar  = run!(xpl, rng, trVs[i+1])    # run and collect Vs
+        while ar < .05                     # if acc too low, re-tune and retry
+            @debug "Re-tuning explorer $i due to low acc-rate = $round(ar,digits=2)."
+            tune!(xpl, rng)
+            ar = run!(xpl, rng, trVs[i+1])
+        end
     end
     return trVs
 end
@@ -336,10 +342,10 @@ function optimize_grid!(betas::Vector{K}, averej::Vector{K}) where {K<:AbstractF
     newbetas    = similar(betas)
     newbetas[1] = betas[1]         # technically 0., but is safer this way against rounding errors
     for i in 2:N
-        targetΛ     = Λtargets[i]
-        b1          = newbetas[i-1]
-        b2          = betas[findfirst(u -> (u>targetΛ), Λsnorm)] # f_Λnorm^{-1}(targetΛ) cannot exceed this
-        newbetas[i] = monoroot(β -> f_Λnorm(β)-targetΛ, b1, b2)  # set tolerance for |f_Λnorm(β)-target| 
+        targetΛ       = Λtargets[i]
+        b1            = newbetas[i-1]
+        b2            = betas[findfirst(u -> (u>targetΛ), Λsnorm)] # f_Λnorm^{-1}(targetΛ) cannot exceed this
+        newbetas[i],_ = monoroot(β -> f_Λnorm(β)-targetΛ, b1, b2)
     end
     newbetas[end] = one(K)
     copyto!(betas, newbetas)
@@ -366,10 +372,6 @@ end
 # warning: do not use with trVs generated from NRST, since those include refreshments!
 ##############################################################################
 
-struct ZeroVarVsException{TI<:Int} <: Exception
-    ibad::TI
-end
-
 function tune_nexpls!(
     nexpls::Vector{TI},
     trVs::Vector{Vector{TF}},
@@ -378,7 +380,7 @@ function tune_nexpls!(
     ) where {TI<:Int, TF<:AbstractFloat}
     L = log(maxcor)
     for i in eachindex(nexpls)
-        std(trVs[i+1]) < eps(TF) && throw(ZeroVarVsException(i))
+        std(trVs[i+1]) < eps(TF) && throw(ArgumentError("Explorer $i produced constant V samples."))
         ac  = autocor(trVs[i+1])
         idx = findfirst(a -> a<=maxcor, ac)      # attempt to find maxcor in acs
         if !isnothing(idx)
@@ -428,14 +430,7 @@ function tune_c_nexpls!(
     _    = tune_c!(np, nrpt, rng, nsteps)
     xpls = get_xpls(nrpt)
     trVs = collectVs(np, xpls, rng, np.nexpls[1]*nsteps) # make equivalent effort to an NRPT step
-    try
-        tune_nexpls!(np.nexpls, trVs, maxcor)
-    catch e
-        if e isa ZeroVarVsException
-            display(xpls[e.ibad])
-        end
-    rethrow(e)
-    end
+    tune_nexpls!(np.nexpls, trVs, maxcor)
 end
 
 ##############################################################################
