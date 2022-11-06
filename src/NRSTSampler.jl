@@ -305,7 +305,7 @@ function parallel_run(
     Threads.@threads for t in 1:ntours
         tour!(copy(ns), rngs[t], res[t]; keep_xs=keep_xs, kwargs...)          # run a tour with tasks' own sampler, rng, and trace, avoiding race conditions. note: writing to separate locations in a common vector is fine. see: https://discourse.julialang.org/t/safe-loop-with-push-multi-threading/41892/6, and e.g. https://stackoverflow.com/a/8978397/5443023
         ProgressMeter.next!(p)
-        mod(t, 30_000) == 0 && GC.gc(true)
+        mod(t, 5_000) == 0 && GC.gc(true)
     end
     GC.gc(true)                                                               # clean-up for next task
     TouringRunResults(res)                                                    # post-process and return 
