@@ -20,3 +20,7 @@ function get_cgroup_mem_limit(jobid)
     fn = "/sys/fs/cgroup/memory/pbspro.service/jobid/$jobid/memory.limit_in_bytes"
     parse(Float64, read(fn, String))
 end
+
+# for the number of cpus available, need to parse
+#   /sys/fs/cgroup/cpuset/pbspro.service/jobid/4274394.pbsha.ib.sockeye/cpuset.cpus
+# see e.g.: https://github.com/cloudsigma/cgroupspy/blob/master/cgroupspy/interfaces.py#L177
