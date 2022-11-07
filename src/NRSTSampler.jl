@@ -294,19 +294,29 @@ function parallel_run(
     verbose::Bool     = true,
     kwargs...
     ) where {T,TI,TF,TS<:NRSTSampler{T,TI,TF}}
-    GC.gc(true)                                                               # setup allocates a lot so we need all mem we can get
+    GC.gc()                                                                   # setup allocates a lot so we need all mem we can get
     ntours < zero(TI) && (ntours = min_ntours_TE(TE,α,δ))
     verbose && println(
         "\nRunning $ntours tours in parallel using " *
-        "$(Threads.nthreads()) threads.\n") 
+        "$(Threads.nthreads()) threads.\n"
+    )
+    
+    # detect and handle memory management within PBS
+    jobid= get_PBS_jobid()
+    ispbs= !(jobid == "")
+    mlim = ispbs ? get_cgroup_mem_limit(jobid) : Inf64
+
+    # pre-allocate traces and prngs, and then run in parallel
     res  = [NRSTTrace(T,ns.np.N,TF) for _ in 1:ntours]                        # get one empty trace for each task
     rngs = [split(rng) for _ in 1:ntours]                                     # split rng into ntours copies. must be done outside of loop because split changes rng state.
     p    = ProgressMeter.Progress(ntours; desc="Sampling: ", enabled=verbose) # prints a progress bar
     Threads.@threads for t in 1:ntours
         tour!(copy(ns), rngs[t], res[t]; keep_xs=keep_xs, kwargs...)          # run a tour with tasks' own sampler, rng, and trace, avoiding race conditions. note: writing to separate locations in a common vector is fine. see: https://discourse.julialang.org/t/safe-loop-with-push-multi-threading/41892/6, and e.g. https://stackoverflow.com/a/8978397/5443023
         ProgressMeter.next!(p)
-        mod(t, 5_000) == 0 && GC.gc(true)
+        if ispbs && mod(t, 5000)==0 && get_cgroup_mem_usage(jobid)/mlim > 0.9 # if on PBS, check every 5000 tours if mem usage is high. If so, gc.
+            GC.gc()
+        end
     end
-    GC.gc(true)                                                               # clean-up for next task
+    GC.gc()                                                                   # clean-up for next task
     TouringRunResults(res)                                                    # post-process and return 
 end

@@ -88,6 +88,39 @@ ns, TE, Λ = NRSTSampler(
 );
 res   = parallel_run(ns, rng, TE=TE, keep_xs=false);
 
+
+
+# BAD APPROACH:
+# function to capture stdout, stderr, and exit code of a cmd
+# SHOULD BE REPLACED BY SIMPLY read(command::Cmd, String)
+function execute(cmd::Cmd)
+    out = Pipe()
+    err = Pipe()
+
+    process = run(pipeline(ignorestatus(cmd), stdout=out, stderr=err))
+    close(out.in)
+    close(err.in)
+
+    (
+      stdout = String(read(out)), 
+      stderr = String(read(err)),  
+      code = process.exitcode
+    )
+end
+
+cmd = `qstat -fx $jobid`
+out,err,status=execute(cmd)
+mbused = parse(Float64, match(r"resources_used.mem = (\d+)kb",out)[1])/1024
+mbavai = parse(Float64, match(r"Resource_List.mem = (\d+)mb",out)[1])
+mbused/mbavai
+
+npgs = open("/proc/$(getpid())/statm") do io
+    split(read(io, String))[1]
+end
+
+# GB used by the julia process
+parse(Float64,npgs)*parse(Float64, execute(`getconf PAGESIZE`)[1])*(1024)^-3
+
 ###############################################################################
 # end
 ###############################################################################
