@@ -317,13 +317,12 @@ function parallel_run(
         # if on PBS, check every 5000 tours if mem usage is high. If so, gc.
         if ispbs && mod(t, 5000)==0
             per_mem_used = get_cgroup_mem_usage(jobid)/mlim
-            if per_mem_used > 0.9
-                @debug "Calling GC.gc() due to high memory usage of " *
-                       "$(round(100*per_mem_used,digits=0))%."
+            @debug "$(round(100*per_mem_used))% memory used."
+            if per_mem_used > 0.8
+                @debug "Calling GC.gc() due to usage above threshold"
                 GC.gc()
             end
         end
-        
     end
     GC.gc()                                                                   # clean-up for next task
     TouringRunResults(res)                                                    # post-process and return 

@@ -9,8 +9,26 @@ using Distributions
 # = int_0^inf dy f_X(y) e^{ity} + int_-inf^0 dy f_X(x) e^{-itx}
 # = int_-inf^inf dx f_X(x) e^{it|x|}
 # = E[e^{it|X|}]
+# we know that
+# CF_X(t) = E[e^{itX}] = int_-inf^inf dx f_X(x) e^{itx} = e^{-|t|}
+# => CF_X(-t) = int_-inf^inf dx f_X(x) e^{-itx}
+# = int_-inf^0 dx f_X(x) e^{-itx} + int_0^inf dx f_X(x) e^{-itx}
+# = int_-inf^0 dx f_X(-x) e^{-itx} + int_0^inf dx f_X(x) e^{-itx}
+# = int_0^inf dx f_X(x) e^{itx} + int_0^inf dx f_X(x) e^{-itx}
+# while
+# CF_X(t) = int_-inf^0 dx f_X(x) e^{itx} + int_0^inf dx f_X(x) e^{itx}
+# but since CF_X(t) = CF_X(-t) = e^{-|t|}
+# it holds that
+# int_0^inf dx f_X(x) e^{-itx} = int_-inf^0 dx f_X(x) e^{itx}
+# = int_-inf^0 dx f_X(-x) e^{itx}
+# = int_0^inf dx f_X(x) e^{-itx}
+# Now, from above
+# E[e^{it|X|}] = int_-inf^inf dx f_X(x) e^{it|x|}
+# =2int_0^inf dx f_X(x) e^{itx}
 mean(x->exp(-abs(x)), rand(Cauchy(), 10000000))
 exp(-1)
+
+
 ###############################################################################
 # mrnatrans
 ###############################################################################
