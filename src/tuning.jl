@@ -381,11 +381,10 @@ function tune_nexpls!(
     L = log(maxcor)
     for i in eachindex(nexpls)
         # sanity checks of V samples
-        # nbigvs = sum(v -> abs(v) > inv(eps(TF)), trVs[i+1])
-        # trV = nbigvs>0 ? winsor(trVs[i+1], count=ceil(Int,nbigvs/2)) : trVs[i+1]
         trV = trVs[i+1]
         all(v -> v==first(trV), trV) && 
             throw(ArgumentError("Explorer $i produced constant V samples."))
+        replace!(v -> isinf(v) ? (v>0 ? floatmax(TF) : -floatmax(TF)) : v, trV)
         
         # compute autocorrelations and try finding something smaller than maxcor
         ac  = autocor(trV)
