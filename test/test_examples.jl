@@ -1,9 +1,17 @@
+using Distributions
+
+# if x has symmetric distribution and y=|x| then
+# F_Y(y) = P(Y<=y) = P(|X|<=y) = P(-y<=X<=y)=F_X(y) - F_X(-y)= 2F_X(y) - 1
+# f_Y(y) = d/dy F_Y(y) = 2f_X(y)
+mean(x->exp(-abs(x)), rand(Cauchy(), 10000000))
+exp(-1)
 ###############################################################################
 # mrnatrans
 ###############################################################################
 
 using NRST
 using DelimitedFiles
+using Distributions
 
 # Define a `TemperedModel` type and implement `NRST.V`, `NRST.Vref`, and `Base.rand` 
 struct MRNATrans{TF<:AbstractFloat} <: NRST.TemperedModel

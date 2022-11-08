@@ -376,6 +376,7 @@ function tune_nexpls!(
     nexpls::Vector{TI},
     trVs::Vector{Vector{TF}},
     maxcor::TF;
+    maxTF::TF = inv(eps(TF)),
     smooth::Bool=false
     ) where {TI<:Int, TF<:AbstractFloat}
     L = log(maxcor)
@@ -384,7 +385,7 @@ function tune_nexpls!(
         trV = trVs[i+1]
         all(v -> v==first(trV), trV) && 
             throw(ArgumentError("Explorer $i produced constant V samples."))
-        replace!(v -> isinf(v) ? (v>0 ? floatmax(TF) : -floatmax(TF)) : v, trV)
+        replace!(v -> v > maxTF ? maxTF : (v < -maxTF ? -maxTF : v), trV)
         
         # compute autocorrelations and try finding something smaller than maxcor
         ac  = autocor(trV)
