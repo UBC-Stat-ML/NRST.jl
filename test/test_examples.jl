@@ -3,6 +3,12 @@ using Distributions
 # if x has symmetric distribution and y=|x| then
 # F_Y(y) = P(Y<=y) = P(|X|<=y) = P(-y<=X<=y)=F_X(y) - F_X(-y)= 2F_X(y) - 1
 # f_Y(y) = d/dy F_Y(y) = 2f_X(y)
+# E[e^{itY}] = int_0^inf dy f_Y(y) e^{ity} = 2int_0^inf dy f_X(y) e^{ity}
+# = int_0^inf dy f_X(y) e^{ity} + int_0^inf dy f_X(-y) e^{ity}
+# = int_0^inf dy f_X(y) e^{ity} + -int_0^-inf dy f_X(x) e^{-itx}
+# = int_0^inf dy f_X(y) e^{ity} + int_-inf^0 dy f_X(x) e^{-itx}
+# = int_-inf^inf dx f_X(x) e^{it|x|}
+# = E[e^{it|X|}]
 mean(x->exp(-abs(x)), rand(Cauchy(), 10000000))
 exp(-1)
 ###############################################################################

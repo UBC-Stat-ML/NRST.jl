@@ -382,10 +382,9 @@ function tune_nexpls!(
     L = log(maxcor)
     for i in eachindex(nexpls)
         # sanity checks of V samples
-        trV = trVs[i+1]
+        trV = clamp.(trVs[i+1], -maxTF, maxTF) # clamp needed to avoid stddev = NaN
         all(v -> v==first(trV), trV) && 
             throw(ArgumentError("Explorer $i produced constant V samples."))
-        replace!(v -> v > maxTF ? maxTF : (v < -maxTF ? -maxTF : v), trV)
         
         # compute autocorrelations and try finding something smaller than maxcor
         ac  = autocor(trV)
@@ -397,19 +396,7 @@ function tune_nexpls!(
             xs = 0:(l-1)
             ys = log.(ac)
             ρ  = sum(xs .* ys) / sum(abs2, xs)   # solve least-squares: y ≈ Xρ
-            try
-                nexpls[i] = ceil(TI, L/ρ)        # x = e^{ρn} => log(x) = ρn => n = log(x)/ρ
-            catch e
-                @warn "tune_nexpls!: caught error when setting nexpl for i=$i. Dumping info:\n"
-                println("ac:");display(ac)
-                println("First 10 V values:"); display(trV[1:10])
-                println("Last 10 V values:"); display(trV[(end-9):end])
-                println("mean(trV) = $(mean(trV))")
-                println("std(trV) = $(std(trV))")
-                println("trV contains $(sum(isnan, trV)) NaN values")
-                println("trV contains $(sum(isinf, trV)) Inf values")
-                rethrow(e)
-            end
+            nexpls[i] = ceil(TI, L/ρ)            # x = e^{ρn} => log(x) = ρn => n = log(x)/ρ
         end
     end
     if smooth
