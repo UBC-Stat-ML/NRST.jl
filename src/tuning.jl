@@ -401,10 +401,12 @@ function tune_nexpls!(
             catch e
                 @warn "tune_nexpls!: caught error when setting nexpl for i=$i. Dumping info:\n"
                 println("ac:");display(ac)
-                println("First 10 V values:"); display(trVs[i+1][1:10])
-                println("Last 10 V values:"); display(trVs[i+1][(end-9):end])
-                println("trV contains $(sum(isnan, trVs[i+1])) NaN values")
-                println("trV contains $(sum(isinf, trVs[i+1])) Inf values")
+                println("First 10 V values:"); display(trV[1:10])
+                println("Last 10 V values:"); display(trV[(end-9):end])
+                println("mean(trV) = $(mean(trV))")
+                println("std(trV) = $(std(trV))")
+                println("trV contains $(sum(isnan, trV)) NaN values")
+                println("trV contains $(sum(isinf, trV)) Inf values")
                 rethrow(e)
             end
         end
