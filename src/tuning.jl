@@ -380,10 +380,13 @@ function tune_nexpls!(
     ) where {TI<:Int, TF<:AbstractFloat}
     L = log(maxcor)
     for i in eachindex(nexpls)
-        trV = any(trVs[i+1] .> 1e17) ? winsor(trVs[i+1], prop=0.01) : trVs[i+1]
+        # sanity checks of V samples 
+        trV = any(trVs[i+1] .> inv(eps(TF))) ? winsor(trVs[i+1], prop=0.01) : trVs[i+1]
         std(trV) < eps(TF) && throw(ArgumentError("Explorer $i produced constant V samples."))
+        
+        # compute autocorrelations and try finding something smaller than maxcor
         ac  = autocor(trV)
-        idx = findfirst(a -> a<=maxcor, ac)      # attempt to find maxcor in acs
+        idx = findfirst(a -> a<=maxcor, ac)
         if !isnothing(idx)
             nexpls[i] = idx - one(TI)            # acs starts at lag 0
         else                                     # extrapolate with model ac[n]=exp(ρn)
