@@ -390,7 +390,15 @@ function tune_nexpls!(
             xs = 0:(l-1)
             ys = log.(ac)
             ρ  = sum(xs .* ys) / sum(abs2, xs)   # solve least-squares: y ≈ Xρ
-            nexpls[i] = ceil(TI, L/ρ)            # x = e^{ρn} => log(x) = ρn => n = log(x)/ρ
+            try
+                nexpls[i] = ceil(TI, L/ρ)        # x = e^{ρn} => log(x) = ρn => n = log(x)/ρ
+            catch e
+                @warn "tune_nexpls!: caught error when setting nexpl for i=$i. Dumping info:\n"
+                display(xs)
+                display(ys)
+                display(ρ)
+                rethrow(e)
+            end
         end
     end
     if smooth
