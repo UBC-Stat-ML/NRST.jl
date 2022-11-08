@@ -394,9 +394,10 @@ function tune_nexpls!(
                 nexpls[i] = ceil(TI, L/ρ)        # x = e^{ρn} => log(x) = ρn => n = log(x)/ρ
             catch e
                 @warn "tune_nexpls!: caught error when setting nexpl for i=$i. Dumping info:\n"
-                display(xs)
-                display(ys)
-                display(ρ)
+                println("ac:");display(ac)
+                println("First 10 V values:"); display(trVs[i+1][1:10])
+                println("Last 10 V values:"); display(trVs[i+1][(end-9):end])
+                println("trV contains $(sum(isnan, trVs[i+1])) NaN values")
                 rethrow(e)
             end
         end
