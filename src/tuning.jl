@@ -380,8 +380,9 @@ function tune_nexpls!(
     ) where {TI<:Int, TF<:AbstractFloat}
     L = log(maxcor)
     for i in eachindex(nexpls)
-        std(trVs[i+1]) < eps(TF) && throw(ArgumentError("Explorer $i produced constant V samples."))
-        ac  = autocor(trVs[i+1])
+        trV = any(trVs[i+1] .> 1e17) ? winsor(trVs[i+1], prop=0.01) : trVs[i+1]
+        std(trV) < eps(TF) && throw(ArgumentError("Explorer $i produced constant V samples."))
+        ac  = autocor(trV)
         idx = findfirst(a -> a<=maxcor, ac)      # attempt to find maxcor in acs
         if !isnothing(idx)
             nexpls[i] = idx - one(TI)            # acs starts at lag 0
