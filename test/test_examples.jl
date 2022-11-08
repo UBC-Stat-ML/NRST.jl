@@ -1,4 +1,87 @@
 ###############################################################################
+# mrnatrans
+###############################################################################
+
+using NRST
+using DelimitedFiles
+
+# Define a `TemperedModel` type and implement `NRST.V`, `NRST.Vref`, and `Base.rand` 
+struct MRNATrans{TF<:AbstractFloat} <: NRST.TemperedModel
+    as::Vector{TF}
+    bs::Vector{TF}
+    bma::Vector{TF} # b-a
+    ts::Vector{TF}
+    ys::Vector{TF}
+end
+MRNATrans(as,bs,ts,ys) = MRNATrans(as,bs,bs .- as,ts,ys)
+function MRNATrans()
+    MRNATrans(
+        [-2., -5., -5., -5., -2.],
+        [ 1.,  5.,  5.,  5.,  2.],
+        mrna_trans_load_data()...
+    )
+end
+
+function mrna_trans_load_data()
+    dta = readdlm("/home/mbiron/Documents/RESEARCH/UBC_PhD/NRST/NRSTExp/data/transfection.csv", ',')
+    ts  = Float64.(dta[2:end,1])
+    ys  = Float64.(dta[2:end,3])
+    return ts, ys
+end
+
+# methods for the prior
+# if x~U[a,b] and y = f(x) = 10^x = e^{log(10)x}, then
+# P(Y<=y) = P(10^X <= y) = P(X <= log10(y)) = F_X(log(y))
+# p_Y(y) = d/dy P(Y<=y) = p_X(log(y)) 1/y = [ind{10^a<= y <=10^b}/(b-a)] [1/y]
+# which is the reciprocal distribution or logUniform, so it checks out
+function NRST.Vref(tm::MRNATrans{TF}, x) where {TF}
+    vr = zero(TF)
+    for (i,x) in enumerate(x)
+        if x < tm.as[i] || x > tm.bs[i] 
+            vr = Inf
+            break
+        end
+    end
+    return vr
+end
+function Base.rand(tm::MRNATrans, rng)
+    tm.as .+ (rand(rng, 5) .* tm.bma)
+end
+
+# method for the likelihood potential
+function NRST.V(tm::MRNATrans{TF}, x) where {TF}
+    t₀  = 10^x[1]
+    km₀ = 10^x[2]
+    β   = 10^x[3]
+    δ   = 10^x[4]
+    σ   = 10^x[5]
+    δmβ = δ - β
+    acc = zero(TF)
+    for (n, t) in enumerate(tm.ts)
+        tmt₀ = t - t₀
+        μ    = (km₀ / δmβ) * (-expm1(-δmβ * tmt₀)) * exp(-β*tmt₀)
+        isfinite(μ) || (μ = 1e4)
+        acc -= logpdf(Normal(μ, σ), tm.ys[n])
+    end
+    return acc
+end
+
+
+rng = SplittableRandom(3990)
+tm  = MRNATrans()
+ns, TE, Λ = NRSTSampler(
+            tm,
+            rng,
+            use_mean = false,
+            maxcor   = 0.6,
+            γ        = 2.0
+);
+
+###############################################################################
+# end
+###############################################################################
+
+###############################################################################
 # HModel
 ###############################################################################
 
@@ -87,39 +170,6 @@ ns, TE, Λ = NRSTSampler(
             γ        = 1.0
 );
 res   = parallel_run(ns, rng, TE=TE, keep_xs=false);
-
-
-
-# BAD APPROACH:
-# function to capture stdout, stderr, and exit code of a cmd
-# SHOULD BE REPLACED BY SIMPLY read(command::Cmd, String)
-function execute(cmd::Cmd)
-    out = Pipe()
-    err = Pipe()
-
-    process = run(pipeline(ignorestatus(cmd), stdout=out, stderr=err))
-    close(out.in)
-    close(err.in)
-
-    (
-      stdout = String(read(out)), 
-      stderr = String(read(err)),  
-      code = process.exitcode
-    )
-end
-
-cmd = `qstat -fx $jobid`
-out,err,status=execute(cmd)
-mbused = parse(Float64, match(r"resources_used.mem = (\d+)kb",out)[1])/1024
-mbavai = parse(Float64, match(r"Resource_List.mem = (\d+)mb",out)[1])
-mbused/mbavai
-
-npgs = open("/proc/$(getpid())/statm") do io
-    split(read(io, String))[1]
-end
-
-# GB used by the julia process
-parse(Float64,npgs)*parse(Float64, execute(`getconf PAGESIZE`)[1])*(1024)^-3
 
 ###############################################################################
 # end

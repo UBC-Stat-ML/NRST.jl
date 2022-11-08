@@ -380,9 +380,12 @@ function tune_nexpls!(
     ) where {TI<:Int, TF<:AbstractFloat}
     L = log(maxcor)
     for i in eachindex(nexpls)
-        # sanity checks of V samples 
-        trV = any(trVs[i+1] .> inv(eps(TF))) ? winsor(trVs[i+1], prop=0.01) : trVs[i+1]
-        std(trV) < eps(TF) && throw(ArgumentError("Explorer $i produced constant V samples."))
+        # sanity checks of V samples
+        # nbigvs = sum(v -> abs(v) > inv(eps(TF)), trVs[i+1])
+        # trV = nbigvs>0 ? winsor(trVs[i+1], count=ceil(Int,nbigvs/2)) : trVs[i+1]
+        trV = trVs[i+1]
+        all(v -> v==first(trV), trV) && 
+            throw(ArgumentError("Explorer $i produced constant V samples."))
         
         # compute autocorrelations and try finding something smaller than maxcor
         ac  = autocor(trV)
@@ -402,6 +405,7 @@ function tune_nexpls!(
                 println("First 10 V values:"); display(trVs[i+1][1:10])
                 println("Last 10 V values:"); display(trVs[i+1][(end-9):end])
                 println("trV contains $(sum(isnan, trVs[i+1])) NaN values")
+                println("trV contains $(sum(isinf, trVs[i+1])) Inf values")
                 rethrow(e)
             end
         end
