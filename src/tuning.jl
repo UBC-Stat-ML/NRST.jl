@@ -382,7 +382,7 @@ function tune_nexpls!(
     L = log(maxcor)
     for i in eachindex(nexpls)
         # sanity checks of V samples
-        trV = (clamp(v, -maxTF, maxTF) for v in trVs[i+1]) # clamp needed to avoid stddev = NaN => autocor=NaN. Uses iterator to avoid alloc, as in winsor function: https://github.com/JuliaStats/StatsBase.jl/blob/bd4ca61f4bb75f2c6cd0a47aee1cfde7b696eb9c/src/robust.jl#L96
+        trV = clamp.(trVs[i+1], -maxTF, maxTF) # clamp needed to avoid stddev = NaN => autocor=NaN
         all(v -> v==first(trV), trV) && 
             throw(ArgumentError("Explorer $i produced constant V samples."))
         
