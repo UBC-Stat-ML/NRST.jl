@@ -14,7 +14,7 @@ using SmoothingSplines: SmoothingSpline, fit, predict
 using SplittableRandoms: SplittableRandom, split
 using StaticArrays: MVector, SVector
 using Statistics
-using StatsBase: autocor
+using StatsBase: autocor, winsor
 using StatsFuns: norminvcdf
 using StatsPlots: density
 using UnicodePlots: UnicodePlots
