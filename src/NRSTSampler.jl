@@ -95,7 +95,8 @@ init_grid(N::Int) = collect(range(0,1,N+1))
 # safe initialization for arrays with float entries
 # robust against disruptions by heavy tailed reference distributions
 function initx(pre_x::AbstractArray{TF}, rng::AbstractRNG) where {TF<:AbstractFloat}
-    rand(rng, Uniform(-one(TF), one(TF)), size(pre_x))
+    x = rand(rng, Uniform(-one(TF), one(TF)), size(pre_x))
+    x .* (sign.(x) .* sign.(pre_x)) # quick and dirty way to respect sign constraints 
 end
 
 # constructor for a given (V,Vref,randref) triplet
