@@ -293,6 +293,8 @@ function parallel_run(
     ntours::Int       = -one(TI),
     keep_xs::Bool     = true,
     verbose::Bool     = true,
+    check_every::Int  = 1_000,
+    max_mem_use::Real = .8,
     kwargs...
     ) where {T,TI,TF,TS<:NRSTSampler{T,TI,TF}}
     GC.gc()                                                                   # setup allocates a lot so we need all mem we can get
@@ -315,11 +317,11 @@ function parallel_run(
         tour!(copy(ns), rngs[t], res[t]; keep_xs=keep_xs, kwargs...)          # run a tour with tasks' own sampler, rng, and trace, avoiding race conditions. note: writing to separate locations in a common vector is fine. see: https://discourse.julialang.org/t/safe-loop-with-push-multi-threading/41892/6, and e.g. https://stackoverflow.com/a/8978397/5443023
         ProgressMeter.next!(p)
 
-        # if on PBS, check every 5000 tours if mem usage is high. If so, gc.
-        if ispbs && mod(t, 5000)==0
+        # if on PBS, check every 'check_every' tours if mem usage is high. If so, gc.
+        if ispbs && mod(t, check_every)==0
             per_mem_used = get_cgroup_mem_usage(jobid)/mlim
-            @debug "$(round(100*per_mem_used))% memory used."
-            if per_mem_used > 0.8
+            @debug "Tour $t: $(round(100*per_mem_used))% memory used."
+            if per_mem_used > max_mem_use
                 @debug "Calling GC.gc() due to usage above threshold"
                 GC.gc()
             end
