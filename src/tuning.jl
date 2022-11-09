@@ -279,7 +279,7 @@ function collectVs(
         update_β!(xpl, np.betas[i+1])      # needed because most likely the grid was updated
         ar  = run!(xpl, rng, trVs[i+1])    # run and collect Vs
         while ar < .05                     # if acc too low, re-tune and retry
-            @debug "Re-tuning explorer $i due to low acc-rate = $round(ar,digits=2)."
+            @debug "Re-tuning explorer $i due to low acc-rate = $(round(ar,digits=2))."
             tune!(xpl, rng)
             ar = run!(xpl, rng, trVs[i+1])
         end
