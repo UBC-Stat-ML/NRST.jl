@@ -83,8 +83,8 @@ function post_process(
         l      = ip[1]
         idx    = l + 1
         idxeps = (ip[2] == one(I) ? 1 : 2)
-        visacc[idx, idxeps]  += one(I)
-        rpacc[idx, idxeps]   += tr.trRP[n]
+        visacc[idx, idxeps] += one(I)
+        rpacc[ idx, idxeps] += tr.trRP[n]
         if l >= 1
             nvl = visacc[idx,1] + visacc[idx,2] # (>=1) number of visits so far to level l, regardless of eps
             xplapac[l] += tr.trXplAP[l][nvl]

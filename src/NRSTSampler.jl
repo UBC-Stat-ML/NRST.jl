@@ -216,40 +216,52 @@ function run!(ns::NRSTSampler{T,I,K}, rng::AbstractRNG; nsteps::Int) where {T,I,
     return tr
 end
 
-# run a tour: run the sampler until we reach the atom ip=(0,-1)
-# note: by finishing at the atom (0,-1) and restarting using the renewal measure,
-# repeatedly calling this function is equivalent to standard sequential sampling 
-function tour!(ns::NRSTSampler, rng::AbstractRNG, tr::NRSTTrace;kwargs...)
-    renew!(ns, rng)
-    while !(ns.ip[1] == 0 && ns.ip[2] == -1)
-        tour_step!(ns, rng, tr;kwargs...)
-    end
-    tour_step!(ns, rng, tr;kwargs...)
-end
-function tour!(
-    ns::NRSTSampler{T,I,K},
-    rng::AbstractRNG;
-    keep_xs=true,
-    kwargs...
-    ) where {T,I,K}
+#######################################
+# touring interface
+#######################################
+
+# method that allocates a trace object
+function tour!(ns::NRSTSampler{T,I,K}, rng::AbstractRNG; kwargs...) where {T,I,K}
     tr = NRSTTrace(T, ns.np.N, K)
-    tour!(ns, rng, tr; keep_xs=keep_xs, kwargs...)
+    tour!(ns, rng, tr; kwargs...)
     return tr
 end
-function tour_step!(
-    ns::NRSTSampler,
-    rng::AbstractRNG,
-    tr::NRSTTrace;
-    keep_xs::Bool=true
-    )
-    @unpack trX, trIP, trV, trRP, trXplAP = tr
-    keep_xs && push!(trX, copy(ns.x)) # needs copy o.w. pushes a ref to ns.x
-    push!(trIP, copy(ns.ip))          # same
+
+# run a full tour, starting from a renewal, and ending at the atom
+# note: by doing the above, calling this function repeatedly should give the
+# same output as the sequential version.
+function tour!(
+    ns::NRSTSampler{T,I,K},
+    rng::AbstractRNG, 
+    tr::NRSTTrace; 
+    kwargs...
+    ) where {T,I,K}
+    renew!(ns, rng)                                # init with a renewal
+    while ns.ip[1] > zero(I) || ns.ip[2] == one(I)
+        save_pre_step!(ns, tr; kwargs...)          # save current (x,i,ϵ,V)
+        rp, xplap = step!(ns, rng)                 # do NRST step, produce (x',i',ϵ',V'), rej prob of temp step, and average xpl acc prob from expl step 
+        save_post_step!(ns, tr, rp, xplap)         # save rej prob and xpl acc prob 
+    end
+    save_pre_step!(ns, tr; kwargs...)              # store (x,0,-1,V)
+    save_post_step!(ns, tr, one(K), K(NaN))        # we know that (-1,-1) would be rejected if attempted so we store this. also, the expl step would not use an explorer; thus the NaN.
+end
+function save_pre_step!(ns::NRSTSampler, tr::NRSTTrace; keep_xs::Bool=true)
+    @unpack trX, trIP, trV = tr
+    keep_xs && push!(trX, copy(ns.x))          # needs copy o.w. pushes a ref to ns.x
+    push!(trIP, copy(ns.ip))                   # same
     push!(trV, ns.curV[])
-    rp, xplap = step!(ns, rng)
-    push!(trRP, rp)
+    return
+end
+function save_post_step!(
+    ns::NRSTSampler,
+    tr::NRSTTrace,
+    rp::AbstractFloat, 
+    xplap::AbstractFloat
+    )
+    push!(tr.trRP, rp)
     l = ns.ip[1]
-    l >= 1 && push!(trXplAP[l], xplap)
+    l >= 1 && push!(tr.trXplAP[l], xplap)
+    return
 end
 
 # run multiple tours (serially), return processed output
