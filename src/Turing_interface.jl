@@ -40,11 +40,11 @@ end
 
 # sampling from the prior
 function Base.rand(tm::TuringTemperedModel, rng::AbstractRNG)
-    vi = DPPL.VarInfo(rng, tm.model, tm.spl, DPPL.PriorContext()) # one-liner of the following, after filling-in the missing context variable: https://github.com/TuringLang/DynamicPPL.jl/blob/715526ffa70292436e479e18d762e7ebf31c9181/src/sampler.jl#L86
-    DPPL.link!(vi, tm.spl)                                        # these two steps are same as the following except avoid re-computing logjoint (not needed now): https://github.com/TuringLang/Turing.jl/blob/5990fae9f176e84d83bd119fa4a6b0e68f028493/src/inference/hmc.jl#L153
+    vi = DPPL.VarInfo(rng, tm.model, tm.spl, DPPL.PriorContext())         # one-liner of the following, after filling-in the missing context variable: https://github.com/TuringLang/DynamicPPL.jl/blob/715526ffa70292436e479e18d762e7ebf31c9181/src/sampler.jl#L86
+    DPPL.link!(vi, tm.spl)                                                # these two steps are same as the following except avoid re-computing logjoint (not needed now): https://github.com/TuringLang/Turing.jl/blob/5990fae9f176e84d83bd119fa4a6b0e68f028493/src/inference/hmc.jl#L153
     vi[tm.spl]
 end
-Random.rand!(tm::TuringTemperedModel, rng::AbstractRNG, x) = copyto!(x, rand(tm, rng))
+Random.rand!(tm::TuringTemperedModel, rng, x) = copyto!(x, rand(tm, rng)) # fallback since it is not possible to reuse x in a cleverer way
 
 # evaluate reference potential + logabsdetjac of the bijection
 function Vref(tm::TuringTemperedModel, x)

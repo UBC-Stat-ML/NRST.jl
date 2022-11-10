@@ -131,7 +131,7 @@ end
 
 # reset state by sampling from the renewal measure
 function renew!(ns::NRSTSampler{T,I}, rng::AbstractRNG) where {T,I}
-    copyto!(ns.x, rand(ns.np.tm, rng))
+    rand!(ns.np.tm, rng, ns.x)
     ns.ip[1]  = zero(I)
     ns.ip[2]  = one(I)
     ns.curV[] = V(ns.np.tm, ns.x)
