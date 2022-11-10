@@ -9,7 +9,7 @@ using LogExpFunctions: logsumexp, logistic
 using Plots
 using Printf
 using ProgressMeter: ProgressMeter
-using Random: Random, randexp, AbstractRNG
+using Random: Random, randexp, AbstractRNG, rand!
 using SmoothingSplines: SmoothingSpline, fit, predict
 using SplittableRandoms: SplittableRandom, split
 using StaticArrays: MVector, SVector

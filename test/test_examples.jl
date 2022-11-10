@@ -5,7 +5,7 @@
 using NRST
 using DelimitedFiles
 using Distributions
-
+using Random
 # Define a `TemperedModel` type and implement `NRST.V`, `NRST.Vref`, and `Base.rand` 
 struct MRNATrans{TF<:AbstractFloat} <: NRST.TemperedModel
     as::Vector{TF}
@@ -39,16 +39,17 @@ function NRST.Vref(tm::MRNATrans{TF}, x) where {TF}
     vr = zero(TF)
     for (i,x) in enumerate(x)
         if x < tm.as[i] || x > tm.bs[i] 
-            vr = Inf
+            vr = TF(Inf)
             break
         end
     end
     return vr
 end
-function Base.rand(tm::MRNATrans, rng)
-    tm.as .+ (rand(rng, 5) .* tm.bma)
+function Random.rand!(tm::MRNATrans, rng, x)
+    for (i, a) in enumerate(tm.as)
+        x[i] = a + rand(rng) * tm.bma[i]
+    end
 end
-
 # method for the likelihood potential
 function NRST.V(tm::MRNATrans{TF}, x) where {TF}
     t₀  = 10^x[1]
@@ -61,7 +62,7 @@ function NRST.V(tm::MRNATrans{TF}, x) where {TF}
     for (n, t) in enumerate(tm.ts)
         tmt₀ = t - t₀
         μ    = (km₀ / δmβ) * (-expm1(-δmβ * tmt₀)) * exp(-β*tmt₀)
-        isfinite(μ) || (μ = 1e4)
+        isfinite(μ) || (μ = TF(1e4))
         acc -= logpdf(Normal(μ, σ), tm.ys[n])
     end
     return acc
