@@ -269,9 +269,15 @@ function collectVs(
     )
     N      = np.N
     trVs   = [similar(np.c, nsteps) for _ in 0:N]
+    
+    # sample from reference
+    x = deepcopy(first(xpls).x) # temp
     for i in 1:nsteps
-        trVs[1][i] = V(np.tm, rand(np.tm, rng))
+        rand!(np.tm, rng, x)
+        trVs[1][i] = V(np.tm, x)
     end
+
+    # sample with explorers
     rngs = [split(rng) for _ in 1:N]
     Threads.@threads for i in 1:N          # "Threads.@threads for" does not work with enumerate
         xpl = xpls[i]

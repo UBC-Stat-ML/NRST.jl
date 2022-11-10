@@ -178,7 +178,7 @@ function expl_step!(ns::NRSTSampler{T,I,K}, rng::AbstractRNG) where {T,I,K}
     @unpack np,xpl,ip,curV = ns
     xplap = one(K)
     if ip[1] == zero(I)
-        copyto!(ns.x, rand(np.tm, rng))               # sample new state from the reference
+        rand!(np.tm, rng, ns.x)                       # sample new state from the reference
         curV[] = V(np.tm, ns.x)                       # compute energy at new point
     else
         β      = np.betas[ip[1]+1]                    # get the β for the level
