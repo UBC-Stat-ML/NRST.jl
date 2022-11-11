@@ -316,10 +316,10 @@ function parallel_run(
         "$(Threads.nthreads()) threads.\n"
     )
     
-    # # detect and handle memory management within PBS
-    # jobid= get_PBS_jobid()
-    # ispbs= !(jobid == "")
-    # mlim = ispbs ? get_cgroup_mem_limit(jobid) : Inf64
+    # detect and handle memory management within PBS
+    jobid= get_PBS_jobid()
+    ispbs= !(jobid == "")
+    mlim = ispbs ? get_cgroup_mem_limit(jobid) : Inf64
 
     # pre-allocate traces and prngs, and then run in parallel
     res  = [NRSTTrace(T,ns.np.N,TF) for _ in 1:ntours]                        # get one empty trace for each task
@@ -329,17 +329,16 @@ function parallel_run(
         tour!(copy(ns), rngs[t], res[t]; keep_xs=keep_xs, kwargs...)          # run a tour with tasks' own sampler, rng, and trace, avoiding race conditions. note: writing to separate locations in a common vector is fine. see: https://discourse.julialang.org/t/safe-loop-with-push-multi-threading/41892/6, and e.g. https://stackoverflow.com/a/8978397/5443023
         ProgressMeter.next!(p)
 
-        # # if on PBS, check every 'check_every' tours if mem usage is high. If so, gc.
-        # if ispbs && mod(t, check_every)==0
-        #     per_mem_used = get_cgroup_mem_usage(jobid)/mlim
-        #     @debug "Tour $t: $(round(100*per_mem_used))% memory used."
-        #     if per_mem_used > max_mem_use
-        #         @debug "Calling GC.gc() due to usage above threshold"
-        #         GC.gc()
-        #     end
-        # end
+        # if on PBS, check every 'check_every' tours if mem usage is high. If so, gc.
+        if ispbs && mod(t, check_every)==0
+            per_mem_used = get_cgroup_mem_usage(jobid)/mlim
+            @debug "Tour $t: $(round(100*per_mem_used))% memory used."
+            if per_mem_used > max_mem_use
+                @debug "Calling GC.gc() due to usage above threshold"
+                GC.gc()
+            end
+        end
     end
-    # GC.gc()                                                                   # clean-up for next task
     TouringRunResults(res)                                                    # post-process and return 
 end
 
