@@ -77,15 +77,25 @@ function NRST.V(tm::MRNATrans{TF}, x) where {TF}
     return acc
 end
 
-rng = SplittableRandom(3990)
+rng = SplittableRandom(8371)
 tm  = MRNATrans()
 ns, TE, Λ = NRSTSampler(
             tm,
             rng,
-            use_mean = false,
-            maxcor   = 0.8,
-            γ        = 3.0
+            use_mean = true,
+            maxcor   = 0.7,
+            γ        = 5.0
 );
+
+using Plots
+using Plots.PlotMeasures: px
+res   = parallel_run(ns, rng, ntours=100_000, keep_xs=false);
+plots = diagnostics(ns, res)
+hl    = ceil(Int, length(plots)/2)
+pdiags=plot(
+    plots..., layout = (hl,2), size = (900,hl*333),left_margin = 40px,
+    right_margin = 40px
+)
 
 ###############################################################################
 # end

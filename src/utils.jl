@@ -84,7 +84,9 @@ end
 #    ≈ sum_{i=0}^{N-1} [log(S_{i+1}) - logsumexp((beta_{i+1}-beta_i) V_{1:S_{i+1}})]
 #    = sum_{i=1}^{N} [log(S_i) - logsumexp((beta_i-beta_{i-1}) V_{1:S_i})]
 
-# this function computes both forward and backward estimators, reports their weighted mean
+# this function computes both forward and backward estimators simultaneously, and
+# takes their weighted mean.
+# note: stepping_stone is immune to V=Inf at i=1 (reference), see comments below.
 const STEPSTONE_FWD_WEIGHT = Ref(0.5)
 function stepping_stone!(
     zs::AbstractVector,
@@ -98,9 +100,9 @@ function stepping_stone!(
     llen  = log(length(trVs[1]))
     for i in 2:length(zs)
         db    = bs[i] - bs[i-1]
-        accf += logsumexp(-db*trVs[i-1]) - llen
+        accf += logsumexp(-db*trVs[i-1]) - llen # immune to V=inf at i=1 (reference) due to minus sign
         llen  = log(length(trVs[i]))
-        accb += llen - logsumexp(db*trVs[i]) 
+        accb += llen - logsumexp(db*trVs[i])    # immune to V=inf at i=1 because it does not use those samples
         zs[i] = w*accf + onemw*accb
     end
 end
