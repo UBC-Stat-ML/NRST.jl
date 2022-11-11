@@ -309,7 +309,7 @@ function parallel_run(
     # max_mem_use::Real = .8,
     kwargs...
     ) where {T,TI,TF,TS<:NRSTSampler{T,TI,TF}}
-    # GC.gc()                                                                   # setup allocates a lot so we need all mem we can get
+    GC.gc()                                                                   # setup allocates a lot so we need all mem we can get
     ntours < zero(TI) && (ntours = min_ntours_TE(TE,α,δ))
     verbose && println(
         "\nRunning $ntours tours in parallel using " *
