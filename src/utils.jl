@@ -1,12 +1,13 @@
 # find root for monotonic univariate functions
-function monoroot(f, l::F, u::F; tol = eps(F), maxit = 30, verbose=false) where {F<:AbstractFloat}
+function monoroot(f, l::F, u::F; tol = eps(F), maxit = 30) where {F<:AbstractFloat}
+    @assert l <= u
     fl = f(l)
     fu = f(u)
-    if sign(fl) == sign(fu)         # f monotone & same sign at both ends => no root in interval. still return something to avoid downstream errors
-        return u, fl
+    if sign(fl) == sign(fu)                          # f monotone & same sign at both ends => no root in interval
+        return abs(fl) < abs(fu) ? (l, fl) : (u, fu) # return the endpoint with f closest to zero
     end
     h  = l
-    fh = fl                         # init fh (so that it is available for the return outside the for loop)
+    fh = fl                                          # init fh (so that it is available for the return outside the for loop)
     for _ in 1:maxit
         h  = (l+u)/2
         fh = f(h)

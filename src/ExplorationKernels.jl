@@ -180,7 +180,7 @@ function tune!(
     rng::AbstractRNG;
     target_acc = 0.234,
     nsteps     = 512,      # for reference: sample size required computed via p(1-p)(Z/eps)^2 <= (Z/2eps)^2, for Z = quantile(Normal(), 0.975)
-    erange     = (-8.,8.), # range for the e in λ = 2^e 
+    erange     = (-9.,9.), # range for the e in λ = 2^e 
     tol        = 0.03,
     maxit      = 8,
     ) where {F,K}
@@ -206,7 +206,8 @@ function tune!(
     eopt, fopt = monoroot(tfun, erange...; tol = tol, maxit = maxit)
     mhs.sigma[] = sd * (2^eopt)
     # @debug "tune-xpl: setting σ=$(mhs.sigma[]) with acc=$(fopt+target_acc)"
-    any(erange .≈ eopt) && @warn "eopt=$eopt is close to boundary, sd=$sd, acc=$(fopt+target_acc)"
+    any(erange .≈ eopt) && @warn "eopt=$eopt is a boundary of range=$erange. " * 
+                                 "Got sd=$sd, acc=$(fopt+target_acc)."
     return
 end
 
