@@ -305,8 +305,8 @@ function parallel_run(
     ntours::Int       = -one(TI),
     keep_xs::Bool     = true,
     verbose::Bool     = true,
-    # check_every::Int  = 1_000,
-    # max_mem_use::Real = .8,
+    check_every::Int  = 1_000,
+    max_mem_use::Real = .8,
     kwargs...
     ) where {T,TI,TF,TS<:NRSTSampler{T,TI,TF}}
     GC.gc()                                                                   # setup allocates a lot so we need all mem we can get
