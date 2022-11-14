@@ -179,10 +179,9 @@ function tune!(
     mhs::MHSampler{F,K},
     rng::AbstractRNG;
     target_acc = 0.234,
-    nsteps     = 512,      # for reference: sample size required computed via p(1-p)(Z/eps)^2 <= (Z/2eps)^2, for Z = quantile(Normal(), 0.975)
-    erange     = (-9.,9.), # range for the e in λ = 2^e 
-    tol        = 0.03,
-    maxit      = 8,
+    nsteps     = 512,        # for reference: sample size required computed via p(1-p)(Z/eps)^2 <= (Z/2eps)^2, for Z = quantile(Normal(), 0.975)
+    erange     = (-10.,10.), # range for the e in λ = 2^e 
+    tol        = 0.05
     ) where {F,K}
     # estimate minimal std dev along all dimensions, since this is the one that
     # is most restrictive for the isotropic proposal
@@ -203,7 +202,7 @@ function tune!(
         mhs.sigma[] = sd * (2^e)
         run!(mhs, rng, nsteps) - target_acc
     end
-    eopt, fopt = monoroot(tfun, erange...; tol = tol, maxit = maxit)
+    eopt, fopt = monoroot(tfun, erange...; tol = tol)
     mhs.sigma[] = sd * (2^eopt)
     # @debug "tune-xpl: setting σ=$(mhs.sigma[]) with acc=$(fopt+target_acc)"
     any(erange .≈ eopt) && @warn "eopt=$eopt is a boundary of range=$erange. " * 

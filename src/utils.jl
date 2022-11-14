@@ -1,5 +1,5 @@
 # find root for monotonic univariate functions
-function monoroot(f, l::F, u::F; tol = eps(F), maxit = 30) where {F<:AbstractFloat}
+function monoroot(f, l::F, u::F; tol = eps(F), maxit = typemax(Int)) where {F<:AbstractFloat}
     @assert l <= u
     fl = f(l)
     fu = f(u)
