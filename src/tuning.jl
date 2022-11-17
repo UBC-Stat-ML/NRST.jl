@@ -184,8 +184,14 @@ function tune_explorers!(
 end
 
 # method for NRPTSampler
+# note: at every expl step in NRPT, the explorers get the params corresponding
+# to the level of their ns. And since NRPT step = first DEO, then expl, after
+# any number of full NRPT steps, the params in the xpls must agree with the 
+# ones in np.xplpars
 function tune_explorers!(np::NRSTProblem, nrpt::NRPTSampler, args...;kwargs...)
+    # @assert params.(get_xpls(nrpt)) == np.xplpars
     tune_explorers!(np, get_xpls(nrpt), args...;kwargs...)
+    # @assert params.(get_xpls(nrpt)) == np.xplpars
 end
 
 # transfer params from xpls to np for later use
@@ -276,8 +282,8 @@ function collectVs(
     trVs   = [similar(np.c, nsteps) for _ in 0:N]
     
     # sample from reference
-    x = similar(first(xpls).x)     # temp
-    for i in 1:(nsteps*sample_ref) # nsteps*false = 0 so no samples taken when sample_ref=false
+    x = similar(first(xpls).x)             # temp
+    for i in 1:(nsteps*sample_ref)         # nsteps*false = 0 so no samples taken when sample_ref=false
         trVs[1][i] = randrefmayreject!(np.tm, rng, x, np.reject_big_vs)
     end
 
@@ -365,6 +371,7 @@ function optimize_grid!(betas::Vector{K}, averej::Vector{K}) where {K<:AbstractF
         @debug "optimize_grid: looking for β in ($b1,$b2) to match f(β)=$targetΛ"
         lβ, _       = monoroot(lβ -> f_Λnorm(lβ)-targetΛ, floorlog(b1), floorlog(b2))
         newbetas[i] = expfloor(lβ)
+        newbetas[i] == b1 && error("optimize_grid: new beta[$i] is identical to beta[$(i-1)]=$b1. invalid grid.")
         @debug "optimize_grid: found β=$(newbetas[i])"
     end
     newbetas[end] = one(K)
@@ -384,8 +391,9 @@ function gen_lambda_fun(betas::Vector{K}, averej::Vector{K}) where {K<:AbstractF
     
     # check fit
     fitΛs  = map(f_Λnorm, lbetas)
-    indnan = findfirst(isnan, fitΛs)
-    isnothing(indnan) || error("gen_lambda_fun: interpolated f produces NaN at (i,β)=($indnan,$(betas[indnan]))")
+    idxnan = findfirst(isnan, fitΛs)
+    isnothing(idxnan) || error("gen_lambda_fun: interpolated f produces NaN at" *
+                               "(i,β)=($idxnan,$(betas[idxnan]))")
     err = mapreduce((f,y)-> abs(y-f), max, fitΛs, Λsnorm)
     err > 10eps(K) && @warn "gen_lambda_fun: high interpolation error = " err
     return (f_Λnorm, Λsnorm, Λs)

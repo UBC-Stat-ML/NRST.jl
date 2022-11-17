@@ -82,13 +82,19 @@ tm  = MRNATrans()
 ns, TE, Λ = NRSTSampler(
             tm,
             rng,
-            # tune = false,
-            use_mean = true,
-            reject_big_vs = true,
-            γ = 6.0,
-            maxcor = 0.5
+            # tune=false
 );
+ns.np.xplpars .= [(sigma=rand(),) for _ in 1:ns.np.N]
+nrpt = NRST.NRPTSampler(ns);
+NRST.params.(NRST.get_xpls(nrpt)) == ns.np.xplpars
+NRST.tune_explorers!(ns.np,nrpt,rng)
+NRST.run!(nrpt, rng, 3200);
+NRST.params.(NRST.get_xpls(nrpt)) == ns.np.xplpars
+per   = NRST.get_perm(nrpt) # per[i]  = level of the ith machine (per[i] ∈ 0:N). note that machines are indexed 1:(N+1)
+sper  = sortperm(per)  # sper[i] = id of the machine that is in level i-1 (sper[i] ∈ 1:(N+1))
+[nrpt.nss[i].ip[1] for i in sper[2:end]]
 
+any(iszero, [1e-324])
 
 using Plots
 using Plots.PlotMeasures: px

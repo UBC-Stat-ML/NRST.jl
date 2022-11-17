@@ -18,11 +18,13 @@ end
 # utilities
 get_N(nrpt::NRPTSampler) = nrpt.nss[1].np.N
 get_perm(nrpt::NRPTSampler) = [ns.ip[1] for ns in nrpt.nss]
-function get_xpls(nrpt::NRPTSampler) # return explorers. for compat with current code for tuning, sorts by level and excludes beta=0
-    per   = get_perm(nrpt)
-    sper  = sortperm(per)
-    fsper = filter(i->i>1, sper)
-    [nrpt.nss[i].xpl for i in fsper]
+
+# return explorers. for compat with current code for tuning, sorts by level and excludes beta=0
+# note: since run does deo first and then expl, the params in xpls should match the ones in np.xplpars
+function get_xpls(nrpt::NRPTSampler)
+    per  = get_perm(nrpt)                  # per[i]  = level of the ith machine (per[i] ∈ 0:N). note that machines are indexed 1:(N+1)
+    sper = sortperm(per)                   # sper[i] = id of the machine that is in level i-1 (sper[i] ∈ 1:(N+1))
+    [nrpt.nss[i].xpl for i in sper[2:end]] # skip machine handling level 0
 end
 
 # struct for storing minimal info about an nsteps run

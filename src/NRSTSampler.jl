@@ -47,7 +47,7 @@ function NRSTSampler(
     N::Int              = 10,
     nexpl::Int          = 10, 
     use_mean::Bool      = true,
-    reject_big_vs::Bool = false,
+    reject_big_vs::Bool = true,
     tune::Bool          = true,
     adapt_N_rounds::Int = 3, 
     kwargs...
