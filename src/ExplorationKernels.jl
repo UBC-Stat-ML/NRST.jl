@@ -179,31 +179,32 @@ function tune!(
     mhs::MHSampler{F,K},
     rng::AbstractRNG;
     target_acc = 0.234,
-    nsteps     = 512,        # for reference: sample size required computed via p(1-p)(Z/eps)^2 <= (Z/2eps)^2, for Z = quantile(Normal(), 0.975)
-    erange     = (-10.,10.), # range for the e in λ = 2^e 
+    nsteps     = 512,      # for reference: sample size required computed via p(1-p)(Z/eps)^2 <= (Z/2eps)^2, for Z = quantile(Normal(), 0.975)
+    erange     = (-3.,3.), # range for the exponent 
     tol        = 0.05
     ) where {F,K}
-    # estimate minimal std dev along all dimensions, since this is the one that
-    # is most restrictive for the isotropic proposal
-    d   = length(mhs.x)
-    trX = Matrix{K}(undef, d, ceil(Int, sqrt(d))*nsteps);
-    _   = run!(mhs, rng, trX)
-    sds = map(std, eachrow(trX))
-    sd  = minimum(sds)
-    if sd < 1e-10                    # this can happen when the particle is at some corner in space
-        sd = mean(sds)
-        if sd < 1e-10                # this can happen when no proposals where accepted
-            sd = minimum(abs,mhs.x)
-        end
-    end
-    # find e so that sigma=sd*2^e produces the acc rate most similar to target
+    # # estimate minimal std dev along all dimensions, since this is the one that
+    # # is most restrictive for the isotropic proposal
+    # d   = length(mhs.x)
+    # trX = Matrix{K}(undef, d, ceil(Int, sqrt(d))*nsteps);
+    # _   = run!(mhs, rng, trX)
+    # sds = map(std, eachrow(trX))
+    # sd  = minimum(sds)
+    # if sd < 1e-10                    # this can happen when the particle is at some corner in space
+    #     sd = mean(sds)
+    #     if sd < 1e-10                # this can happen when no proposals where accepted
+    #         sd = minimum(abs,mhs.x)
+    #     end
+    # end
+    # find e so that sigma=oldsigma*10^e produces the acc rate most similar to target
     # true acc(e) must be monotone in theory. noisy version may not but :shrug:
+    oldsigma = mhs.sigma[]
     function tfun(e)
-        mhs.sigma[] = sd * (2^e)
+        mhs.sigma[] = oldsigma * (10^e)
         run!(mhs, rng, nsteps) - target_acc
     end
-    eopt, fopt = monoroot(tfun, erange...; tol = tol)
-    mhs.sigma[] = sd * (2^eopt)
+    eopt, fopt = monoroot(tfun, erange...; tol = tol, maxit = 8)
+    mhs.sigma[] = oldsigma * (10^eopt)
     # @debug "tune-xpl: setting σ=$(mhs.sigma[]) with acc=$(fopt+target_acc)"
     any(erange .≈ eopt) && @warn "eopt=$eopt is a boundary of range=$erange. " * 
                                  "Got sd=$sd, acc=$(fopt+target_acc)."

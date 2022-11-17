@@ -1,5 +1,5 @@
 # find root for monotonic univariate functions
-function monoroot(f, l::F, u::F; tol = eps(F), maxit = typemax(Int)) where {F<:AbstractFloat}
+function monoroot(f, l::F, u::F; tol = 10eps(F), maxit = typemax(Int)) where {F<:AbstractFloat}
     @assert l <= u
     fl = f(l)
     fu = f(u)
@@ -8,9 +8,10 @@ function monoroot(f, l::F, u::F; tol = eps(F), maxit = typemax(Int)) where {F<:A
     end
     h  = l
     fh = fl                                          # init fh (so that it is available for the return outside the for loop)
-    for _ in 1:maxit
+    for i in 1:maxit
         h  = (l+u)/2
         fh = f(h)
+        # println("i=$i: (l,h,u)=($l,$h,$u), (fl,fh,fu)=($fl,$fh,$fu)")
         if abs(fh) < tol
             return h, fh
         elseif sign(fl) == sign(fh)

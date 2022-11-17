@@ -5,9 +5,21 @@
 
 abstract type TemperedModel end
 
-# compute and return both potentials
-potentials(tm::TemperedModel, x) = (Vref(tm,x), V(tm,x))
-Base.copy(tm::TemperedModel) = tm # by default don't copy anything
+potentials(tm::TemperedModel, x) = (Vref(tm,x), V(tm,x)) # compute and return both potentials
+Base.copy(tm::TemperedModel) = tm                        # default copy == don't copy anything
+
+# methods for sampling from the reference
+function randrefwithv!(tm::TemperedModel, rng::AbstractRNG, x) # sample x∼π₀ and compute v=V(x)
+    rand!(tm, rng, x) # sample new state from the reference
+    return V(tm, x)   # return energy at new point
+end
+function randrefmayreject!(tm::TemperedModel, rng::AbstractRNG, x, reject_big_vs::Bool)
+    v = randrefwithv!(tm, rng, x)
+    while reject_big_vs && v > BIG
+        v = randrefwithv!(tm, rng, x)
+    end
+    return v
+end
 
 # simple case: user passes proper Functions
 # note: callable structs not allowed since they are probably modified when one

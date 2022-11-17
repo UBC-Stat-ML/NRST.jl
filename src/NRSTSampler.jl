@@ -9,6 +9,7 @@ struct NRSTProblem{TTM<:TemperedModel,K<:AbstractFloat,A<:Vector{K},TInt<:Int,TN
     betas::A             # vector of tempering parameters (length N+1)
     c::A                 # vector of parameters for the pseudoprior
     use_mean::Bool       # should we use "mean" (true) or "median" (false) for tuning c?
+    reject_big_vs::Bool  # should we use rejection sampling from the reference to avoid the region {V=inf} 
     nexpls::Vector{TInt} # vector of length N with number of exploration steps adequate for each level 1:N
     xplpars::Vector{TNT} # vector of length N of named tuples, holding adequate parameters to use at each level 1:N
 end
@@ -16,7 +17,8 @@ end
 # copy constructor, allows replacing tm, but keeps everything else
 function NRSTProblem(oldnp::NRSTProblem, newtm)
     NRSTProblem(
-        newtm,oldnp.N,oldnp.betas,oldnp.c,oldnp.use_mean,oldnp.nexpls,oldnp.xplpars
+        newtm,oldnp.N,oldnp.betas,oldnp.c,oldnp.use_mean,oldnp.reject_big_vs,
+        oldnp.nexpls,oldnp.xplpars
     )
 end
 
@@ -45,11 +47,12 @@ function NRSTSampler(
     N::Int              = 10,
     nexpl::Int          = 10, 
     use_mean::Bool      = true,
+    reject_big_vs::Bool = false,
     tune::Bool          = true,
     adapt_N_rounds::Int = 3, 
     kwargs...
     )
-    ns      = init_sampler(tm, rng, N, nexpl, use_mean)
+    ns      = init_sampler(tm, rng, N, nexpl, use_mean, reject_big_vs)
     TE, Λ   = (NaN,NaN)
     adapt_N = 0
     while tune
@@ -60,7 +63,7 @@ function NRSTSampler(
             if e isa BadNException
                 @warn "N=$(e.Ncur) too " * (e.Nopt > e.Ncur ? "low" : "high") * 
                       ". Setting N=$(e.Nopt) and restarting."
-                ns       = init_sampler(tm, rng, e.Nopt, nexpl, use_mean)
+                ns       = init_sampler(tm, rng, e.Nopt, nexpl, use_mean, reject_big_vs)
                 adapt_N += 1
             else
                 rethrow(e)
@@ -75,22 +78,23 @@ function init_sampler(
     rng::AbstractRNG,
     N::Int,
     nexpl::Int, 
-    use_mean::Bool
+    use_mean::Bool,
+    reject_big_vs::Bool
     )
     betas = init_grid(N)
     x     = initx(rand(tm, rng), rng)                            # draw an initial point
     curV  = Ref(V(tm, x))
     xpl   = get_explorer(tm, x, curV)
     np    = NRSTProblem(                                         # instantiate an NRSTProblem
-        tm, N, betas, similar(betas), use_mean, fill(nexpl,N), 
-        fill(params(xpl), N)
-    ) 
+        tm, N, betas, similar(betas), use_mean, reject_big_vs,
+        fill(nexpl, N), fill(params(xpl), N)
+    )
     ip    = MVector(zero(N), one(N))
     return NRSTSampler(np, xpl, x, ip, curV)
 end
 
 # grid initialization
-init_grid(N::Int) = collect(range(0,1,N+1))
+init_grid(N::Int) = collect(range(0.,1.,N+1)) # vcat(0., range(1e-8, 1., N))
 
 # safe initialization for arrays with float entries
 # robust against disruptions by heavy tailed reference distributions
@@ -110,7 +114,7 @@ function Base.copy(ns::NRSTSampler)
     newtm = copy(ns.np.tm)                   # the only element in np that we (may) need to copy
     newnp = NRSTProblem(ns.np, newtm)        # build new Problem from the old one but using new tm
     newx  = copy(ns.x)
-    ncurV = Ref(V(newtm, newx))
+    ncurV = Ref(ns.curV[])
     nuxpl = copy(ns.xpl, newtm, newx, ncurV) # copy ns.xpl sharing stuff with the new sampler
     NRSTSampler(newnp, nuxpl, newx, MVector(0,1), ncurV)
 end
@@ -120,7 +124,7 @@ function resize(ns::NRSTSampler)
     newtm = copy(ns.np.tm)                   # the only element in np that we (may) need to copy
     newnp = NRSTProblem(ns.np, newtm)        # build new Problem from the old one but using new tm
     newx  = copy(ns.x)
-    ncurV = Ref(V(newtm, newx))
+    ncurV = Ref(ns.curV[])
     nuxpl = copy(ns.xpl, newtm, newx, ncurV) # copy ns.xpl sharing stuff with the new sampler
     NRSTSampler(newnp, nuxpl, newx, MVector(0,1), ncurV)
 end
@@ -129,12 +133,15 @@ end
 # sampling methods
 ###############################################################################
 
+function refreshx!(ns::NRSTSampler, rng::AbstractRNG)
+    ns.curV[] = randrefmayreject!(ns.np.tm, rng, ns.x, ns.np.reject_big_vs)
+end
+
 # reset state by sampling from the renewal measure
 function renew!(ns::NRSTSampler{T,I}, rng::AbstractRNG) where {T,I}
-    rand!(ns.np.tm, rng, ns.x)
-    ns.ip[1]  = zero(I)
-    ns.ip[2]  = one(I)
-    ns.curV[] = V(ns.np.tm, ns.x)
+    refreshx!(ns, rng)
+    ns.ip[1] = zero(I)
+    ns.ip[2] = one(I)
 end
 
 # communication step: the acceptance ratio is given by
@@ -175,11 +182,10 @@ end
 
 # exploration step
 function expl_step!(ns::NRSTSampler{T,I,K}, rng::AbstractRNG) where {T,I,K}
-    @unpack np,xpl,ip,curV = ns
+    @unpack np,xpl,ip = ns
     xplap = one(K)
     if ip[1] == zero(I)
-        rand!(np.tm, rng, ns.x)                       # sample new state from the reference
-        curV[] = V(np.tm, ns.x)                       # compute energy at new point
+        refreshx!(ns, rng)                            # sample from ref (possibly using rejection to avoid V=inf) and update curV accordingly
     else
         β      = np.betas[ip[1]+1]                    # get the β for the level
         nexpl  = np.nexpls[ip[1]]                     # get number of exploration steps needed at this level
@@ -283,13 +289,13 @@ end
 ###############################################################################
 
 # automatic determination of required number of tours
-DEFAULT_α      = .95  # probability of the mean of indicators to be inside interval
-DEFAULT_δ      = .05  # half-width of interval
-DEFAULT_TE_min = .005 # truncate TE's below this value 
+const DEFAULT_α      = .95  # probability of the mean of indicators to be inside interval
+const DEFAULT_δ      = .05  # half-width of interval
+const DEFAULT_TE_min = .005 # truncate TE's below this value 
 function min_ntours_TE(TE, α=DEFAULT_α, δ=DEFAULT_δ, TE_min=DEFAULT_TE_min)
     ceil(Int, (4/max(TE_min,TE)) * abs2(norminvcdf((1+α)/2) / δ))
 end
-DEFAULT_MAX_TOURS = min_ntours_TE(0.)
+const DEFAULT_MAX_TOURS = min_ntours_TE(0.)
 
 # multithreading method
 # uses a copy of ns per task, with indep state. copying is fast relative to 

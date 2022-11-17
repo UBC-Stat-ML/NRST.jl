@@ -103,8 +103,8 @@ function diagnostics(ns::NRSTSampler, res::TouringRunResults)
 
     # Lambda Plot
     betas = ns.np.betas
-    f_Λnorm, Λsnorm, Λs = gen_lambda_fun(betas, averej)
-    plam = plot_lambda(β->Λs[end]*f_Λnorm(β),betas,"")
+    f_Λnorm, _, Λs = gen_lambda_fun(betas, averej)
+    plam = plot_lambda(β->Λs[end]*f_Λnorm(floorlog(β)),betas,"")
 
     # Plot of the log-partition function
     lpart = log_partition(ns.np, res);
@@ -179,7 +179,7 @@ function plot_lambda(Λ,bs,lab)
     c1 = DEF_PAL[1]
     c2 = DEF_PAL[2]
     p = plot(
-        x->Λ(x), 0., 1., label = "", legend = :bottomright,
+        Λ, 0., 1., label = "", legend = :bottomright,
         xlim=(0.,1.), color = c1, grid = false, ylim=(0., Λ(bs[end])),
         xlabel = "β", ylabel = "Λ(β)"
     )

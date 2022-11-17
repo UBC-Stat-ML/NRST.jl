@@ -82,14 +82,17 @@ tm  = MRNATrans()
 ns, TE, Λ = NRSTSampler(
             tm,
             rng,
+            # tune = false,
             use_mean = true,
-            maxcor   = 0.7,
-            γ        = 5.0
+            reject_big_vs = true,
+            γ = 6.0,
+            maxcor = 0.5
 );
+
 
 using Plots
 using Plots.PlotMeasures: px
-res   = parallel_run(ns, rng, ntours=100_000, keep_xs=false);
+res   = parallel_run(ns, rng, TE=TE, keep_xs=false);
 plots = diagnostics(ns, res)
 hl    = ceil(Int, length(plots)/2)
 pdiags=plot(

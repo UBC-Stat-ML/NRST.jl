@@ -22,7 +22,7 @@ function tune!(
         ens = replicate(ns.xpl, ns.np.betas)                  # create a vector of explorers, whose states are fully independent of ns and its own explorer
     end
     oldsumnexpl = sum(ns.np.nexpls)
-    nsteps, Λ, TE_ELE = tune!(ns.np, ens, rng;verbose=verbose,kwargs...)
+    nsteps, Λ   = tune!(ns.np, ens, rng;verbose=verbose,kwargs...)
 
     # If using independent samplers, need to run NRST once to improve c,Λ estimates
     if ensemble != "NRPT" && do_stage_2
@@ -153,7 +153,7 @@ function tune!(
     )); println("\n")
 
     # after these steps, NRST is coherently tuned and can be used to sample
-    return nsteps, oldΛ, toureffELE(Rout)
+    return nsteps, oldΛ
 end
 
 
@@ -258,6 +258,10 @@ end
 # method for the output of NRST
 tune_betas!(np::NRSTProblem, res::RunResults) = tune_betas!(np, averej(res))
 
+#######################################
+# methods to estimate rejections
+#######################################
+
 # collect samples of V(x) at each of the levels, running explorers independently
 # also compute V aggregate
 # note: np.tm is modified here because it is used for sampling V from the reference
@@ -265,16 +269,16 @@ function collectVs(
     np::NRSTProblem, 
     xpls::Vector{<:ExplorationKernel},
     rng::AbstractRNG,
-    nsteps::Int
+    nsteps::Int,
+    sample_ref::Bool = true
     )
     N      = np.N
     trVs   = [similar(np.c, nsteps) for _ in 0:N]
     
     # sample from reference
-    x = deepcopy(first(xpls).x) # temp
-    for i in 1:nsteps
-        rand!(np.tm, rng, x)
-        trVs[1][i] = V(np.tm, x)
+    x = similar(first(xpls).x)     # temp
+    for i in 1:(nsteps*sample_ref) # nsteps*false = 0 so no samples taken when sample_ref=false
+        trVs[1][i] = randrefmayreject!(np.tm, rng, x, np.reject_big_vs)
     end
 
     # sample with explorers
@@ -290,6 +294,7 @@ function collectVs(
             ar = run!(xpl, rng, trVs[i+1])
         end
     end
+    store_params!(np, xpls)                # store params in case anything was re-tuned
     return trVs
 end
 
@@ -335,12 +340,18 @@ function est_rej_probs(trVs, betas, c)
     return R
 end
 
+#######################################
+# working with the Lambda function
+#######################################
+
+floorlog(x) = max(LOGSMALL, log(x))
+expfloor(x) = (x <= LOGSMALL ? zero(x) : exp(x))
+
 # optimize the grid using the equirejection approach
-# returns estimates of Λ(β) at the grid locations
 function optimize_grid!(betas::Vector{K}, averej::Vector{K}) where {K<:AbstractFloat}
     # estimate Λ at current betas using rejections rates, normalize, and interpolate
     f_Λnorm, Λsnorm, Λs = gen_lambda_fun(betas, averej) # note: this the only place where averej is used
-
+    
     # find newbetas by inverting f_Λnorm with a uniform grid on the range
     N           = length(betas)-1
     Δ           = convert(K,1/N)   # step size of the grid
@@ -348,22 +359,34 @@ function optimize_grid!(betas::Vector{K}, averej::Vector{K}) where {K<:AbstractF
     newbetas    = similar(betas)
     newbetas[1] = betas[1]         # technically 0., but is safer this way against rounding errors
     for i in 2:N
-        targetΛ       = Λtargets[i]
-        b1            = newbetas[i-1]
-        b2            = betas[findfirst(u -> (u>targetΛ), Λsnorm)] # f_Λnorm^{-1}(targetΛ) cannot exceed this
-        newbetas[i],_ = monoroot(β -> f_Λnorm(β)-targetΛ, b1, b2)
+        targetΛ     = Λtargets[i]
+        b1          = newbetas[i-1]
+        b2          = betas[findfirst(u -> (u>targetΛ), Λsnorm)] # f_Λnorm^{-1}(targetΛ) cannot exceed this
+        @debug "optimize_grid: looking for β in ($b1,$b2) to match f(β)=$targetΛ"
+        lβ, _       = monoroot(lβ -> f_Λnorm(lβ)-targetΛ, floorlog(b1), floorlog(b2))
+        newbetas[i] = expfloor(lβ)
+        @debug "optimize_grid: found β=$(newbetas[i])"
     end
     newbetas[end] = one(K)
     copyto!(betas, newbetas)
     return (f_Λnorm, Λsnorm, Λs)
 end
 
-# estimate Λ, normalize, and interpolate
+# estimate Λ, normalize, and interpolate f(β) = Λ(log(β))
+# need to work in log space because
+#   (dΛ/dβ)(0) = E^{0}[V]
+# and this can be infty in some models
 function gen_lambda_fun(betas::Vector{K}, averej::Vector{K}) where {K<:AbstractFloat}
     Λs      = get_lambdas(averej)
     Λsnorm  = Λs/Λs[end]
-    f_Λnorm = interpolate(betas, Λsnorm, FritschButlandMonotonicInterpolation()) # more natural fit than SteffenMonotonicInterpolation
-    err     = maximum(abs, map(f_Λnorm, betas) - Λsnorm)
+    lbetas  = floorlog.(betas)
+    f_Λnorm = interpolate(lbetas, Λsnorm, FritschButlandMonotonicInterpolation())
+    
+    # check fit
+    fitΛs  = map(f_Λnorm, lbetas)
+    indnan = findfirst(isnan, fitΛs)
+    isnothing(indnan) || error("gen_lambda_fun: interpolated f produces NaN at (i,β)=($indnan,$(betas[indnan]))")
+    err = mapreduce((f,y)-> abs(y-f), max, fitΛs, Λsnorm)
     err > 10eps(K) && @warn "gen_lambda_fun: high interpolation error = " err
     return (f_Λnorm, Λsnorm, Λs)
 end
@@ -441,7 +464,7 @@ function tune_c_nexpls!(
     )
     _    = tune_c!(np, nrpt, rng, nsteps)
     xpls = get_xpls(nrpt)
-    trVs = collectVs(np, xpls, rng, np.nexpls[1]*nsteps) # make equivalent effort to an NRPT step
+    trVs = collectVs(np, xpls, rng, np.nexpls[1]*nsteps, false) # make equivalent effort to an NRPT step
     tune_nexpls!(np.nexpls, trVs, maxcor)
 end
 
