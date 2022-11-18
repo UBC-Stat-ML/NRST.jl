@@ -77,8 +77,7 @@ tm  = HierarchicalModel()
 ns, TE, Λ = NRSTSampler(
             tm,
             rng,
-            log_grid = true
-            # tune=false
+
 );
 res   = parallel_run(ns, rng, ntours=2^14, keep_xs=false);
 plots = diagnostics(ns, res)
