@@ -103,8 +103,8 @@ function diagnostics(ns::NRSTSampler, res::TouringRunResults)
 
     # Lambda Plot
     betas = ns.np.betas
-    f_Λnorm, _, Λs = gen_lambda_fun(betas, averej, ns.np.loggrid)
-    plam = plot_lambda(β->((x = ns.np.loggrid ? floorlog(β) : β);Λs[end]*f_Λnorm(x)),betas,"")
+    f_Λnorm, _, Λs = gen_lambda_fun(betas, averej, ns.np.log_grid)
+    plam = plot_lambda(β->((x = ns.np.log_grid ? floorlog(β) : β);Λs[end]*f_Λnorm(x)),betas,"")
 
     # Plot of the log-partition function
     lpart = log_partition(ns.np, res);

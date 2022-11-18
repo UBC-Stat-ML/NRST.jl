@@ -69,17 +69,17 @@ function NRST.V(tm::HierarchicalModel{TF}, x) where {TF}
     return acc
 end
 
-using Plots
-using Plots.PlotMeasures: px
-
 rng = SplittableRandom(4)
 tm  = HierarchicalModel()
 ns, TE, Λ = NRSTSampler(
             tm,
             rng,
-
 );
-res   = parallel_run(ns, rng, ntours=2^14, keep_xs=false);
+
+using Plots
+using Plots.PlotMeasures: px
+
+res   = parallel_run(ns, rng,TE=TE, keep_xs=false);
 plots = diagnostics(ns, res)
 hl    = ceil(Int, length(plots)/2)
 pdiags=plot(
