@@ -1,4 +1,98 @@
 ###############################################################################
+# HierarchicalModel
+###############################################################################
+
+using NRST
+using DelimitedFiles
+using Distributions
+using Random
+const log2π = log(2pi)
+
+# Define a `TemperedModel` type and implement `NRST.V`, `NRST.Vref`, and `Base.rand` 
+struct HierarchicalModel{TF<:AbstractFloat,TI<:Int} <: NRST.TemperedModel
+    τ²_prior::InverseGamma{TF}
+    σ²_prior::InverseGamma{TF}
+    Y::Matrix{TF}
+    N::TI
+    J::TI
+    lenx::TI
+end
+function HierarchicalModel()
+    Y = hm_load_data()
+    HierarchicalModel(InverseGamma(.1,.1), InverseGamma(.1,.1), Y, size(Y)..., 11)
+end
+function hm_load_data()
+    readdlm("/home/mbiron/Documents/RESEARCH/UBC_PhD/NRST/NRSTExp/data/simulated8schools.csv", ',')
+end
+function invtrans(::HierarchicalModel{TF}, x::AbstractVector{TF}) where {TF}
+    (τ²=exp(x[1]), σ²=exp(x[2]), μ=x[3], θ = @view x[4:end])
+end
+
+# methods for the prior
+function NRST.Vref(tm::HierarchicalModel{TF}, x) where {TF}
+    τ², σ², μ, θ = invtrans(tm, x)
+    acc  = zero(TF)
+    acc -= logpdf(tm.τ²_prior, τ²) # τ²
+    acc -= x[1]                                               # logdetjac τ²
+    acc -= logpdf(tm.σ²_prior, σ²) # σ²
+    acc -= x[2]                                               # logdetjac σ²
+    acc -= logpdf(Cauchy(), μ)                                # μ
+    # acc -= logpdf(MvNormal(Fill(μ,tm.J), τ²*I), θ)            # θ
+    acc += 0.5(tm.J * (log2π+log(τ²)) + sum(θᵢ -> abs2(θᵢ - μ), θ)/τ²)
+    return acc
+end
+function Random.rand!(tm::HierarchicalModel, rng, x)
+    τ²   = rand(rng, tm.τ²_prior)
+    τ    = sqrt(τ²)
+    x[1] = log(τ²)
+    x[2] = log(rand(rng, tm.σ²_prior))
+    μ    = rand(rng, Cauchy())
+    x[3] = μ
+    for i in 4:tm.lenx
+        x[i] = rand(rng, Normal(μ, τ))
+    end
+    return x
+end
+function Base.rand(tm::HierarchicalModel{TF}, rng) where {TF}
+    rand!(tm, rng, Vector{TF}(undef, tm.lenx))
+end
+
+# method for the likelihood potential
+function NRST.V(tm::HierarchicalModel{TF}, x) where {TF}
+    _, σ², _, θ = invtrans(tm, x)
+    acc = zero(TF)
+    for (j, y) in enumerate(eachcol(tm.Y))
+        # acc -= logpdf(MvNormal(Fill(θ[j], tm.N), Σ), y)
+        acc += 0.5sum(yᵢ -> abs2(yᵢ - θ[j]), y)/σ²
+    end
+    acc += 0.5 * tm.J * tm.N * (log2π+log(σ²))
+    return acc
+end
+
+using Plots
+using Plots.PlotMeasures: px
+
+rng = SplittableRandom(4)
+tm  = HierarchicalModel()
+ns, TE, Λ = NRSTSampler(
+            tm,
+            rng,
+            log_grid = true
+            # tune=false
+);
+res   = parallel_run(ns, rng, ntours=2^14, keep_xs=false);
+plots = diagnostics(ns, res)
+hl    = ceil(Int, length(plots)/2)
+pdiags=plot(
+    plots..., layout = (hl,2), size = (900,hl*333),left_margin = 40px,
+    right_margin = 40px
+)
+
+###############################################################################
+# end
+###############################################################################
+
+###############################################################################
 # mrnatrans
 ###############################################################################
 
@@ -6,6 +100,7 @@ using NRST
 using DelimitedFiles
 using Distributions
 using Random
+
 #######################################
 # pure julia version
 #######################################
@@ -77,28 +172,18 @@ function NRST.V(tm::MRNATrans{TF}, x) where {TF}
     return acc
 end
 
+using Plots
+using Plots.PlotMeasures: px
+
 rng = SplittableRandom(8371)
 tm  = MRNATrans()
 ns, TE, Λ = NRSTSampler(
             tm,
             rng,
+            # log_grid = true
             # tune=false
 );
-ns.np.xplpars .= [(sigma=rand(),) for _ in 1:ns.np.N]
-nrpt = NRST.NRPTSampler(ns);
-NRST.params.(NRST.get_xpls(nrpt)) == ns.np.xplpars
-NRST.tune_explorers!(ns.np,nrpt,rng)
-NRST.run!(nrpt, rng, 3200);
-NRST.params.(NRST.get_xpls(nrpt)) == ns.np.xplpars
-per   = NRST.get_perm(nrpt) # per[i]  = level of the ith machine (per[i] ∈ 0:N). note that machines are indexed 1:(N+1)
-sper  = sortperm(per)  # sper[i] = id of the machine that is in level i-1 (sper[i] ∈ 1:(N+1))
-[nrpt.nss[i].ip[1] for i in sper[2:end]]
-
-any(iszero, [1e-324])
-
-using Plots
-using Plots.PlotMeasures: px
-res   = parallel_run(ns, rng, TE=TE, keep_xs=false);
+res   = parallel_run(ns, rng, ntours=2^14, keep_xs=false);
 plots = diagnostics(ns, res)
 hl    = ceil(Int, length(plots)/2)
 pdiags=plot(
@@ -109,3 +194,122 @@ pdiags=plot(
 ###############################################################################
 # end
 ###############################################################################
+
+###############################################################################
+# MvNormal
+###############################################################################
+
+using NRST
+using Distributions
+using Random
+
+# Define a `TemperedModel` type and implement `NRST.V`, `NRST.Vref`, and `Base.rand` 
+struct MvNormalTM{TI<:Int,TF<:AbstractFloat} <: NRST.TemperedModel
+    d::TI
+    m::TF
+    s0::TF
+    s0sq::TF
+end
+MvNormalTM(d,m,s0) = MvNormalTM(d,m,s0,s0*s0)
+NRST.V(tm::MvNormalTM, x) = 0.5sum(xi -> abs2(xi - tm.m), x)  # 0 allocs, versus "x .- m" which allocates a temp
+NRST.Vref(tm::MvNormalTM, x) = 0.5sum(abs2,x)/tm.s0sq
+Random.rand!(tm::MvNormalTM, rng, x) = map!(_ -> tm.s0*randn(rng), x, x)
+Base.rand(tm::MvNormalTM, rng) = tm.s0 * randn(rng, tm.d)
+
+# Write methods for the analytical expressions for ``\mu_b``, 
+# ``s_b^2``, and ``\mathcal{F}``
+sbsq(tm,b) = inv(inv(tm.s0sq) + b)
+pars(tm,b) = (s²=sbsq(tm,b);μ = b*tm.m*s²; return (μ, s²))
+mu(tm,b)   = first(pars(tm,b)) 
+function free_energy(tm::MvNormalTM,b::Real)
+    m   = tm.m
+    ssq = sbsq(tm, b)
+    -0.5*tm.d*( log(2pi) + log(ssq) - b*m*m*(1-b*ssq) )
+end
+free_energy(tm::MvNormalTM, bs::AbstractVector) = map(b->free_energy(tm,b), bs)
+
+# get the marginal of pibeta
+function get_pibeta_mar(tm,b)
+    μ, s² = pars(tm,b)
+    Normal(μ, sqrt(s²))
+end
+
+# Distribution of the scaled potential function
+function get_scaled_V_dist(tm,b)
+    s² = sbsq(tm,b)
+    s  = sqrt(s²)
+    μ  = tm.m*(b*s²-1)/s
+    NoncentralChisq(tm.d,tm.d*μ*μ)
+end
+
+# do special tuning with exact free_energy
+rng = SplittableRandom(8371)
+tm = MvNormalTM(32,4.,2.)
+ns, TE, Λ = NRSTSampler(
+    tm,
+    rng,
+    reject_big_vs=false,
+    γ = 2.0,
+    maxcor=0.9
+)
+copyto!(ns.np.c, free_energy(tm, ns.np.betas)) # use exact free energy
+
+using Plots
+using Plots.PlotMeasures: px
+using ColorSchemes: okabe_ito
+
+res   = parallel_run(ns, rng, TE=TE, keep_xs=false);
+plots = diagnostics(ns, res)
+hl    = ceil(Int, length(plots)/2)
+pdiags=plot(
+    plots..., layout = (hl,2), size = (900,hl*333),left_margin = 40px,
+    right_margin = 40px
+)
+
+#md # ![Diagnostics plots](assets/mvNormals/diags.png)
+
+# ## Distribution of the potential
+
+# We compare the sample distribution of ``V(x)`` obtained using various
+# strategies against the analytic distribution.
+iidVs  = map((b -> (d=get_pibeta_mar(tm,b); [NRST.V(tm, rand(d,tm.d)) for _ in 1:10000])), ns.np.betas)
+# ntours = NRST.get_ntours(res)
+# xpls   = NRST.replicate(ns.xpl, ns.np.betas);
+# indVs  = NRST.collectVs(ns.np, xpls, rng, ceil(Int, min(1e6,2ntours*mean(ns.np.nexpls))));
+# resser = NRST.SerialRunResults(NRST.run!(ns, rng, nsteps=2*ns.np.N*ntours));
+# restur = NRST.run_tours!(ns, rng, ntours=ntours, keep_xs=false);
+# resPT  = NRST.rows2vov(NRST.run!(NRST.NRPTSampler(ns),rng,2ntours).Vs);
+parr   = []
+for (i,vs) in enumerate(iidVs)
+    # i=1
+    # vs = iidVs[i]
+    β     = ns.np.betas[i]
+    κ     = (2/sbsq(tm,β))    # scaling factor
+    p = plot(
+        get_scaled_V_dist(tm,β), label="True", palette=okabe_ito,
+        title="β=$(round(β,digits=2))"
+    )
+    sctrV = κ .* vs
+    density!(p, sctrV, label="iid", linestyle =:dash)
+    # sctrV = κ .* indVs[i]
+    # density!(p, sctrV, label="IndExps", linestyle =:dash)
+    # sctrV = κ .* resPT[i]
+    # density!(p, sctrV, label="NRPT", linestyle =:dash)
+    # sctrV = κ .* resser.trVs[i]
+    # density!(p, sctrV, label="SerialNRST", linestyle =:dash)
+    # sctrV = κ .* restur.trVs[i]
+    # density!(p, sctrV, label="TourNRST", linestyle =:dash)
+    sctrV = κ .* res.trVs[i]
+    density!(p, sctrV, label="pTourNRST", linestyle =:dash)
+    push!(parr, p)
+end
+N  = ns.np.N
+nc = min(N+1, ceil(Int,sqrt(N+1)))
+nr = ceil(Int, (N+1)/nc)
+for i in (N+2):(nc*nr)
+    push!(parr, plot(ticks=false, showaxis = false, legend = false))
+end
+pdists = plot(
+    parr..., layout = (nr,nc), size = (300*nc,333*nr)
+)
+

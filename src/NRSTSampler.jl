@@ -9,7 +9,8 @@ struct NRSTProblem{TTM<:TemperedModel,K<:AbstractFloat,A<:Vector{K},TInt<:Int,TN
     betas::A             # vector of tempering parameters (length N+1)
     c::A                 # vector of parameters for the pseudoprior
     use_mean::Bool       # should we use "mean" (true) or "median" (false) for tuning c?
-    reject_big_vs::Bool  # should we use rejection sampling from the reference to avoid the region {V=inf} 
+    reject_big_vs::Bool  # should we use rejection sampling from the reference to avoid the region {V=inf}
+    log_grid::Bool       # should we tune the grid with beta in log scale. needed when π₀{V} = inf, since here the derivative of Λ at 0 is Inf.
     nexpls::Vector{TInt} # vector of length N with number of exploration steps adequate for each level 1:N
     xplpars::Vector{TNT} # vector of length N of named tuples, holding adequate parameters to use at each level 1:N
 end
@@ -18,7 +19,7 @@ end
 function NRSTProblem(oldnp::NRSTProblem, newtm)
     NRSTProblem(
         newtm,oldnp.N,oldnp.betas,oldnp.c,oldnp.use_mean,oldnp.reject_big_vs,
-        oldnp.nexpls,oldnp.xplpars
+        oldnp.log_grid,oldnp.nexpls,oldnp.xplpars
     )
 end
 
@@ -39,6 +40,7 @@ struct BadNException{TI<:Int} <: Exception
     Ncur::TI
     Nopt::TI
 end
+struct NonIntegrableVException <: Exception end
 
 # constructor that also builds an NRSTProblem and does initial tuning
 function NRSTSampler(
@@ -48,11 +50,12 @@ function NRSTSampler(
     nexpl::Int          = 10, 
     use_mean::Bool      = true,
     reject_big_vs::Bool = true,
+    log_grid::Bool      = false,
     tune::Bool          = true,
     adapt_N_rounds::Int = 3, 
     kwargs...
     )
-    ns      = init_sampler(tm, rng, N, nexpl, use_mean, reject_big_vs)
+    ns      = init_sampler(tm, rng, N, nexpl, use_mean, reject_big_vs, log_grid)
     TE, Λ   = (NaN,NaN)
     adapt_N = 0
     while tune
@@ -63,8 +66,18 @@ function NRSTSampler(
             if e isa BadNException
                 @warn "N=$(e.Ncur) too " * (e.Nopt > e.Ncur ? "low" : "high") * 
                       ". Setting N=$(e.Nopt) and restarting."
-                ns       = init_sampler(tm, rng, e.Nopt, nexpl, use_mean, reject_big_vs)
+                N = e.Nopt
+                ns = init_sampler(
+                    tm, rng, N, nexpl, use_mean, reject_big_vs, log_grid
+                )
                 adapt_N += 1
+            elseif e isa NonIntegrableVException
+                @warn "V might not be integrable under the reference. " *
+                      "Adjusting the adaptation to this fact and restarting."
+                log_grid = true
+                ns = init_sampler(
+                    tm, rng, N, nexpl, use_mean, reject_big_vs, log_grid
+                )
             else
                 rethrow(e)
             end
@@ -79,15 +92,16 @@ function init_sampler(
     N::Int,
     nexpl::Int, 
     use_mean::Bool,
-    reject_big_vs::Bool
+    reject_big_vs::Bool,
+    log_grid::Bool
     )
     betas = init_grid(N)
     x     = initx(rand(tm, rng), rng)                            # draw an initial point
     curV  = Ref(V(tm, x))
     xpl   = get_explorer(tm, x, curV)
     np    = NRSTProblem(                                         # instantiate an NRSTProblem
-        tm, N, betas, similar(betas), use_mean, reject_big_vs,
-        fill(nexpl, N), fill(params(xpl), N)
+        tm, N, betas, similar(betas), use_mean, reject_big_vs, 
+        log_grid, fill(nexpl, N), fill(params(xpl), N)
     )
     ip    = MVector(zero(N), one(N))
     return NRSTSampler(np, xpl, x, ip, curV)

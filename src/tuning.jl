@@ -47,9 +47,10 @@ function tune!(
         # 1 Tour    = 2sum(nexpl) steps in the exploration kernels
         # replace sum(nexpls) -> ns.np.N*median(nexpls) to be robust to cases 
         # where only 1 level has all the exploration steps 
-        ntours = min(
-            DEFAULT_MAX_TOURS,
-            ceil(Int, nsteps * oldsumnexpl / max(1, 2*ns.np.N*median(ns.np.nexpls)) )
+        ntours = clamp(
+            ceil(Int, nsteps * oldsumnexpl / max(1, 2*sum(ns.np.nexpls)) ),
+            # ceil(Int, nsteps * oldsumnexpl / max(1, 2*ns.np.N*median(ns.np.nexpls)) )
+            min_ntours, DEFAULT_MAX_TOURS
         )
     end
     # cannot estimate TE with the ensembles, since this is inherently a regenerative property
@@ -108,6 +109,7 @@ function tune!(
         copyto!(Rout, R)
         mar        = mean(ar)
         ar_ratio   = std(ar)/mar
+        ar1_ratio  = ar[1]/mean(ar[2:end])
         dr_ratio   = mean(abs, R[1:(end-1),1] - R[2:end,2])/mar
         relΔcone   = abs(np.c[end] - oldcone) / abs(oldcone)
         oldcone    = np.c[end]
@@ -115,18 +117,23 @@ function tune!(
         oldΛ       = Λ
         if verbose 
             @printf( # the following line cannot be cut with concat ("*") because @printf only accepts string literals
-                "done!\n\t\tAR std/mean=%.3f\n\t\tmean|Ru-Rd|/mean=%.3f\n\t\tmax(Δbetas)=%.3f\n\t\tc(1)=%.2f (relΔ=%.2f%%)\n\t\tΛ=%.2f (relΔ=%.1f%%)\n\t\tElapsed: %.1fs\n\n", 
-                ar_ratio, dr_ratio, Δβs, np.c[end], 100*relΔcone, Λ, 100*relΔΛ, res.time
+                "done!\n\t\tAR std/mean=%.3f\n\t\tAR[1]/mean(AR[-1])=%.3f\n\t\tmean|Ru-Rd|/mean=%.3f\n\t\tmax(Δbetas)=%.3f\n\t\tc(1)=%.2f (relΔ=%.2f%%)\n\t\tΛ=%.2f (relΔ=%.1f%%)\n\t\tElapsed: %.1fs\n\n", 
+                ar_ratio, ar1_ratio, dr_ratio, Δβs, np.c[end], 100*relΔcone, Λ, 100*relΔΛ, res.time
             )
             show(plot_grid(np.betas, title="Histogram of βs: round $rnd"))
             println("\n")
         end
 
-        # check if N is too low / high
-        if rnd == 5 && check_N 
-            Nopt = optimal_N(Λ, γ)
-            dN   = abs(np.N-Nopt)
-            dN > 1 && dN > .1*Nopt && throw(BadNException(np.N,Nopt))
+        # good time to check if parameters are ok
+        if rnd == 5
+            if check_N                                                    # check if N is too low / high
+                Nopt = optimal_N(Λ, γ)
+                dN   = abs(np.N-Nopt)
+                dN > 1 && dN > .1*Nopt && throw(BadNException(np.N,Nopt))
+            end
+            if !np.log_grid && ar1_ratio > 2.0                            # check if we need to switch interpolating Λ(β) in log scale to handle Inf derivative at 0.
+                throw(NonIntegrableVException())
+            end
         end
 
         # check convergence
@@ -189,9 +196,10 @@ end
 # any number of full NRPT steps, the params in the xpls must agree with the 
 # ones in np.xplpars
 function tune_explorers!(np::NRSTProblem, nrpt::NRPTSampler, args...;kwargs...)
-    # @assert params.(get_xpls(nrpt)) == np.xplpars
-    tune_explorers!(np, get_xpls(nrpt), args...;kwargs...)
-    # @assert params.(get_xpls(nrpt)) == np.xplpars
+    xpls = get_xpls(nrpt)
+    @assert params.(xpls) == np.xplpars
+    tune_explorers!(np, xpls, args...;kwargs...)
+    @assert params.(xpls) == np.xplpars
 end
 
 # transfer params from xpls to np for later use
@@ -248,9 +256,9 @@ tune_c!(np::NRSTProblem, res::RunResults) = tune_c!(np, res.trVs)
 # uses the average of the up and down rates of rejection
 function tune_betas!(np::NRSTProblem, ar::Vector{<:Real})
     betas    = np.betas
-    oldbetas = copy(betas)                       # store old betas to check convergence
-    _, _, Λs = optimize_grid!(betas, ar)         # tune using the inverse of Λ(β)
-    return (maximum(abs,betas-oldbetas),Λs[end]) # return max change in grid and Λ=Λ(1) to check convergence
+    oldbetas = copy(betas)                            # store old betas to check convergence
+    _, _, Λs = optimize_grid!(betas, ar, np.log_grid) # tune using the inverse of Λ(β)
+    return (maximum(abs,betas-oldbetas),Λs[end])      # return max change in grid and Λ=Λ(1) to check convergence
 end
 
 # method for the raw traces of V along the levels
@@ -305,6 +313,9 @@ function collectVs(
 end
 
 # method for NRPTSampler
+# NOTE: this function assumes that the xpls in nrpt have up to date betas
+# and parameters! In the context of tuning, this is ensured by the fact that
+# this function is always called *after* tune explorers
 collectVs(::NRSTProblem, nrpt::NRPTSampler, args...) = rows2vov(run!(nrpt, args...).Vs)
 
 # for each sample V(x) at each level, estimate the conditional rejection
@@ -354,9 +365,12 @@ floorlog(x) = max(LOGSMALL, log(x))
 expfloor(x) = (x <= LOGSMALL ? zero(x) : exp(x))
 
 # optimize the grid using the equirejection approach
-function optimize_grid!(betas::Vector{K}, averej::Vector{K}) where {K<:AbstractFloat}
+# need to work in log space whenever
+#   (dΛ/dβ)(0) = E^{0}[V]
+# is infty
+function optimize_grid!(betas::Vector{K}, averej::Vector{K}, uselog::Bool) where {K<:AbstractFloat}
     # estimate Λ at current betas using rejections rates, normalize, and interpolate
-    f_Λnorm, Λsnorm, Λs = gen_lambda_fun(betas, averej) # note: this the only place where averej is used
+    f_Λnorm, Λsnorm, Λs = gen_lambda_fun(betas, averej, uselog) # note: this the only place where averej is used
     
     # find newbetas by inverting f_Λnorm with a uniform grid on the range
     N           = length(betas)-1
@@ -368,29 +382,42 @@ function optimize_grid!(betas::Vector{K}, averej::Vector{K}) where {K<:AbstractF
         targetΛ     = Λtargets[i]
         b1          = newbetas[i-1]
         b2          = betas[findfirst(u -> (u>targetΛ), Λsnorm)] # f_Λnorm^{-1}(targetΛ) cannot exceed this
-        @debug "optimize_grid: looking for β in ($b1,$b2) to match f(β)=$targetΛ"
-        lβ, _       = monoroot(lβ -> f_Λnorm(lβ)-targetΛ, floorlog(b1), floorlog(b2))
-        newbetas[i] = expfloor(lβ)
-        newbetas[i] == b1 && error("optimize_grid: new beta[$i] is identical to beta[$(i-1)]=$b1. invalid grid.")
-        @debug "optimize_grid: found β=$(newbetas[i])"
+        # @debug "optimize_grid: looking for β in ($b1,$b2) to match f(β)=$targetΛ"
+        newbetas[i] = optimize_grid_core(f_Λnorm, targetΛ, b1, b2, uselog)
+        newbetas[i] == b1 && 
+            error(
+                "optimize_grid: got equal consecutive beta[$i]=beta[$(i-1)]=$b1.\n" *
+                (i != 2 ? "" : "Potential reason: π₀{V=inf}>0. Try setting " *
+                               "reject_big_vs=true."
+                )
+            )
+        # @debug "optimize_grid: found β=$(newbetas[i])"
     end
     newbetas[end] = one(K)
     copyto!(betas, newbetas)
     return (f_Λnorm, Λsnorm, Λs)
 end
+function optimize_grid_core(f_Λnorm, targetΛ, b1, b2, uselog)
+    if uselog
+        lβ, _ = monoroot(lβ -> f_Λnorm(lβ)-targetΛ, floorlog(b1), floorlog(b2))
+        return expfloor(lβ)
+    else
+        return first(monoroot(β -> f_Λnorm(β)-targetΛ, b1, b2))
+    end
+end
 
-# estimate Λ, normalize, and interpolate f(β) = Λ(log(β))
-# need to work in log space because
+# estimate Λ, normalize, and interpolate
+# need to work in log space whenever
 #   (dΛ/dβ)(0) = E^{0}[V]
-# and this can be infty in some models
-function gen_lambda_fun(betas::Vector{K}, averej::Vector{K}) where {K<:AbstractFloat}
+# is infty
+function gen_lambda_fun(betas::Vector{K}, averej::Vector{K}, uselog::Bool) where {K<:AbstractFloat}
     Λs      = get_lambdas(averej)
     Λsnorm  = Λs/Λs[end]
-    lbetas  = floorlog.(betas)
-    f_Λnorm = interpolate(lbetas, Λsnorm, FritschButlandMonotonicInterpolation())
+    xs      = uselog ? floorlog.(betas) : betas
+    f_Λnorm = interpolate(xs, Λsnorm, FritschButlandMonotonicInterpolation())
     
     # check fit
-    fitΛs  = map(f_Λnorm, lbetas)
+    fitΛs  = map(f_Λnorm, xs)
     idxnan = findfirst(isnan, fitΛs)
     isnothing(idxnan) || error("gen_lambda_fun: interpolated f produces NaN at" *
                                "(i,β)=($idxnan,$(betas[idxnan]))")
@@ -472,6 +499,8 @@ function tune_c_nexpls!(
     )
     _    = tune_c!(np, nrpt, rng, nsteps)
     xpls = get_xpls(nrpt)
+    @assert [xpl.curβ[] for xpl in xpls] == np.betas[2:end]     # consistency check: since tune_explorers is called before this function, the explorers should have the current grid values 
+    @assert params.(xpls) == np.xplpars                         # consistency check: params should match too for the same reason
     trVs = collectVs(np, xpls, rng, np.nexpls[1]*nsteps, false) # make equivalent effort to an NRPT step
     tune_nexpls!(np.nexpls, trVs, maxcor)
 end

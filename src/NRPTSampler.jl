@@ -36,8 +36,8 @@ end
 function NRPTTrace(N::Int, nsteps::Int)
     NRPTTrace(Ref(zero(N)), Matrix{Float64}(undef, N+1, nsteps), zeros(Float64, N))
 end
-averej(tr::NRPTTrace) = tr.rpsum/(tr.n[]/2)                   # compute average rejection, using that DEO uses each swap half the time
-rows2vov(M::AbstractMatrix) = [M[i, :] for i in 1:size(M, 1)] # used for converting the tr.Vs matrix to vector of (row) vectors
+averej(tr::NRPTTrace) = tr.rpsum/(tr.n[]/2)                 # compute average rejection, using that DEO uses each swap half the time
+rows2vov(M::AbstractMatrix) = [copy(r) for r in eachrow(M)] # used for converting the tr.Vs matrix to vector of vectors
 
 # inhomogeneous NRPT step(n) = expl ∘ deo(n)
 function step!(nrpt::NRPTSampler, rng::AbstractRNG, tr::NRPTTrace)
@@ -57,7 +57,7 @@ end
 
 # exploration step
 # note: since NRST does not use explorer at level=0, the explorer of the machine
-# at level 0 will have the pre-comm_step (stale) beta>0.
+# at level 0 will have the pre-comm_step (stale) beta>0 and param.
 function expl_step!(nrpt::NRPTSampler, rng::SplittableRandom)  
     N    = get_N(nrpt)
     rngs = [split(rng) for _ in 1:(N+1)] # split rng into N+1 copies. must be done outside of loop because split changes rng state.
@@ -99,7 +99,7 @@ function swap_nlaccratio(ns1::NRSTSampler, ns2::NRSTSampler)
     β₂ = ns2.np.betas[ns2.ip[1]+1]
     V₁ = ns1.curV[]
     V₂ = ns2.curV[]
-    nlaccr = (β₁ - β₂) * (V₂ - V₁)
+    nlaccr = -(β₂ - β₁) * (V₂ - V₁)
     # @debug "Swap ($(ns1.ip[1]),$(ns2.ip[1])), accratio=$(exp(-nlaccr)), β₁=$β₁, β₂=$β₂, V₁=$V₁, V₂=$V₂"
     return nlaccr
 end
