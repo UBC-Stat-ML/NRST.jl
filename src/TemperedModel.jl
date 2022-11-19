@@ -5,8 +5,17 @@
 
 abstract type TemperedModel end
 
-potentials(tm::TemperedModel, x) = (Vref(tm,x), V(tm,x)) # compute and return both potentials
-Base.copy(tm::TemperedModel) = tm                        # default copy == don't copy anything
+Base.copy(tm::TemperedModel) = tm # default copy == don't copy anything
+
+# compute both potentials. used within exploration kernels
+function potentials(tm::TemperedModel, x)
+    vref = Vref(tm, x)
+    if isinf(vref) && vref > zero(vref) # x has 0 density under reference, V(x) is irrelevant
+        return (vref, zero(vref))
+    else
+        return (vref, V(tm, x))
+    end
+end
 
 # methods for sampling from the reference
 function randrefwithv!(tm::TemperedModel, rng::AbstractRNG, x) # sample x∼π₀ and compute v=V(x)
