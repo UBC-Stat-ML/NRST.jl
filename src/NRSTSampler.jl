@@ -1,30 +1,8 @@
 ###############################################################################
-# relevant structs 
+# NRSTSampler
 ###############################################################################
 
-# encapsulates all the specifics of the tempered problem
-struct NRSTProblem{TTM<:TemperedModel,K<:AbstractFloat,A<:Vector{K},TInt<:Int,TNT<:NamedTuple}
-    tm::TTM              # a TemperedModel
-    N::TInt              # number of states no counting reference (N+1 in total)
-    betas::A             # vector of tempering parameters (length N+1)
-    c::A                 # vector of parameters for the pseudoprior
-    use_mean::Bool       # should we use "mean" (true) or "median" (false) for tuning c?
-    reject_big_vs::Bool  # should we use rejection sampling from the reference to avoid the region {V=inf}
-    log_grid::Bool       # should we tune the grid with beta in log scale. needed when π₀{V} = inf, since here the derivative of Λ at 0 is Inf.
-    nexpls::Vector{TInt} # vector of length N with number of exploration steps adequate for each level 1:N
-    xplpars::Vector{TNT} # vector of length N of named tuples, holding adequate parameters to use at each level 1:N
-end
-
-# copy constructor, allows replacing tm, but keeps everything else
-function NRSTProblem(oldnp::NRSTProblem, newtm)
-    NRSTProblem(
-        newtm,oldnp.N,oldnp.betas,oldnp.c,oldnp.use_mean,oldnp.reject_big_vs,
-        oldnp.log_grid,oldnp.nexpls,oldnp.xplpars
-    )
-end
-
-# struct for the sampler
-struct NRSTSampler{T,I<:Int,K<:AbstractFloat,TXp<:ExplorationKernel,TProb<:NRSTProblem}
+struct NRSTSampler{T,I<:Int,K<:AbstractFloat,TXp<:ExplorationKernel,TProb<:NRSTProblem} <: RegenerativeSampler{T,I,K,TXp,TProb}
     np::TProb              # encapsulates problem specifics
     xpl::TXp               # exploration kernel
     x::T                   # current state of target variable
@@ -137,17 +115,6 @@ end
 # sampling methods
 ###############################################################################
 
-function refreshx!(ns::NRSTSampler, rng::AbstractRNG)
-    ns.curV[] = randrefmayreject!(ns.np.tm, rng, ns.x, ns.np.reject_big_vs)
-end
-
-# reset state by sampling from the renewal measure
-function renew!(ns::NRSTSampler{T,I}, rng::AbstractRNG) where {T,I}
-    refreshx!(ns, rng)
-    ns.ip[1] = zero(I)
-    ns.ip[2] = one(I)
-end
-
 # communication step: the acceptance ratio is given by
 # A = [pi^{(i+eps)}(x)/pi^{(i)}(x)] [p_{i+eps}/p_i]
 # = [Z(i)/Z(i+eps)][exp{-b_{i+eps}V(x)}exp{b_{i}V(x)}][Z(i+eps)/Z(i)][exp{c_{i+eps}exp{-c_{i}}]
@@ -227,34 +194,22 @@ function run!(ns::NRSTSampler{T,I,K}, rng::AbstractRNG; nsteps::Int) where {T,I,
 end
 
 #######################################
-# touring interface
+# RegenerativeSampler interface
 #######################################
 
-# method that allocates a trace object
-function tour!(ns::NRSTSampler{T,I,K}, rng::AbstractRNG; kwargs...) where {T,I,K}
-    tr = NRSTTrace(T, ns.np.N, K)
-    tour!(ns, rng, tr; kwargs...)
-    return tr
+isinatom(ns::NRSTSampler{T,I}) where {T,I} = (ns.ip[1]==zero(I) && ns.ip[2]==-one(I))
+
+function refreshx!(ns::NRSTSampler, rng::AbstractRNG)
+    ns.curV[] = randrefmayreject!(ns.np.tm, rng, ns.x, ns.np.reject_big_vs)
 end
 
-# run a full tour, starting from a renewal, and ending at the atom
-# note: by doing the above, calling this function repeatedly should give the
-# same output as the sequential version.
-function tour!(
-    ns::NRSTSampler{T,I,K},
-    rng::AbstractRNG, 
-    tr::NRSTTrace; 
-    kwargs...
-    ) where {T,I,K}
-    renew!(ns, rng)                                # init with a renewal
-    while ns.ip[1] > zero(I) || ns.ip[2] == one(I)
-        save_pre_step!(ns, tr; kwargs...)          # save current (x,i,ϵ,V)
-        rp, xplap = step!(ns, rng)                 # do NRST step, produce (x',i',ϵ',V'), rej prob of temp step, and average xpl acc prob from expl step 
-        save_post_step!(ns, tr, rp, xplap)         # save rej prob and xpl acc prob 
-    end
-    save_pre_step!(ns, tr; kwargs...)              # store (x,0,-1,V)
-    save_post_step!(ns, tr, one(K), K(NaN))        # we know that (-1,-1) would be rejected if attempted so we store this. also, the expl step would not use an explorer; thus the NaN.
+# reset state by sampling from the renewal measure
+function renew!(ns::NRSTSampler{T,I}, rng::AbstractRNG) where {T,I}
+    refreshx!(ns, rng)
+    ns.ip[1] = zero(I)
+    ns.ip[2] = one(I)
 end
+
 function save_pre_step!(ns::NRSTSampler, tr::NRSTTrace; keep_xs::Bool=true)
     @unpack trX, trIP, trV = tr
     keep_xs && push!(trX, copy(ns.x))          # needs copy o.w. pushes a ref to ns.x
@@ -274,90 +229,24 @@ function save_post_step!(
     return
 end
 
-# run multiple tours (serially), return processed output
-function run_tours!(
-    ns::NRSTSampler{T,TI,TF},
-    rng::AbstractRNG;
-    ntours::Int,
-    kwargs...
-    ) where {T,TI,TF}
-    results = Vector{NRSTTrace{T,TI,TF}}(undef, ntours)
-    ProgressMeter.@showprogress 1 "Sampling: " for t in 1:ntours
-        results[t] = tour!(ns, rng;kwargs...)
-    end
-    return TouringRunResults(results)
-end
-
-###############################################################################
-# run NRST in parallel exploiting regenerations
-###############################################################################
-
-# automatic determination of required number of tours
+# multithreading method with automatic determination of required number of tours
 const DEFAULT_α      = .95  # probability of the mean of indicators to be inside interval
 const DEFAULT_δ      = .10  # half-width of interval
-const DEFAULT_TE_min = 1e-4 # truncate TE's below this value => max_tours ~ 1.5e7 for (α, δ)=(.95, .1) 
+const DEFAULT_TE_min = 5e-4 # truncate TE's below this value
 function min_ntours_TE(TE, α=DEFAULT_α, δ=DEFAULT_δ, TE_min=DEFAULT_TE_min)
     ceil(Int, (4/max(TE_min,TE)) * abs2(norminvcdf((1+α)/2) / δ))
 end
 const DEFAULT_MAX_TOURS = min_ntours_TE(0.)
 
-# multithreading method
-# uses a copy of ns per task, with indep state. copying is fast relative to 
-# cost of a tour, and size(ns) ~ size(ns.x)
-# note: ns itself is never used to sample so its state should be exactly the
-# same after this returns
 function parallel_run(
-    ns::TS,
-    rng::AbstractRNG;
+    ns::NRSTSampler, 
+    rng::SplittableRandom;
     TE::AbstractFloat = NaN,
     α::AbstractFloat  = DEFAULT_α,
     δ::AbstractFloat  = DEFAULT_δ,
-    ntours::Int       = -one(TI),
-    keep_xs::Bool     = true,
-    verbose::Bool     = true,
-    check_every::Int  = 1_000,
-    max_mem_use::Real = .8,
+    ntours::Int       = -1,
     kwargs...
-    ) where {T,TI,TF,TS<:NRSTSampler{T,TI,TF}}
-    GC.gc()                                                                   # setup allocates a lot so we need all mem we can get
-    ntours < zero(TI) && (ntours = min_ntours_TE(TE,α,δ))
-    verbose && println(
-        "\nRunning $ntours tours in parallel using " *
-        "$(Threads.nthreads()) threads.\n"
     )
-    
-    # detect and handle memory management within PBS
-    jobid= get_PBS_jobid()
-    ispbs= !(jobid == "")
-    mlim = ispbs ? get_cgroup_mem_limit(jobid) : Inf64
-
-    # pre-allocate traces and prngs, and then run in parallel
-    res  = [NRSTTrace(T,ns.np.N,TF) for _ in 1:ntours]                        # get one empty trace for each task
-    rngs = [split(rng) for _ in 1:ntours]                                     # split rng into ntours copies. must be done outside of loop because split changes rng state.
-    p    = ProgressMeter.Progress(ntours; desc="Sampling: ", enabled=verbose) # prints a progress bar
-    Threads.@threads for t in 1:ntours
-        tour!(copy(ns), rngs[t], res[t]; keep_xs=keep_xs, kwargs...)          # run a tour with tasks' own sampler, rng, and trace, avoiding race conditions. note: writing to separate locations in a common vector is fine. see: https://discourse.julialang.org/t/safe-loop-with-push-multi-threading/41892/6, and e.g. https://stackoverflow.com/a/8978397/5443023
-        ProgressMeter.next!(p)
-
-        # if on PBS, check every 'check_every' tours if mem usage is high. If so, gc.
-        if ispbs && mod(t, check_every)==0
-            per_mem_used = get_cgroup_mem_usage(jobid)/mlim
-            @debug "Tour $t: $(round(100*per_mem_used))% memory used."
-            if per_mem_used > max_mem_use
-                @debug "Calling GC.gc() due to usage above threshold"
-                GC.gc()
-            end
-        end
-    end
-    TouringRunResults(res)                                                    # post-process and return 
+    ntours < 0 && (ntours = min_ntours_TE(TE,α,δ))
+    parallel_run(ns, rng, ntours; kwargs...)
 end
-
-# example output of the debug statements
-# Sampling:  10%|████                                     |  ETA: 0:04:41┌ Debug: 76.0% memory used.
-# └ @ NRST /scratch/st-tdjc-1/mbironla/nrst-nextflow/work/conda/custom-conda-env-46669d40f024e9cb786ad8e9145aa8d1/share/julia/packages/NRST/H5HO4/src/NRSTSampler.jl:320
-# Sampling:  11%|████▌                                    |  ETA: 0:04:26┌ Debug: 92.0% memory used.
-# └ @ NRST /scratch/st-tdjc-1/mbironla/nrst-nextflow/work/conda/custom-conda-env-46669d40f024e9cb786ad8e9145aa8d1/share/julia/packages/NRST/H5HO4/src/NRSTSampler.jl:320
-# ┌ Debug: Calling GC.gc() due to usage above threshold
-# └ @ NRST /scratch/st-tdjc-1/mbironla/nrst-nextflow/work/conda/custom-conda-env-46669d40f024e9cb786ad8e9145aa8d1/share/julia/packages/NRST/H5HO4/src/NRSTSampler.jl:322
-# Sampling:  11%|████▋                                    |  ETA: 0:07:30┌ Debug: 7.0% memory used.
-# └ @ NRST /scratch/st-tdjc-1/mbironla/nrst-nextflow/work/conda/custom-conda-env-46669d40f024e9cb786ad8e9145aa8d1/share/julia/packages/NRST/H5HO4/src/NRSTSampler.jl:320

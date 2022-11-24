@@ -30,12 +30,14 @@ export SplittableRandom
 # RunResults.jl
 export tourlengths
 
+# RegenerativeSampler.jl
+export run_tours!,
+    parallel_run
+
 # NRSTSampler.jl
 export NRSTSampler,
     run!,
-    tune!,
-    run_tours!,
-    parallel_run
+    tune!
 
 # NRPTSampler.jl
 export NRPTSampler
@@ -57,6 +59,8 @@ include("utils.jl")
 include("TemperedModel.jl")
 include("ExplorationKernels.jl")
 include("pbs_utils.jl")
+include("NRSTProblem.jl")
+include("RegenerativeSampler.jl")
 include("NRSTSampler.jl")
 include("NRPTSampler.jl")
 include("Turing_interface.jl")

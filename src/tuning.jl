@@ -73,7 +73,7 @@ function tune!(
     max_relΔcone::Real = 0.005,     # limit on rel change in c(1)
     max_relΔΛ::Real    = 0.01,      # limit on rel change in Λ = Λ(1)
     nsteps_init::Int   = 32,
-    maxcor::Real       = 0.7,       # set nexpl in explorers s.t. correlation of V samples is lower than this
+    maxcor::Real       = 0.9,       # set nexpl in explorers s.t. correlation of V samples is lower than this
     γ::Real            = 6.0,       # correction for the optimal_N formula
     check_N::Bool      = true,
     verbose::Bool      = true
