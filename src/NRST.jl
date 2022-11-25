@@ -27,13 +27,15 @@ const LOGSMALL = -750.     # LOGSMALL is negative enough so that exp(LOGSMALL) =
 # RunResults.jl
 export tourlengths
 
+# MCMCSampler.jl
+export run!
+
 # RegenerativeSampler.jl
 export run_tours!,
     parallel_run
 
 # NRSTSampler.jl
 export NRSTSampler,
-    run!,
     tune!
 
 # NRPTSampler.jl
@@ -57,7 +59,9 @@ include("TemperedModel.jl")
 include("ExplorationKernels.jl")
 include("pbs_utils.jl")
 include("NRSTProblem.jl")
+include("MCMCSampler.jl")
 include("RegenerativeSampler.jl")
+include("SimulatedTempering.jl")
 include("NRSTSampler.jl")
 include("NRPTSampler.jl")
 include("Turing_interface.jl")

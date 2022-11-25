@@ -2,7 +2,9 @@
 # raw trace of a serial run
 ##############################################################################
 
-struct NRSTTrace{T,TI<:Int,TF<:AbstractFloat}
+abstract type AbstractTrace{T,TI<:Int,TF<:AbstractFloat} end
+
+struct NRSTTrace{T,TI<:Int,TF<:AbstractFloat} <: AbstractTrace{T,TI,TF}
     trX::Vector{T}
     trIP::Vector{SVector{2,TI}} # can use a vector of SVectors since traces should not be modified
     trV::Vector{TF}

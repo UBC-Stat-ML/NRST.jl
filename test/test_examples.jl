@@ -6,6 +6,7 @@ using NRST
 using DelimitedFiles
 using Distributions
 using Random
+using SplittableRandoms
 const log2π = log(2pi)
 
 # Define a `TemperedModel` type and implement `NRST.V`, `NRST.Vref`, and `Base.rand` 
