@@ -45,7 +45,7 @@ function run_tours!(
 end
 
 ###############################################################################
-# run NRST in parallel exploiting regenerations
+# run in parallel exploiting regenerations
 ###############################################################################
 
 # multithreading method

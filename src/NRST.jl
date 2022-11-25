@@ -24,9 +24,6 @@ using UnPack: @unpack
 const BIG = 0.01floatmax() # big number but small enough so that BIG*inv(BIG) === 1.0
 const LOGSMALL = -750.     # LOGSMALL is negative enough so that exp(LOGSMALL) === 0.
 
-# reexports
-export SplittableRandom
-
 # RunResults.jl
 export tourlengths
 

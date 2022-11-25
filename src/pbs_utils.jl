@@ -1,5 +1,10 @@
 # GOOD APPROACH TO CHECKING CGROUP MEM USAGE
-# memory info for the cgroup of a job is in
+# TODO: do the same for SLURM. the memory info is in
+#   /sys/fs/cgroup/memory/slurm/uid_$SLURM_JOB_UID/job_$SLURM_JOBID
+# e.g.
+#   /sys/fs/cgroup/memory/slurm/uid_3089542/job_51237285
+
+# memory info for the cgroup of a PBS job is in
 #   /sys/fs/cgroup/memory/pbspro.service/jobid/[JOBID]
 # where the last string is ENV["PBS_JOBID"], like 4272839.pbsha.ib.sockeye
 # In particular, the files
