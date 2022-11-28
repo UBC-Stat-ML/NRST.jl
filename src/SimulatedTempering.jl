@@ -15,13 +15,14 @@ function initx(pre_x::AbstractArray{TF}, rng::AbstractRNG) where {TF<:AbstractFl
 end
 
 # copy-constructor, using a given AbstractSTSampler (usually already tuned)
-function Base.copy(st::TS) where {TS <: AbstractSTSampler}
+Base.copy(st::TS) where {TS <: AbstractSTSampler} = TS(copyfields(st)...)
+function copyfields(st::AbstractSTSampler)
     newtm = copy(st.np.tm)                   # the only element in np that we (may) need to copy
     newnp = NRSTProblem(st.np, newtm)        # build new Problem from the old one but using new tm
     newx  = copy(st.x)
     ncurV = Ref(st.curV[])
     nuxpl = copy(st.xpl, newtm, newx, ncurV) # copy st.xpl sharing stuff with the new sampler
-    TS(newnp, nuxpl, newx, MVector(0,1), ncurV)
+    return newnp, nuxpl, newx, MVector(0,1), ncurV
 end
 
 # for all ST samplers we can use an NRSTTrace
@@ -52,6 +53,23 @@ function expl_step!(st::TS, rng::AbstractRNG) where {T,I,K,TS<:AbstractSTSampler
     end
     return xplap
 end
+
+# negative log acceptance ratio (nlar) for communication step
+# note: does not account for Hastings ratio, which changes with the algo
+get_nlar(β₀,β₁,c₀,c₁,v) = (β₁-β₀)*v - (c₁-c₀)
+
+# convert nlar to rejection probability
+# note: the acceptance ratio is given by
+# A = [pi^{(i+eps)}(x)/pi^{(i)}(x)] [p_{i+eps}/p_i]
+# = [Z(i)/Z(i+eps)][exp{-b_{i+eps}V(x)}exp{b_{i}V(x)}][Z(i+eps)/Z(i)][exp{c_{i+eps}exp{-c_{i}}]
+# = exp{-[b_{i+eps} - b_{i}]V(x) + c_{i+eps} -c_{i}}
+# = exp{ -( [b_{i+eps} - b_{i}]V(x) - (c_{i+eps} -c_{i}) ) }
+# = exp(-nlaccr)
+# where nlaccr := -log(A) = [b_{i+eps} - b_{i}]V(x) - (c_{i+eps} -c_{i})
+# To get the rejection probability from nlaccr:
+# ap = min(1.,A) = min(1.,exp(-nlaccr)) = exp(min(0.,-nlaccr)) = exp(-max(0.,nlaccr))
+# => rp = 1-ap = 1-exp(-max(0.,nlaccr)) = -[exp(-max(0.,nlaccr))-1] = -expm1(-max(0.,nlaccr))
+nlar_2_rp(nlar) = -expm1(-max(zero(nlar), nlar))
 
 # ST step = comm_step ∘ expl_step
 function step!(st::AbstractSTSampler, rng::AbstractRNG)

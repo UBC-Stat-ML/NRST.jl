@@ -95,16 +95,7 @@ end
 # sampling methods
 ###############################################################################
 
-# communication step: the acceptance ratio is given by
-# A = [pi^{(i+eps)}(x)/pi^{(i)}(x)] [p_{i+eps}/p_i]
-# = [Z(i)/Z(i+eps)][exp{-b_{i+eps}V(x)}exp{b_{i}V(x)}][Z(i+eps)/Z(i)][exp{c_{i+eps}exp{-c_{i}}]
-# = exp{-[b_{i+eps} - b_{i}]V(x) + c_{i+eps} -c_{i}}
-# = exp{ -( [b_{i+eps} - b_{i}]V(x) - (c_{i+eps} -c_{i}) ) }
-# = exp(-nlaccr)
-# where nlaccr := -log(A) = [b_{i+eps} - b_{i}]V(x) - (c_{i+eps} -c_{i})
-# To get the rejection probability from nlaccr:
-# ap = min(1.,A) = min(1.,exp(-nlaccr)) = exp(min(0.,-nlaccr)) = exp(-max(0.,nlaccr))
-# => rp = 1-ap = 1-exp(-max(0.,nlaccr)) = -[exp(-max(0.,nlaccr))-1] = -expm1(-max(0.,nlaccr))
+# communication step
 function comm_step!(ns::NRSTSampler{T,I,K}, rng::AbstractRNG) where {T,I,K}
     @unpack np,ip,curV = ns
     @unpack N,betas,c = np
@@ -118,17 +109,16 @@ function comm_step!(ns::NRSTSampler{T,I,K}, rng::AbstractRNG) where {T,I,K}
         ip[2] = -one(I)
         return one(K)
     else
-        i      = ip[1]                          # current index
-        nlaccr = (betas[iprop+1]-betas[i+1])*curV[] - (c[iprop+1]-c[i+1])
-        acc    = nlaccr < randexp(rng)          # accept? Note: U<A <=> A>U <=> -log(A) < -log(U) ~ Exp(1) 
+        i    = ip[1]                            # current index
+        nlar = get_nlar(betas[i+1],betas[iprop+1],c[i+1],c[iprop+1],curV[])
+        acc  = nlar < randexp(rng)              # accept? Note: U<A <=> A>U <=> -log(A) < -log(U) ~ Exp(1) 
         if acc
             ip[1] = iprop                       # move
         else
             ip[2] = -ip[2]                      # flip direction
         end
     end
-    rp = -expm1(-max(zero(K), nlaccr))
-    return rp
+    return nlar_2_rp(nlar)
 end
 
 #######################################
@@ -138,10 +128,17 @@ end
 isinatom(ns::NRSTSampler{T,I}) where {T,I} = (ns.ip[1]==zero(I) && ns.ip[2]==-one(I))
 
 # reset state by sampling from the renewal measure
+# note: if isinatom(ns), renew! is the same as applying step!
 function renew!(ns::NRSTSampler{T,I}, rng::AbstractRNG) where {T,I}
     refreshx!(ns, rng)
     ns.ip[1] = zero(I)
     ns.ip[2] = one(I)
+end
+
+# handling last tour step
+function save_last_step_tour!(ns::NRSTSampler{T,I,K}, tr; kwargs...) where {T,I,K}
+    save_pre_step!(ns, tr; kwargs...)       # store state at atom
+    save_post_step!(ns, tr, one(K), K(NaN)) # we know that (-1,-1) would be rejected if attempted so we store this. also, the expl step would not use an explorer; thus the NaN.
 end
 
 # multithreading method with automatic determination of required number of tours

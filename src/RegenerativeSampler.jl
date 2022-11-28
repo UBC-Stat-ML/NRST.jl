@@ -19,8 +19,7 @@ function tour!(
         rp, xplap = step!(rs, rng)          # do NRST step, produce new state, rej prob of temp step, and average xpl acc prob from expl step 
         save_post_step!(rs, tr, rp, xplap)  # save rej prob and xpl acc prob
     end
-    save_pre_step!(rs, tr; kwargs...)       # store state at atom
-    save_post_step!(rs, tr, one(K), K(NaN)) # we know that (-1,-1) would be rejected if attempted so we store this. also, the expl step would not use an explorer; thus the NaN.
+    save_last_step_tour!(rs, tr; kwargs...)
 end
 
 # method that allocates a trace
