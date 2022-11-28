@@ -127,7 +127,16 @@ function TouringRunResults(results::Vector{TST}) where {T,I,K,TST<:NRSTTrace{T,I
     # iterate tours
     for tr in results
         fill!(curvis, zero(I))                                 # reset tour visits
-        post_process(tr, xarray, trVs, curvis, rpacc, xplapac) # parse tour trace
+        try
+            post_process(tr, xarray, trVs, curvis, rpacc, xplapac) # parse tour trace
+        catch e
+            println("Error processing a trace. Dumping trace info:")
+            println("IP");display(tr.trIP)
+            println("V");display(tr.trV)
+            println("RP");display(tr.trRP)
+            println("XPLAP");display(tr.trXplAP)
+            rethrow(e)
+        end
         totvis .+= curvis                                      # accumulate total visits
         sumsq  .+= vec(sum(curvis, dims=2)).^2                 # squared number of visits to each of 0:N (regardless of direction)
     end
