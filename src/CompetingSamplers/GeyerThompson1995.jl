@@ -1,5 +1,10 @@
 ###############################################################################
 # Implements Geyer & Thompson (1995)
+# notes on the observed rejection probabilities: under an appropriately tuned
+# grid and c's, the Hastings correction has the effect of making it easier to 
+# reach the boundary, but difficult to escape it. Experiments show about ~50%
+# rejection regardless of the size of the grid. Incidentally, this is what one
+# would get by averaging the rp's at the extremes of NRST. 
 ###############################################################################
 
 # exact same fields as NRSTSampler 

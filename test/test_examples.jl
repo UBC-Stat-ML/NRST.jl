@@ -84,7 +84,7 @@ tr = NRST.tour!(gt,rng)
 sum(ip -> ip[1]==1,tr.trIP)
 ntours = NRST.min_ntours_TE(TE);
 res = parallel_run(gt,rng,ntours);
-
+res.rpacc
 using Plots
 using Plots.PlotMeasures: px
 

@@ -90,11 +90,11 @@ function post_process(
     rpacc::Matrix{K},          # size (N+1) × 2. accumulates rejection probs
     xplapac::Vector{K}         # length = N. accumulates explorers' acc probs
     ) where {T,I,K}
-    i₀ = tr.trIP[1][1]         # first state in trace. for NRST, i_0==0, but not for others necessarily
+    i₀ = first(first(tr.trIP)) # first state in trace. for NRST, i_0==0, but not for others necessarily
     for (n, ip) in enumerate(tr.trIP)
-        l      = ip[1]
+        l      = first(ip)
         idx    = l + 1
-        idxeps = (ip[2] == one(I) ? 1 : 2)
+        idxeps = (last(ip) == one(I) ? 1 : 2)
         visacc[idx, idxeps] += one(I)
         rpacc[ idx, idxeps] += tr.trRP[n]
         if l >= 1 && n > 1                                        # some STs (e.g. GT95) can renew at i_0=1, so no counting that one
