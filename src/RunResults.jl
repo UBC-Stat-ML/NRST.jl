@@ -33,6 +33,15 @@ end
 get_N(tr::NRSTTrace) = length(tr.trXplAP)  # recover N. cant do N=N(tr) because julia gets dizzy
 get_nsteps(tr::NRSTTrace) = length(tr.trV) # recover nsteps
 
+function Base.show(io::IO, mime::MIME"text/plain", tr::NRSTTrace)
+    println("An NRSTTrace object with fields:")
+    print(io, "X: ");show(io,mime,typeof(tr.trX))
+    println(io, "\nIP:");show(io,mime,tr.trIP)
+    println(io, "\nV:");show(io,mime,tr.trV)
+    println(io, "\nRP:");show(io,mime,tr.trRP)
+    println(io, "\nXPLAP:");show(io,mime,tr.trXplAP)
+end
+
 #######################################
 # trace postprocessing
 #######################################
@@ -81,17 +90,23 @@ function post_process(
     rpacc::Matrix{K},          # size (N+1) × 2. accumulates rejection probs
     xplapac::Vector{K}         # length = N. accumulates explorers' acc probs
     ) where {T,I,K}
+    i₀ = tr.trIP[1][1]         # first state in trace. for NRST, i_0==0, but not for others necessarily
     for (n, ip) in enumerate(tr.trIP)
         l      = ip[1]
         idx    = l + 1
         idxeps = (ip[2] == one(I) ? 1 : 2)
         visacc[idx, idxeps] += one(I)
         rpacc[ idx, idxeps] += tr.trRP[n]
-        if l >= 1
-            nvl = visacc[idx,1] + visacc[idx,2] # (>=1) number of visits so far to level l, regardless of eps
-            xplapac[l] += tr.trXplAP[l][nvl]
+        if l >= 1 && n > 1                                        # some STs (e.g. GT95) can renew at i_0=1, so no counting that one
+            nvl = visacc[idx,1] + visacc[idx,2] - (l==i₀ ? 1 : 0) # (>=1) number of visits so far to level l, regardless of eps. since some STs can renew at i₀ neq 0, need to adjust accounting
+            try
+                xplapac[l] += tr.trXplAP[l][nvl]                
+            catch e
+                println("Error reading XplAP[l=$l][nvl=$nvl]: n=$n, i₀=$i₀.")
+                rethrow(e)
+            end
         end
-        length(tr.trX) >= n && push!(xarray[idx], tr.trX[n]) # handle case keep_xs=false
+        length(tr.trX) >= n && push!(xarray[idx], tr.trX[n])      # handle case keep_xs=false
         push!(trVs[idx], tr.trV[n])
     end
 end
@@ -131,10 +146,7 @@ function TouringRunResults(results::Vector{TST}) where {T,I,K,TST<:NRSTTrace{T,I
             post_process(tr, xarray, trVs, curvis, rpacc, xplapac) # parse tour trace
         catch e
             println("Error processing a trace. Dumping trace info:")
-            println("IP");display(tr.trIP)
-            println("V");display(tr.trV)
-            println("RP");display(tr.trRP)
-            println("XPLAP");display(tr.trXplAP)
+            display(tr)
             rethrow(e)
         end
         totvis .+= curvis                                      # accumulate total visits

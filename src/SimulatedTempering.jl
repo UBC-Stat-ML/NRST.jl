@@ -71,13 +71,6 @@ get_nlar(β₀,β₁,c₀,c₁,v) = (β₁-β₀)*v - (c₁-c₀)
 # => rp = 1-ap = 1-exp(-max(0.,nlaccr)) = -[exp(-max(0.,nlaccr))-1] = -expm1(-max(0.,nlaccr))
 nlar_2_rp(nlar) = -expm1(-max(zero(nlar), nlar))
 
-# ST step = comm_step ∘ expl_step
-function step!(st::AbstractSTSampler, rng::AbstractRNG)
-    rp    = comm_step!(st, rng) # returns rejection probability
-    xplap = expl_step!(st, rng) # returns explorers' acceptance probability
-    return rp, xplap
-end
-
 # methods for storing results
 function save_pre_step!(st::AbstractSTSampler, tr::NRSTTrace, n::Int; keep_xs::Bool=true)
     @unpack trX, trIP, trV = tr

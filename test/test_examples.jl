@@ -70,12 +70,20 @@ function NRST.V(tm::HierarchicalModel{TF}, x) where {TF}
     return acc
 end
 
-rng = SplittableRandom(4)
+rng = SplittableRandom(999)
 tm  = HierarchicalModel()
 ns, TE, Λ = NRSTSampler(
             tm,
             rng,
 );
+
+using NRST.CompetingSamplers
+
+gt = GT95Sampler(ns);
+tr = NRST.tour!(gt,rng)
+sum(ip -> ip[1]==1,tr.trIP)
+ntours = NRST.min_ntours_TE(TE);
+res = parallel_run(gt,rng,ntours);
 
 using Plots
 using Plots.PlotMeasures: px
