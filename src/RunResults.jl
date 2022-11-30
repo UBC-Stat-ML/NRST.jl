@@ -34,12 +34,12 @@ get_N(tr::NRSTTrace) = length(tr.trXplAP)  # recover N. cant do N=N(tr) because 
 get_nsteps(tr::NRSTTrace) = length(tr.trV) # recover nsteps
 
 function Base.show(io::IO, mime::MIME"text/plain", tr::NRSTTrace)
-    println("An NRSTTrace object with fields:")
+    println(io, "An NRSTTrace object with fields:")
     print(io, "X: ");show(io,mime,typeof(tr.trX))
-    println(io, "\nIP:");show(io,mime,tr.trIP)
-    println(io, "\nV:");show(io,mime,tr.trV)
-    println(io, "\nRP:");show(io,mime,tr.trRP)
-    println(io, "\nXPLAP:");show(io,mime,tr.trXplAP)
+    print(io, "\nIP:");show(io,mime,tr.trIP)
+    print(io, "\nV:");show(io,mime,tr.trV)
+    print(io, "\nRP:");show(io,mime,tr.trRP)
+    print(io, "\nXPLAP:");show(io,mime,tr.trXplAP)
 end
 
 #######################################

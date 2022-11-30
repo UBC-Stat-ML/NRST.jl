@@ -2,7 +2,7 @@ abstract type MCMCSampler{T,TI<:Int,TF<:AbstractFloat} end
 
 # run for fixed number of steps
 function run!(mc::MCMCSampler, rng::AbstractRNG, tr::NRSTTrace; kwargs...)
-    for n in eachindex(tr)
+    for n in eachindex(tr.trV)
         save_pre_step!(mc,tr,n; kwargs...)
         save_post_step!(mc,tr,n,step!(mc, rng)...)
     end

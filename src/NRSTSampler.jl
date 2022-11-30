@@ -130,9 +130,9 @@ isinatom(ns::NRSTSampler{T,I}) where {T,I} = (ns.ip[1]==zero(I) && ns.ip[2]==-on
 # reset state by sampling from the renewal measure
 # note: if isinatom(ns), renew! is the same as applying step!
 function renew!(ns::NRSTSampler{T,I}, rng::AbstractRNG) where {T,I}
-    refreshx!(ns, rng)
     ns.ip[1] = zero(I)
     ns.ip[2] = one(I)
+    refreshx!(ns, rng)
 end
 
 # NRST step = comm_step ∘ expl_step => (X,0,-1) is atom

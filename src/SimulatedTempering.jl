@@ -70,13 +70,14 @@ get_nlar(β₀,β₁,c₀,c₁,v) = (β₁-β₀)*v - (c₁-c₀)
 # ap = min(1.,A) = min(1.,exp(-nlaccr)) = exp(min(0.,-nlaccr)) = exp(-max(0.,nlaccr))
 # => rp = 1-ap = 1-exp(-max(0.,nlaccr)) = -[exp(-max(0.,nlaccr))-1] = -expm1(-max(0.,nlaccr))
 nlar_2_rp(nlar) = -expm1(-max(zero(nlar), nlar))
+nlar_2_ap(nlar) = exp(-max(zero(nlar), nlar))
 
 # methods for storing results
 function save_pre_step!(st::AbstractSTSampler, tr::NRSTTrace, n::Int; keep_xs::Bool=true)
     @unpack trX, trIP, trV = tr
     keep_xs && copyto!(trX[n],st.x) # needs copy o.w. we get a ref to st.x
-    copyto!(trIP[n], st.ip)         # same
-    trV[n] = st.curV[]
+    trIP[n] = copy(st.ip)        # same
+    trV[n]  = st.curV[]
     return
 end
 function save_post_step!(
