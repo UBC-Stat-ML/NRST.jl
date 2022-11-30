@@ -61,7 +61,7 @@
 
 const DEF_PAL = seaborn_colorblind # default palette
 
-function diagnostics(ns::NRSTSampler, res::TouringRunResults)
+function diagnostics(ns::RegenerativeSampler, res::TouringRunResults)
     N      = ns.np.N
     ntours = get_ntours(res)
 

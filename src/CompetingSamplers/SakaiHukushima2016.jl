@@ -22,10 +22,10 @@ SH16Sampler(ns::NRSTSampler) = SH16Sampler(NRST.copyfields(ns)...)
 # communication step
 #######################################
 
-# Compute proposed i, neglog-prop-ratio (nlpt), and neglog-target-ratio (nlrt). 
+# Compute proposed i, neglog-prop-ratio (nlpr), and neglog-target-ratio (nltr). 
 # This is eqs 12, 13, 14. Note: for δ=1 the proposals are deterministic
-#     q_{0,1}^{eps} = q_{N,N-1}^{eps} = 1        // this is true for all δ
-#     q_{r,l}^{eps} = 1{l=r+eps}          , o.w.
+#     q_{0,1}^{eps} = q_{N,N-1}^{eps} = 1, at boundaries // this is true for all δ
+#     q_{r,l}^{eps} = 1{l=r+eps},          o.w.
 # Let
 #     W_{r,l} := max{0,P_l/P_r} = exp{max{0,-nlar}}
 # Then
@@ -112,15 +112,15 @@ function NRST.comm_step!(sh::SH16Sampler{T,I,K}, rng::AbstractRNG) where {T,I,K}
     elseif nlar_ϵ < randexp(rng)
         sh.ip[2] *= -one(I)
     end
-    return (NRST.nlar_2_ap(nlar_i), NRST.nlar_2_ap(nlar_ϵ))
+    return NRST.nlar_2_rp(nlar_ϵ)
 end
 
 # SH16 step (algorithm in sec 3.2) = comm_step ∘ expl_step => (X,0,-1) is atom
 # note: returns different info than NRST
 function NRST.step!(sh::SH16Sampler, rng::AbstractRNG)
-    api, apϵ = NRST.comm_step!(sh, rng) # returns acceptance probabilities of steps a and b
-    NRST.expl_step!(sh, rng)            # returns explorers' acceptance probability, but we dont use it
-    return api, apϵ
+    rpϵ   = NRST.comm_step!(sh, rng) # returns rej-prob of flip for studying it.
+    xplap = NRST.expl_step!(sh, rng) # returns explorers' acceptance probability
+    return rpϵ, xplap
 end
 
 #######################################
@@ -133,7 +133,7 @@ end
 
 # reset state by sampling from the renewal measure. Since
 #     W_{0,1}^{-} = 0 
-# we know for certain that the renewal measure only puts mas on (X,0,+1)
+# we know for certain that the renewal measure only puts mass on (X,0,+1)
 function NRST.renew!(sh::SH16Sampler{T,I}, rng::AbstractRNG) where {T,I}
     sh.ip[1] = zero(I)
     sh.ip[2] = one(I)
@@ -142,7 +142,7 @@ end
 
 # handling last tour step
 function NRST.save_last_step_tour!(sh::SH16Sampler{T,I,K}, tr; kwargs...) where {T,I,K}
-    NRST.save_pre_step!(sh, tr; kwargs...)                                       # store state at atom
-    _, nlar_i, nlar_ϵ = propose(sh)                                              # simulate a proposal
-    NRST.save_post_step!(sh, tr, NRST.nlar_2_ap(nlar_i), NRST.nlar_2_ap(nlar_ϵ)) # save stats
+    NRST.save_pre_step!(sh, tr; kwargs...)                       # store state at atom
+    _, _, nlar_ϵ = propose(sh)                                   # simulate a proposal
+    NRST.save_post_step!(sh, tr, NRST.nlar_2_rp(nlar_ϵ), K(NaN)) # save stats
 end

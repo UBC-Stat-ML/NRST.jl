@@ -85,37 +85,13 @@ ns, TE, Λ = NRSTSampler(
 using NRST.CompetingSamplers
 
 sh = SH16Sampler(ns);
-# tr = NRST.run!(sh,rng,nsteps=10,keep_xs=false)
-# tr = NRST.tour!(sh,rng)
-# NRST.renew!(sh,rng);sh.ip
-# print(tr.trIP)
-# idxs = 10:13
-# tr.trIP[idxs]
-# tr.trRP[idxs]
-# tr.trXplAP[9:10]
-# last(first(tr.trIP))
-# sum(ip -> ip[1]==1,tr.trIP)
 ntours = NRST.min_ntours_TE(TE);
 res = parallel_run(sh,rng,ntours);
-res.toureff
-res.rpacc
-res.visits
-extrema(NRST.tourlengths(res))
-res.trvec[3]
-betas = ns.np.betas
-c     = ns.np.c
-v     = 2.0536234991479836e16
-i=1
-iprop=2
-ibwd=0
-apif = NRST.nlar_2_ap(NRST.get_nlar(betas[i+1],betas[iprop+1],c[i+1],c[iprop+1],v))
-apib = NRST.nlar_2_ap(NRST.get_nlar(betas[i+1],betas[ibwd+1],c[i+1],c[ibwd+1],v))
-(apib - apif)/(1-apif)
+
 using Plots
 using Plots.PlotMeasures: px
 
-res   = parallel_run(ns, rng,TE=TE, keep_xs=false);
-plots = diagnostics(ns, res)
+plots = diagnostics(sh, res)
 hl    = ceil(Int, length(plots)/2)
 pdiags=plot(
     plots..., layout = (hl,2), size = (900,hl*333),left_margin = 40px,
