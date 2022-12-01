@@ -125,23 +125,6 @@ end
 # RegenerativeSampler interface
 #######################################
 
-isinatom(ns::NRSTSampler{T,I}) where {T,I} = (ns.ip[1]==zero(I) && ns.ip[2]==-one(I))
-
-# reset state by sampling from the renewal measure
-# note: if isinatom(ns), renew! is the same as applying step!
-function renew!(ns::NRSTSampler{T,I}, rng::AbstractRNG) where {T,I}
-    ns.ip[1] = zero(I)
-    ns.ip[2] = one(I)
-    refreshx!(ns, rng)
-end
-
-# NRST step = comm_step ∘ expl_step => (X,0,-1) is atom
-function step!(ns::NRSTSampler, rng::AbstractRNG)
-    rp    = comm_step!(ns, rng) # returns rejection probability
-    xplap = expl_step!(ns, rng) # returns explorers' acceptance probability
-    return rp, xplap
-end
-
 # handling last tour step
 function save_last_step_tour!(ns::NRSTSampler{T,I,K}, tr; kwargs...) where {T,I,K}
     save_pre_step!(ns, tr; kwargs...)       # store state at atom

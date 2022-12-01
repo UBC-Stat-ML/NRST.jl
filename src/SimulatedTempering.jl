@@ -34,6 +34,14 @@ end
 # sampling methods
 ###############################################################################
 
+# NRST step = comm_step ∘ expl_step => (X,0,-1) is atom
+# default method. works for NRST, SH16, and others
+function step!(st::AbstractSTSampler, rng::AbstractRNG)
+    rp    = comm_step!(st, rng) # returns rejection probability
+    xplap = expl_step!(st, rng) # returns explorers' acceptance probability
+    return rp, xplap
+end
+
 # sample from ref (possibly using rejection to avoid V=inf) and update curV accordingly
 function refreshx!(st::AbstractSTSampler, rng::AbstractRNG)
     st.curV[] = randrefmayreject!(st.np.tm, rng, st.x, st.np.reject_big_vs)
@@ -97,6 +105,20 @@ end
 #######################################
 # RegenerativeSampler interface
 #######################################
+
+# check if state is in the atom
+# default method. works for NRST, SH16, and others
+function isinatom(st::AbstractSTSampler{T,I}) where {T,I}
+    first(st.ip)==zero(I) && last(st.ip)==-one(I)
+end
+
+# reset state by sampling from the renewal measure
+# default method. works for NRST, SH16, and others
+function renew!(st::AbstractSTSampler{T,I}, rng::AbstractRNG) where {T,I}
+    st.ip[1] = zero(I)
+    st.ip[2] = one(I)
+    refreshx!(st, rng)
+end
 
 function save_pre_step!(st::AbstractSTSampler, tr::NRSTTrace; keep_xs::Bool=true)
     @unpack trX, trIP, trV = tr

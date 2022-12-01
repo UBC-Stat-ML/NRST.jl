@@ -115,30 +115,19 @@ function NRST.comm_step!(sh::SH16Sampler{T,I,K}, rng::AbstractRNG) where {T,I,K}
     return NRST.nlar_2_rp(nlar_ϵ)
 end
 
-# SH16 step (algorithm in sec 3.2) = comm_step ∘ expl_step => (X,0,-1) is atom
-# note: returns different info than NRST
-function NRST.step!(sh::SH16Sampler, rng::AbstractRNG)
-    rpϵ   = NRST.comm_step!(sh, rng) # returns rej-prob of flip for studying it.
-    xplap = NRST.expl_step!(sh, rng) # returns explorers' acceptance probability
-    return rpϵ, xplap
-end
+# same step! method as NRST
 
 #######################################
 # RegenerativeSampler interface
 #######################################
 
-function NRST.isinatom(sh::SH16Sampler{T,I}) where {T,I}
-    first(sh.ip)==zero(I) && last(sh.ip)==-one(I)
-end
+# same atom as NRST, no need for specialized isinatom method
 
 # reset state by sampling from the renewal measure. Since
 #     W_{0,1}^{-} = 0 
 # we know for certain that the renewal measure only puts mass on (X,0,+1)
-function NRST.renew!(sh::SH16Sampler{T,I}, rng::AbstractRNG) where {T,I}
-    sh.ip[1] = zero(I)
-    sh.ip[2] = one(I)
-    NRST.refreshx!(sh, rng)
-end
+# Therefore, we can just use the same as for NRST
+# function NRST.renew!
 
 # handling last tour step
 function NRST.save_last_step_tour!(sh::SH16Sampler{T,I,K}, tr; kwargs...) where {T,I,K}

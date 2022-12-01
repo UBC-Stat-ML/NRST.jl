@@ -64,9 +64,10 @@ end
 # RegenerativeSampler interface
 #######################################
 
+# check if state is in the atom
 NRST.isinatom(gt::GT95Sampler{T,I}) where {T,I} = (gt.ip[1]==zero(I))
 
-# reset state by sampling from the renewal measure
+# reset state by sampling from the renewal measure (need to override default method)
 # note: if isinatom(gt), renew! is the same as applying step!
 function NRST.renew!(gt::GT95Sampler{T,I}, rng::AbstractRNG) where {T,I}
     gt.ip[1] = zero(I)
