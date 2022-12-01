@@ -2,53 +2,6 @@
 # HierarchicalModel
 ###############################################################################
 
-using LogExpFunctions
-
-N = 20
-const betas = range(0,1,N+1);
-const c = -(0:N)*100
-const logGs = similar(betas)
-
-function test()
-    v = 300
-    logGs  .= -betas .*v  .+ c
-    logGs .-= logsumexp(logGs)
-end
-@time test();
-
-const logM = similar(logGs)
-ϵ = 1
-k = 14
-gk = logGs[k]
-log1mexpgk = log1mexp(gk)
-for (i,g) in enumerate(logGs)
-    logM[i] = sign(i-k)!=ϵ ? -Inf : g - max(log1mexp(g),log1mexpgk)
-end
-logM[k] = log1mexp(min(0.,logsumexp(logM)))
-
-using Random
-rand!(logM)
-logsumexp(logM)
-reduce(logaddexp,logM)
-sum(exp, logM)
-Gs = exp.(logGs)
-Gs .= Gs ./ sum(Gs)
-all(log.(Gs) .≈ logGs)
-
-function sample_logprob(rng::AbstractRNG, lps::AbstractVector{F}) where {F<:AbstractFloat}
-    nE  = -randexp(rng)
-    M   = length(lps)
-    m   = 1
-    clp = lps[1]
-    while clp < nE && m < M
-        m += 1
-        @inbounds clp = logaddexp(clp, lps[m])
-    end
-    return m
-end
-
-sample_logprob(Random.GLOBAL_RNG, logM)
-
 using NRST
 using DelimitedFiles
 using Distributions
@@ -131,7 +84,8 @@ ns, TE, Λ = NRSTSampler(
 
 using NRST.CompetingSamplers
 
-sh = SH16Sampler(ns);
+fbdr = FBDRSampler(ns);
+NRST.tour!(fbdr, rng)
 ntours = NRST.min_ntours_TE(TE);
 res = parallel_run(sh,rng,ntours);
 

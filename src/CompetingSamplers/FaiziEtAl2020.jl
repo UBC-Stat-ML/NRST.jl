@@ -43,7 +43,7 @@ function update_gs!(fbdr::FBDRSampler{T,I,K}) where {T,I,K}
     gs .-= logsumexp(gs)
 end
 
-# update the log of the irreversible Metropolized Gibbs conditional of beta
+# update the log of the irreversible Metropolized Gibbs (IMGS) conditional of beta
 # the Irreversible Metropolized conditional is (Eq 31)
 #     M_{i,j}^{eps} =
 #     {
@@ -59,63 +59,63 @@ end
 #      -Inf,                         (j-i)eps<0
 #      log(1-sum_{j neq i} M_{i,j}), j==i      
 # Furthermore  
-#     m_j = log(M_{i,j}) = g_j - max{log1mexp(g_i),log1mexp(g_j)}, (j-i)eps>0
-#     m_i = log(M_{i,i}^{eps}) = log(1-sum(M_{i,j})) = log(1-exp(logsumexp(m))) = log1mexp(logsumexp(m))
+#     m_j = g_j - max{log1mexp(g_i),log1mexp(g_j)}, (j-i)eps>0
+#     m_i = log(1-sum(M_{i,j})) = log(1-exp(logsumexp(m))) = log1mexp(logsumexp(m))
 # note: it holds that sum(exp, ms) === one(eltype(ms))
 function update_ms!(fbdr::FBDRSampler{T,I,K}) where {T,I,K}
     update_gs!(fbdr)
     @unpack gs,ms,ip = fbdr
-    i = first(ip)
-    ϵ = last(ip)
-    log1mexpgi = log1mexp(gs[i])
-    for (j,g) in enumerate(gs)
+    i   = first(ip)
+    idx = i+one(I)
+    ϵ   = last(ip)
+    log1mexpgi = log1mexp(gs[idx])
+    for (jdx,g) in enumerate(gs)
         # for j=i we also put -Inf so that it contributes 0 to the logsumexp below
-        @inbounds ms[j] = sign(j-i)!=sign(ϵ) ? K(-Inf) : g - max(log1mexp(g), log1mexpgi)
+        @inbounds ms[jdx] = sign(jdx-idx)!=sign(ϵ) ? K(-Inf) : g - max(log1mexp(g), log1mexpgi)
     end
-    ms[i] = log1mexp(min(zero(K), logsumexp(ms))) # truncation is needed to handle numerical errors
+    ms[idx] = log1mexp(min(zero(K), logsumexp(ms))) # truncation is needed to handle numerical errors
 end
 
 # full tempering step
 function NRST.comm_step!(fbdr::FBDRSampler{T,I,K}, rng::AbstractRNG) where {T,I,K}
     @unpack ms,ip,np = fbdr
-    N = np.N
-    i = first(ip)
-    ϵ = last(ip)
-
-    # attempt i move
-    update_ms!(fbdr)
-    iprop = sample_logprob(rng, ms) - one(I)
+    i = first(ip)                                         # attempt to move i
+    update_ms!(fbdr)                                      # update IMGS probabilities
+    iprop   = sample_logprob(rng, ms) - one(I)            # sample a new i (1-based index)
+    lpstayf = ms[i+1]                                     # log-probability of iprop==i
     if iprop != i
-        ip[1] = iprop
-    elseif
+        ip[1] = iprop 
+    else                                                  # got same i, so need to attempt flip
+        ip[2]  *= -one(I)                                 # simulate flip
+        update_ms!(fbdr)                                  # recompute IMGS probabilities
+        lpstayb = ms[i+1]                                 # log-probability of iprop==i with flip
+        lpflip  = log1mexp(min(zero(K), lpstayb-lpstayf)) # log-probability of flip
+        randexp(rng) < -lpflip && (ip[2] *= -one(I))      # flip failed => need to undo ϵ flip   
     end
-    
-    iprop, nlar_i, nlar_ϵ = propose(sh)
-    if nlar_i < randexp(rng)
-        sh.ip[1] = iprop
-    elseif nlar_ϵ < randexp(rng)
-        sh.ip[2] *= -one(I)
-    end
-    return NRST.nlar_2_rp(nlar_ϵ)
+    return exp(lpstayf)                                   # lpstayf == logprob of rejecting an i move
 end
 
 # same step! method as NRST
 
-# #######################################
-# # RegenerativeSampler interface
-# #######################################
+#######################################
+# RegenerativeSampler interface
+#######################################
 
-# # same atom as NRST, no need for specialized isinatom method
+# same atom as NRST, no need for specialized isinatom method
 
-# # reset state by sampling from the renewal measure. Since
-# #     W_{0,1}^{-} = 0 
-# # we know for certain that the renewal measure only puts mass on (X,0,+1)
-# # Therefore, we can just use the same as for NRST
-# # function NRST.renew!
+# reset state by sampling from the renewal measure
+# not sure if P((0,-1)->(0,1))=1 (experimentally it looks like this is true),
+# so safer to have a specialized method
+function NRST.renew!(fbdr::FBDRSampler{T,I}, rng::AbstractRNG) where {T,I}
+    fbdr.ip[1] = zero(I)
+    fbdr.ip[2] = -one(I)
+    NRST.step!(fbdr, rng)
+end
 
-# # handling last tour step
-# function NRST.save_last_step_tour!(sh::SH16Sampler{T,I,K}, tr; kwargs...) where {T,I,K}
-#     NRST.save_pre_step!(sh, tr; kwargs...)                       # store state at atom
-#     _, _, nlar_ϵ = propose(sh)                                   # simulate a proposal
-#     NRST.save_post_step!(sh, tr, NRST.nlar_2_rp(nlar_ϵ), K(NaN)) # save stats
-# end
+# handling last tour step
+function NRST.save_last_step_tour!(fbdr::FBDRSampler{T,I,K}, tr; kwargs...) where {T,I,K}
+    NRST.save_pre_step!(fbdr, tr; kwargs...)   # store state at atom
+    update_ms!(fbdr)                           # update IMGS probabilities
+    rp = exp(fbdr.ms[first(fbdr.ip)+1])        # probability of iprop==i <=> prob of rejecting an i move
+    NRST.save_post_step!(fbdr, tr, rp, K(NaN)) # save stats
+end
