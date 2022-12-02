@@ -96,6 +96,10 @@ function NRST.comm_step!(fbdr::FBDRSampler{T,I,K}, rng::AbstractRNG) where {T,I,
 end
 
 # same step! method as NRST
+# note: the following should always return true
+# NRST.step!(fbdr, rng)
+# NRST.CompetingSamplers.update_ms!(fbdr)
+# first(ip) == (last(ip) > 0 ? findfirst(isfinite,ms) : findlast(isfinite,ms))-1
 
 #######################################
 # RegenerativeSampler interface

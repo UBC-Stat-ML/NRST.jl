@@ -83,16 +83,13 @@ ns, TE, Λ = NRSTSampler(
 );
 
 using NRST.CompetingSamplers
-
-fbdr = FBDRSampler(ns);
-NRST.tour!(fbdr, rng)
-ntours = NRST.min_ntours_TE(TE);
-res = parallel_run(sh,rng,ntours);
-
 using Plots
 using Plots.PlotMeasures: px
 
-plots = diagnostics(sh, res)
+fbdr = FBDRSampler(ns);
+ntours = NRST.min_ntours_TE(TE);
+res = parallel_run(fbdr,rng,ntours);
+plots = diagnostics(fbdr, res);
 hl    = ceil(Int, length(plots)/2)
 pdiags=plot(
     plots..., layout = (hl,2), size = (900,hl*333),left_margin = 40px,

@@ -4,7 +4,6 @@ using IrrationalConstants: logtwo
 using LogExpFunctions: logsumexp, log1mexp, logaddexp
 using Random: AbstractRNG, RandomDevice, randexp
 using StaticArrays: MVector
-using StatsBase: sample
 using UnPack: @unpack
 using NRST
 
