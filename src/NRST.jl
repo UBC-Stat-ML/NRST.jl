@@ -69,6 +69,4 @@ include("inference.jl")
 include("tuning.jl")
 include("diagnostics.jl")
 
-include("CompetingSamplers/CompetingSamplers.jl")
-
 end
