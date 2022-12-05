@@ -152,7 +152,7 @@ const DEFAULT_MAX_TOURS = min_ntours_TE(0.)
 function parallel_run(
     st::AbstractSTSampler, 
     rng::SplittableRandom;
-    ntours::Int,
+    ntours::Int       = -1,
     TE::AbstractFloat = NaN,
     α::AbstractFloat  = DEFAULT_α,
     δ::AbstractFloat  = DEFAULT_δ,

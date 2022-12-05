@@ -82,11 +82,11 @@ ns, TE, Λ = NRSTSampler(
             rng,
 );
 
-using Plots
-using Plots.PlotMeasures: px
+# using Plots
+# using Plots.PlotMeasures: px
 
-ntours = NRST.min_ntours_TE(TE);
-res   = parallel_run(ns,rng,ntours=ntours,keep_xs=false);
+# ntours = NRST.min_ntours_TE(TE);
+res   = parallel_run(ns,rng,TE=TE,keep_xs=false);
 plots = diagnostics(ns, res);
 hl    = ceil(Int, length(plots)/2)
 pdiags=plot(

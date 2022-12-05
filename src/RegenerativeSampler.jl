@@ -61,6 +61,7 @@ function parallel_run(
     max_mem_use::Real = .8,
     kwargs...
     )
+    @assert ntours > 0
     GC.gc()                                                                   # setup allocates a lot so we need all mem we can get
     verbose && println(
         "\nRunning $ntours tours in parallel using " *
