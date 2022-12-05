@@ -67,15 +67,16 @@ function tune!(
     ens,                            # ensemble of exploration kernels: either Vector{<:ExplorationKernel} (indep sampling) or NRPTSampler
     rng::AbstractRNG;
     max_rounds::Int    = 14,
-    max_ar_ratio::Real = 0.25,      # limit on range(ar)/mean(ar), ar: average of Ru and Rd, the directional rejection rates
+    max_ar_ratio::Real = 0.05,      # limit on std(ar)/mean(ar), ar: average of Ru and Rd, the directional rejection rates
+    max_ar1_dif::Real  = 0.5,       # |ar[1]/mean(ar[-1]) - 1| < max_ar1_dif
     max_dr_ratio::Real = 0.05,      # limit on mean(|Ru-Rd|)/mean(ar). Note: this only makes sense for use_mean=true
     max_Δβs::Real      = 0.05,      # limit on max change in grid. Note: this is not a great indicator, so the limit is quite loose. Only helps with potential fake convergence at beginning
-    max_relΔcone::Real = 0.005,     # limit on rel change in c(1)
+    max_relΔcone::Real = 0.008,     # limit on rel change in c(1)
     max_relΔΛ::Real    = 0.01,      # limit on rel change in Λ = Λ(1)
     nsteps_init::Int   = 32,
     maxcor::Real       = 0.9,       # set nexpl in explorers s.t. correlation of V samples is lower than this
     γ::Real            = 8.0,       # correction for the optimal_N formula
-    xpl_smooth::Bool   = true,
+    xpl_smooth_λ::Real = 0.,        # λ==0 => no smoothing
     check_N::Bool      = true,
     verbose::Bool      = true
     ) where {T,K}
@@ -100,7 +101,7 @@ function tune!(
         rnd    += 1
         nsteps *= 2        
         verbose && print("Round $rnd:\n\tTuning explorers...")
-        tune_explorers!(np, ens, rng,smooth=xpl_smooth) # note: this function forces an update to betas in ens, since grid changed in last round
+        tune_explorers!(np, ens, rng,smooth_λ=xpl_smooth_λ) # note: this function forces an update to betas in ens, since grid changed in last round
         verbose && println("done!")
         
         # tune c and betas
@@ -109,7 +110,7 @@ function tune!(
         Δβs,Λ,ar,R = res.value # note: rejections are before grid adjustment, so they are technically stale, but are still useful to assess convergence. compute std dev of average of up and down rejs
         copyto!(Rout, R)
         mar        = mean(ar)
-        ar_ratio   = -(-(extrema(ar)...))/mar
+        ar_ratio   = std(ar)/mar
         ar1_ratio  = ar[1]/mean(ar[2:end])
         dr_ratio   = mean(abs, R[1:(end-1),1] - R[2:end,2])/mar
         relΔcone   = abs(np.c[end] - oldcone) / abs(oldcone)
@@ -118,7 +119,7 @@ function tune!(
         oldΛ       = Λ
         if verbose 
             @printf( # the following line cannot be cut with concat ("*") because @printf only accepts string literals
-                "done!\n\t\tAR range/mean=%.3f\n\t\tAR[1]/mean(AR[-1])=%.3f\n\t\tmean|Ru-Rd|/mean=%.3f\n\t\tmax(Δbetas)=%.3f\n\t\tc(1)=%.2f (relΔ=%.2f%%)\n\t\tΛ=%.2f (relΔ=%.1f%%)\n\t\tElapsed: %.1fs\n\n", 
+                "done!\n\t\tAR std/mean=%.3f\n\t\tAR[1]/mean(AR[-1])=%.3f\n\t\tmean|Ru-Rd|/mean=%.3f\n\t\tmax(Δbetas)=%.3f\n\t\tc(1)=%.2f (relΔ=%.2f%%)\n\t\tΛ=%.2f (relΔ=%.1f%%)\n\t\tElapsed: %.1fs\n\n", 
                 ar_ratio, ar1_ratio, dr_ratio, Δβs, np.c[end], 100*relΔcone, Λ, 100*relΔΛ, res.time
             )
             show(plot_grid(np.betas, title="Histogram of βs: round $rnd"))
@@ -127,7 +128,7 @@ function tune!(
 
         # good time to check if parameters are ok
         if rnd == 5            
-            if !np.log_grid && ar1_ratio > 1.5                            # check if we need to switch interpolating Λ(β) in log scale to handle Inf derivative at 0.
+            if !np.log_grid && ar1_ratio > 1. + max_ar1_dif               # check if we need to switch interpolating Λ(β) in log scale to handle Inf derivative at 0.
                 throw(NonIntegrableVException())
             end
             if check_N                                                    # check if N is too low / high
@@ -140,7 +141,8 @@ function tune!(
         # check convergence
         conv = !isnan(relΔcone) && (relΔcone<max_relΔcone) && 
             !isnan(relΔΛ) && (relΔΛ < max_relΔΛ) && (Δβs<max_Δβs) &&
-            (ar_ratio < max_ar_ratio) && (dr_ratio < max_dr_ratio)
+            (ar_ratio < max_ar_ratio) && (dr_ratio < max_dr_ratio) &&
+            (abs(ar1_ratio-1.) < max_ar1_dif)
     end
 
     # at this point, ns has a fresh new grid, so explorers params, c, and  
@@ -151,7 +153,7 @@ function tune!(
         "\n\nAdjusting settings to new grid...\n" *
         "\tTuning explorers..."
     )
-    tune_explorers!(np, ens, rng, smooth=xpl_smooth)
+    tune_explorers!(np, ens, rng, smooth_λ=xpl_smooth_λ)
     verbose && print("done!\n\tTuning c and nexpls using $nsteps steps...")
     res = @timed tune_c_nexpls!(np, ens, rng, nsteps, maxcor)
     verbose && @printf("done!\n\t\tElapsed: %.1fs\n\n", res.time)
@@ -178,7 +180,7 @@ function tune_explorers!(
     np::NRSTProblem,
     xpls::Vector{<:ExplorationKernel},
     rng::AbstractRNG;
-    smooth::Bool,
+    smooth_λ::Real,
     kwargs...
     )
     N    = length(xpls)
@@ -187,7 +189,7 @@ function tune_explorers!(
         update_β!(xpls[i], np.betas[i+1]) # needed because most likely the grid was updated 
         tune!(xpls[i], rngs[i];kwargs...)
     end
-    smooth && smooth_params!(xpls)
+    smooth_λ > 0. && smooth_params!(xpls, smooth_λ)
     store_params!(np, xpls)               # need to store tuned params in np for later use with ns.xpl
 end
 

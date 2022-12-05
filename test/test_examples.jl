@@ -80,10 +80,26 @@ tm  = HierarchicalModel()
 ns, TE, Λ = NRSTSampler(
             tm,
             rng,
+            xpl_smooth_λ=1e-5
 );
 
-# using Plots
-# using Plots.PlotMeasures: px
+using Plots
+using Plots.PlotMeasures: px
+# using SmoothingSplines
+
+# σs = [first(pars) for pars in ns.np.xplpars]
+# lσs= log.(σs)
+# plot(lσs)
+# N = ns.np.N
+# xs = range(inv(N),1.,N)
+# λ = 1e-5
+# spl = fit(SmoothingSpline, xs, lσs, λ);
+# plσs = predict(spl)
+# pσs = exp.(plσs)
+# plot(xs,lσs)
+# plot!(xs,plσs)
+# plot(xs,σs)
+# plot!(xs,pσs)
 
 # ntours = NRST.min_ntours_TE(TE);
 res   = parallel_run(ns,rng,TE=TE,keep_xs=false);
@@ -106,6 +122,7 @@ using NRST
 using DelimitedFiles
 using Distributions
 using Random
+using SplittableRandoms
 
 #######################################
 # pure julia version
@@ -178,18 +195,34 @@ function NRST.V(tm::MRNATrans{TF}, x) where {TF}
     return acc
 end
 
-using Plots
-using Plots.PlotMeasures: px
-
-rng = SplittableRandom(8371)
+rng = SplittableRandom(1957)
 tm  = MRNATrans()
 ns, TE, Λ = NRSTSampler(
             tm,
             rng,
+            # xpl_smooth_λ=1e-5
             # log_grid = true
             # tune=false
 );
-res   = parallel_run(ns, rng, ntours=2^14, keep_xs=false);
+
+using Plots
+using Plots.PlotMeasures: px
+using SmoothingSplines
+
+σs = [first(pars) for pars in ns.np.xplpars]
+lσs= log.(σs)
+plot(lσs)
+N = ns.np.N
+xs = range(inv(N),1.,N)
+λ = 1e-8
+spl = fit(SmoothingSpline, xs, lσs, λ);
+plσs = predict(spl)
+plot(lσs)
+plot!(plσs)
+plot(σs)
+plot!(exp.(plσs))
+
+res   = parallel_run(ns, rng, TE=TE, keep_xs=false);
 plots = diagnostics(ns, res)
 hl    = ceil(Int, length(plots)/2)
 pdiags=plot(

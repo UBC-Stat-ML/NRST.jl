@@ -251,13 +251,18 @@ end
 
 # intuition: if optimal sigma=sigma(β) is smooth in β, then tuning can be improved
 # by smoothing across explorers
-function smooth_params!(xpls::Vector{<:MHSampler}; λ=.1)
-    lβs = [log(xpl.curβ[]) for xpl in xpls] # note: this is length N
-    σs  = [first(params(xpl)) for xpl in xpls]
-    spl = fit(SmoothingSpline, lβs, σs, λ) # # λopt      = LOO(xs, ys)
-    pσs = predict(spl)
+# Note: instead of working in x = betas scale, we use x = "equal units of rejection"
+# assuming perfect tuning.
+function smooth_params!(xpls::Vector{<:MHSampler}, λ::AbstractFloat)
+    # lβs = [log(xpl.curβ[]) for xpl in xpls] # note: this is length N
+    N   = length(xpls)
+    xs  = range(inv(N), 1., N)
+    lσs = [log(first(params(xpl))) for xpl in xpls]
+    # λ = LOO(xs, ys)
+    spl = fit(SmoothingSpline, xs, lσs, λ)
+    plσs= predict(spl)
     for (i,xpl) in enumerate(xpls)
-        xpl.sigma[] = pσs[i]
+        xpl.sigma[] = exp(plσs[i])
     end
 end
 
