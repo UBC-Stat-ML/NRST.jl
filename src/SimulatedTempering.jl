@@ -138,3 +138,30 @@ function save_post_step!(
     l >= 1 && push!(tr.trXplAP[l], xplap)
     return
 end
+
+# multithreading method with automatic determination of required number of tours
+const DEFAULT_α      = .95  # probability of the mean of indicators to be inside interval
+const DEFAULT_δ      = .10  # half-width of interval
+const DEFAULT_TE_min = 5e-4 # truncate TE's below this value
+function min_ntours_TE(TE, α=DEFAULT_α, δ=DEFAULT_δ, TE_min=DEFAULT_TE_min)
+    ceil(Int, (4/max(TE_min,TE)) * abs2(norminvcdf((1+α)/2) / δ))
+end
+const DEFAULT_MAX_TOURS = min_ntours_TE(0.)
+
+# computes ntours if TE is passed, then call the method for RegenerativeSampler
+function parallel_run(
+    st::AbstractSTSampler, 
+    rng::SplittableRandom;
+    ntours::Int,
+    TE::AbstractFloat = NaN,
+    α::AbstractFloat  = DEFAULT_α,
+    δ::AbstractFloat  = DEFAULT_δ,
+    kwargs...
+    )
+    isfinite(TE) && (ntours = min_ntours_TE(TE,α,δ))
+    invoke(
+        parallel_run, 
+        Tuple{RegenerativeSampler,SplittableRandom},
+        st, rng; ntours=ntours, kwargs...
+    )
+end

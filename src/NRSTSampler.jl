@@ -130,25 +130,3 @@ function save_last_step_tour!(ns::NRSTSampler{T,I,K}, tr; kwargs...) where {T,I,
     save_pre_step!(ns, tr; kwargs...)       # store state at atom
     save_post_step!(ns, tr, one(K), K(NaN)) # we know that (-1,-1) would be rejected if attempted so we store this. also, the expl step would not use an explorer; thus the NaN.
 end
-
-# multithreading method with automatic determination of required number of tours
-const DEFAULT_α      = .95  # probability of the mean of indicators to be inside interval
-const DEFAULT_δ      = .10  # half-width of interval
-const DEFAULT_TE_min = 5e-4 # truncate TE's below this value
-function min_ntours_TE(TE, α=DEFAULT_α, δ=DEFAULT_δ, TE_min=DEFAULT_TE_min)
-    ceil(Int, (4/max(TE_min,TE)) * abs2(norminvcdf((1+α)/2) / δ))
-end
-const DEFAULT_MAX_TOURS = min_ntours_TE(0.)
-
-function parallel_run(
-    ns::NRSTSampler, 
-    rng::SplittableRandom;
-    TE::AbstractFloat = NaN,
-    α::AbstractFloat  = DEFAULT_α,
-    δ::AbstractFloat  = DEFAULT_δ,
-    ntours::Int       = -1,
-    kwargs...
-    )
-    ntours < 0 && (ntours = min_ntours_TE(TE,α,δ))
-    parallel_run(ns, rng, ntours; kwargs...)
-end

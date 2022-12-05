@@ -53,8 +53,8 @@ end
 # same after this returns
 function parallel_run(
     rs::RegenerativeSampler,
-    rng::SplittableRandom,
-    ntours::Int;
+    rng::SplittableRandom;
+    ntours::Int,
     keep_xs::Bool     = true,
     verbose::Bool     = true,
     check_every::Int  = 1_000,
