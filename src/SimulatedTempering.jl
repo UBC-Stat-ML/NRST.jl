@@ -83,8 +83,8 @@ nlar_2_ap(nlar) = exp(-max(zero(nlar), nlar))
 # methods for storing results
 function save_pre_step!(st::AbstractSTSampler, tr::NRSTTrace, n::Int; keep_xs::Bool=true)
     @unpack trX, trIP, trV = tr
-    keep_xs && copyto!(trX[n],st.x) # needs copy o.w. we get a ref to st.x
-    trIP[n] = copy(st.ip)        # same
+    keep_xs && (trX[n] = copy(st.x)) # needs copy o.w. we get a ref to st.x
+    trIP[n] = copy(st.ip)            # same
     trV[n]  = st.curV[]
     return
 end
