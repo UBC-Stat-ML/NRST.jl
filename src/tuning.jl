@@ -68,11 +68,11 @@ function tune!(
     rng::AbstractRNG;
     max_rounds::Int    = 14,
     max_ar_ratio::Real = 0.05,      # limit on std(ar)/mean(ar), ar: average of Ru and Rd, the directional rejection rates
-    max_ar1_dif::Real  = 0.5,       # |ar[1]/mean(ar[-1]) - 1| < max_ar1_dif
+    max_ar1_dif::Real  = 0.25,      # |ar[1]/mean(ar[-1]) - 1| < max_ar1_dif
     max_dr_ratio::Real = 0.05,      # limit on mean(|Ru-Rd|)/mean(ar). Note: this only makes sense for use_mean=true
     max_Δβs::Real      = 0.05,      # limit on max change in grid. Note: this is not a great indicator, so the limit is quite loose. Only helps with potential fake convergence at beginning
     max_relΔcone::Real = 0.008,     # limit on rel change in c(1)
-    max_relΔΛ::Real    = 0.01,      # limit on rel change in Λ = Λ(1)
+    max_relΔΛ::Real    = 0.015,     # limit on rel change in Λ = Λ(1)
     nsteps_init::Int   = 32,
     maxcor::Real       = 0.9,       # set nexpl in explorers s.t. correlation of V samples is lower than this
     γ::Real            = 8.0,       # correction for the optimal_N formula
@@ -128,7 +128,7 @@ function tune!(
 
         # good time to check if parameters are ok
         if rnd == 5            
-            if !np.log_grid && ar1_ratio > 1. + max_ar1_dif               # check if we need to switch interpolating Λ(β) in log scale to handle Inf derivative at 0.
+            if !np.log_grid && ar1_ratio > 1. + 2max_ar1_dif              # check if we need to switch interpolating Λ(β) in log scale to handle Inf derivative at 0.
                 throw(NonIntegrableVException())
             end
             if check_N                                                    # check if N is too low / high
