@@ -254,7 +254,6 @@ end
 # Note: instead of working in x = betas scale, we use x = "equal units of rejection"
 # assuming perfect tuning.
 function smooth_params!(xpls::Vector{<:MHSampler}, λ::AbstractFloat)
-    # lβs = [log(xpl.curβ[]) for xpl in xpls] # note: this is length N
     N   = length(xpls)
     xs  = range(inv(N), 1., N)
     lσs = [log(first(params(xpl))) for xpl in xpls]
@@ -266,3 +265,11 @@ function smooth_params!(xpls::Vector{<:MHSampler}, λ::AbstractFloat)
     end
 end
 
+# smooth with running median
+function smooth_params!(xpls::Vector{<:MHSampler}, λ::Integer)
+    lσs  = [log(first(params(xpl))) for xpl in xpls]
+    plσs = running_median(lσs, λ) 
+    for (i,xpl) in enumerate(xpls)
+        xpl.sigma[] = exp(plσs[i])
+    end
+end

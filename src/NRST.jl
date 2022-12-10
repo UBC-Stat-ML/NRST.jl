@@ -4,6 +4,7 @@ using ColorSchemes: seaborn_colorblind, okabe_ito
 using DataFrames: DataFrame
 using Distributions: Normal, Uniform
 using DynamicPPL: DynamicPPL
+using FastRunningMedian: running_median
 using Interpolations: interpolate, FritschButlandMonotonicInterpolation
 using LogExpFunctions: logsumexp, logistic
 using Plots
