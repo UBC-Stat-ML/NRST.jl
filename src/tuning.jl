@@ -76,7 +76,7 @@ function tune!(
     nsteps_init::Int   = 32,
     maxcor::Real       = 0.7,       # set nexpl in explorers s.t. correlation of V samples is lower than this
     γ::Real            = 6.0,       # correction for the optimal_N formula
-    xpl_smooth_λ::Real = 0.1,       # smoothness of spline for xpl params. λ==0 == no smoothing
+    xpl_smooth_λ::Real = 0.1,       # smoothness knob for xpl params. λ==0 == no smoothing
     check_N::Bool      = true,
     verbose::Bool      = true
     ) where {T,K}

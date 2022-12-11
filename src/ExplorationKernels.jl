@@ -268,7 +268,7 @@ end
 # smooth with running median
 function smooth_params!(xpls::Vector{<:MHSampler}, λ::Integer)
     lσs  = [log(first(params(xpl))) for xpl in xpls]
-    plσs = running_median(lσs, λ) 
+    plσs = running_median(lσs, λ, :asymmetric_truncated) # asymmetric_truncated also smooths endpoints 
     for (i,xpl) in enumerate(xpls)
         xpl.sigma[] = exp(plσs[i])
     end

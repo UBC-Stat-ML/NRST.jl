@@ -24,7 +24,7 @@ struct NonIntegrableVException <: Exception end
 function NRSTSampler(
     tm::TemperedModel,
     rng::AbstractRNG;
-    N::Int              = 10,
+    N::Int              = 30,
     nexpl::Int          = 10, 
     use_mean::Bool      = true,
     reject_big_vs::Bool = true,
