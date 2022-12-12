@@ -203,7 +203,7 @@ function NRST.V(tm::MRNATrans{TF}, x) where {TF}
     return acc
 end
 
-rng = SplittableRandom(1957)
+rng = SplittableRandom(406615)
 tm  = MRNATrans()
 ns, TE, Λ = NRSTSampler(
             tm,
@@ -214,12 +214,15 @@ ns, TE, Λ = NRSTSampler(
 );
 
 using Plots
-using Plots.PlotMeasures: px
-using SmoothingSplines
 
-σs = [first(pars) for pars in ns.np.xplpars]
-lσs= log.(σs)
+lσs = [log(first(pars)) for pars in ns.np.xplpars]
 plot(lσs)
+plot(ns.np.nexpls)
+using FastRunningMedian
+ns.np.nexpls .= running_median(ns.np.nexpls,3,:asymmetric_truncated)
+ns.np.nexpls .= sm_nexpls
+res   = parallel_run(ns, rng, ntours=3754, keep_xs=false);
+last(res.toureff)
 N = ns.np.N
 xs = range(inv(N),1.,N)
 λ = 1e-8

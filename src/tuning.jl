@@ -438,7 +438,8 @@ function tune_nexpls!(
     nexpls::Vector{TI},
     trVs::Vector{Vector{TF}},
     maxcor::TF;
-    maxTF::TF = inv(eps(TF))
+    maxTF::TF = inv(eps(TF)),
+    smooth    = true
     ) where {TI<:Int, TF<:AbstractFloat}
     L = log(maxcor)
     idxfail = TI[]
@@ -478,6 +479,16 @@ function tune_nexpls!(
             nexpls[i] = ceil(TI, exp(itp(i/N)))
         end
     end
+
+    # minimal smoothing to remove extreme outliers caused by std(trV) ≈ 0
+    # due to low acceptance rate (i.e., when in a corner of the state space) 
+    if smooth 
+        snexpls = running_median(nexpls, 3, :asymmetric_truncated)
+        for (i, s) in enumerate(snexpls)
+            nexpls[i] = ceil(TI, s) 
+        end
+    end
+    return
 end
 
 # jointly tune c and nexpls: makes sense because both need samples form V
