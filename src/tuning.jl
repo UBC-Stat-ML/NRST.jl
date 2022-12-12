@@ -305,11 +305,6 @@ function collectVs(
         rng = rngs[i]
         update_β!(xpl, np.betas[i+1])      # needed because most likely the grid was updated
         ar  = run!(xpl, rng, trVs[i+1])    # run and collect Vs
-#        while ar < .05                     # if acc too low, re-tune and retry
-#            @debug "Re-tuning explorer $i due to low acc-rate = $ar."
-#            tune!(xpl, rng)
-#            ar = run!(xpl, rng, trVs[i+1])
-#        end
     end
     store_params!(np, xpls)                # store params in case anything was re-tuned
     return trVs
@@ -451,7 +446,7 @@ function tune_nexpls!(
         # sanity checks of V samples
         trV = clamp.(trVs[i+1], -maxTF, maxTF) # clamp needed to avoid stddev = NaN => autocor=NaN
         if all(v -> v==first(trV), trV)
-            @debug "Explorer $i produced constant V samples; skipping it."
+            @debug "tune_nexpls: explorer $i produced constant V samples; skipping it."
             push!(idxfail, i)
             nexpls[i] = -one(TI)
             continue
@@ -473,7 +468,7 @@ function tune_nexpls!(
 
     # interpolate any element that failed
     if length(idxfail) > 0
-        @debug "Fixing errors at $idxfail by interpolation."
+        @debug "tune_nexpls: fixing errors at $idxfail by interpolation."
         N  = length(nexpls)
         idxgood = setdiff(1:N, idxfail)
         xs  = idxgood ./ N
