@@ -5,7 +5,7 @@ using DataFrames: DataFrame
 using Distributions: Normal, Uniform
 using DynamicPPL: DynamicPPL
 using FastRunningMedian: running_median
-using Interpolations: interpolate, FritschButlandMonotonicInterpolation
+using Interpolations: interpolate, FritschButlandMonotonicInterpolation, linear_interpolation, Line
 using LogExpFunctions: logsumexp, logistic
 using Plots
 using Printf

@@ -443,16 +443,20 @@ function tune_nexpls!(
     nexpls::Vector{TI},
     trVs::Vector{Vector{TF}},
     maxcor::TF;
-    maxTF::TF = inv(eps(TF)),
-    smooth::Bool=false
+    maxTF::TF = inv(eps(TF))
     ) where {TI<:Int, TF<:AbstractFloat}
     L = log(maxcor)
+    idxfail = TI[]
     for i in eachindex(nexpls)
         # sanity checks of V samples
         trV = clamp.(trVs[i+1], -maxTF, maxTF) # clamp needed to avoid stddev = NaN => autocor=NaN
-        all(v -> v==first(trV), trV) && 
-            throw(ArgumentError("Explorer $i produced constant V samples."))
-        
+        if all(v -> v==first(trV), trV)
+            @debug "Explorer $i produced constant V samples; skipping it."
+            push!(idxfail, i)
+            nexpls[i] = -one(TI)
+            continue
+        end
+
         # compute autocorrelations and try finding something smaller than maxcor
         ac  = autocor(trV)
         idx = findfirst(a -> a<=maxcor, ac)
@@ -462,18 +466,21 @@ function tune_nexpls!(
             l  = length(ac)
             xs = 0:(l-1)
             ys = log.(ac)
-            ρ  = sum(xs .* ys) / sum(abs2, xs)   # solve least-squares: y ≈ Xρ
-            nexpls[i] = ceil(TI, L/ρ)            # x = e^{ρn} => log(x) = ρn => n = log(x)/ρ
+            ρ  = sum(xs .* ys) / sum(abs2, xs)   # solve least-squares: y ≈ ρx
+            nexpls[i] = ceil(TI, L/ρ)            # c = e^{ρn} => log(c) = ρn => n = log(c)/ρ
         end
     end
-    if smooth
-        # smooth the results. note: not very useful in practice
-        N          = length(nexpls)
-        lognxs     = log.(nexpls)
-        spl        = fit(SmoothingSpline, 1/N:1/N:1, lognxs, .0001)
-        lognxspred = predict(spl) # fitted vector
-        for i in eachindex(nexpls)
-            nexpls[i] = ceil(TI, exp(lognxspred[i]))
+
+    # interpolate any element that failed
+    if length(idxfail) > 0
+        @debug "Fixing errors at $idxfail by interpolation."
+        N  = length(nexpls)
+        idxgood = setdiff(1:N, idxfail)
+        xs  = idxgood ./ N
+        ys  = log.(nexpls[idxgood])
+        itp = linear_interpolation(xs, ys, extrapolation_bc=Line())
+        for i in idxfail
+            nexpls[i] = ceil(TI, exp(itp(i/N)))
         end
     end
 end

@@ -1,3 +1,11 @@
+using Interpolations
+
+nums = [1, 4, 6, -1, 17, 4, 6]
+idxs = findall(i -> i>0,nums)
+xs = idxs ./ length(nums)
+ys = log.(nums[idxs])
+itp = linear_interpolation(xs, ys, extrapolation_bc=Line())
+
 ###############################################################################
 # HierarchicalModel
 ###############################################################################
@@ -339,9 +347,15 @@ tm  = TitanicHS()
 ns, TE, Λ = NRSTSampler(
             tm,
             rng,
-            xpl_smooth_λ=3
+            xpl_smooth_λ=3,
+            max_rounds=8
 );
 
+using Plots
+
+lσs = [log(first(pars)) for pars in ns.np.xplpars]
+plot(lσs)
+plot(ns.np.nexpls)
 ###############################################################################
 # end
 ###############################################################################
