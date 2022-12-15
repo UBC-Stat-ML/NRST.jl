@@ -112,14 +112,6 @@ function isinatom(st::AbstractSTSampler{T,I}) where {T,I}
     first(st.ip)==zero(I) && last(st.ip)==-one(I)
 end
 
-# reset state by sampling from the renewal measure
-# default method. works for NRST, SH16, and others
-function renew!(st::AbstractSTSampler{T,I}, rng::AbstractRNG) where {T,I}
-    st.ip[1] = zero(I)
-    st.ip[2] = one(I)
-    refreshx!(st, rng)
-end
-
 function save_pre_step!(st::AbstractSTSampler, tr::NRSTTrace; keep_xs::Bool=true)
     @unpack trX, trIP, trV = tr
     keep_xs && push!(trX, copy(st.x))          # needs copy o.w. pushes a ref to st.x

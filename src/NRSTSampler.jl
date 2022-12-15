@@ -125,8 +125,17 @@ end
 # RegenerativeSampler interface
 #######################################
 
+# reset state by sampling from the renewal measure
+# we know that iprop=-1 is rejected always, so we can anticipate that.
+function renew!(ns::NRSTSampler{T,I}, rng::AbstractRNG) where {T,I}
+    ns.ip[1] = zero(I)
+    ns.ip[2] = one(I)
+    refreshx!(st, rng)
+end
+
 # handling last tour step
 function save_last_step_tour!(ns::NRSTSampler{T,I,K}, tr; kwargs...) where {T,I,K}
     save_pre_step!(ns, tr; kwargs...)       # store state at atom
     save_post_step!(ns, tr, one(K), K(NaN)) # we know that (-1,-1) would be rejected if attempted so we store this. also, the expl step would not use an explorer; thus the NaN.
 end
+
