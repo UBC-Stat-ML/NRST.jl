@@ -130,7 +130,7 @@ end
 function renew!(ns::NRSTSampler{T,I}, rng::AbstractRNG) where {T,I}
     ns.ip[1] = zero(I)
     ns.ip[2] = one(I)
-    refreshx!(st, rng)
+    refreshx!(ns, rng)
 end
 
 # handling last tour step
