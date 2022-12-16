@@ -1,11 +1,3 @@
-using Interpolations
-
-nums = [1, 4, 6, -1, 17, 4, 6]
-idxs = findall(i -> i>0,nums)
-xs = idxs ./ length(nums)
-ys = log.(nums[idxs])
-itp = linear_interpolation(xs, ys, extrapolation_bc=Line())
-
 ###############################################################################
 # HierarchicalModel
 ###############################################################################
@@ -88,7 +80,7 @@ tm  = HierarchicalModel()
 ns, TE, Λ = NRSTSampler(
             tm,
             rng,
-            xpl_smooth_λ=1e-5
+            xpl_smooth_λ=9
 );
 
 using Plots

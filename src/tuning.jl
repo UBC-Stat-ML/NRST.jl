@@ -155,7 +155,7 @@ function tune!(
     )
     tune_explorers!(np, ens, rng, smooth_λ=xpl_smooth_λ)
     verbose && print("done!\n\tTuning c and nexpls using $nsteps steps...")
-    res = @timed tune_c_nexpls!(np, ens, rng, nsteps, maxcor)
+    res = @timed tune_c_nexpls!(np, ens, rng, nsteps, maxcor, xpl_smooth_λ)
     verbose && @printf("done!\n\t\tElapsed: %.1fs\n\n", res.time)
     verbose && show(lineplot_term(
         np.betas[2:end], np.nexpls, xlabel = "β",
@@ -437,9 +437,9 @@ end
 function tune_nexpls!(
     nexpls::Vector{TI},
     trVs::Vector{Vector{TF}},
-    maxcor::TF;
-    maxTF::TF = inv(eps(TF)),
-    smooth    = true
+    maxcor::TF,
+    λ::Int    = 0;
+    maxTF::TF = inv(eps(TF))
     ) where {TI<:Int, TF<:AbstractFloat}
     L = log(maxcor)
     idxfail = TI[]
@@ -482,8 +482,8 @@ function tune_nexpls!(
 
     # minimal smoothing to remove extreme outliers caused by std(trV) ≈ 0
     # due to low acceptance rate (i.e., when in a corner of the state space) 
-    if smooth 
-        snexpls = running_median(nexpls, 3, :asymmetric_truncated)
+    if λ > 0 
+        snexpls = running_median(nexpls, λ, :asymmetric_truncated)
         for (i, s) in enumerate(snexpls)
             nexpls[i] = ceil(TI, s) 
         end
@@ -498,9 +498,9 @@ function tune_c_nexpls!(
     xpls::Vector{<:ExplorationKernel},
     rng::AbstractRNG,
     nsteps::Int,
-    maxcor::AbstractFloat
+    args...
     )
-    tune_nexpls!(np.nexpls, tune_c!(np, xpls, rng, nsteps), maxcor)
+    tune_nexpls!(np.nexpls, tune_c!(np, xpls, rng, nsteps), args...)
 end
 
 # method for NRPT: use NRPT for tuning c (higher quality), and then extract
@@ -511,14 +511,14 @@ function tune_c_nexpls!(
     nrpt::NRPTSampler,
     rng::AbstractRNG,
     nsteps::Int,
-    maxcor::AbstractFloat
+    args...
     )
     _    = tune_c!(np, nrpt, rng, nsteps)
     xpls = get_xpls(nrpt)
     @assert [xpl.curβ[] for xpl in xpls] == np.betas[2:end]     # consistency check: since tune_explorers is called before this function, the explorers should have the current grid values 
     @assert params.(xpls) == np.xplpars                         # consistency check: params should match too for the same reason
     trVs = collectVs(np, xpls, rng, np.nexpls[1]*nsteps, false) # make equivalent effort to an NRPT step
-    tune_nexpls!(np.nexpls, trVs, maxcor)
+    tune_nexpls!(np.nexpls, trVs, args...)
 end
 
 ##############################################################################
