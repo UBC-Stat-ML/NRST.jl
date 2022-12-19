@@ -127,7 +127,7 @@ function tune!(
         end
 
         # good time to check if parameters are ok
-        if rnd == 5            
+        if rnd == 7            
             if !np.log_grid && ar1_ratio > 1. + max_ar1_dif               # check if we need to switch interpolating Λ(β) in log scale to handle Inf derivative at 0.
                 throw(NonIntegrableVException())
             end

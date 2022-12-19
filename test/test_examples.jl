@@ -75,12 +75,11 @@ function NRST.V(tm::HierarchicalModel{TF}, x) where {TF}
     return acc
 end
 
-rng = SplittableRandom(999)
+rng = SplittableRandom(69929)
 tm  = HierarchicalModel()
 ns, TE, Λ = NRSTSampler(
             tm,
             rng,
-            xpl_smooth_λ=9
 );
 
 using Plots
