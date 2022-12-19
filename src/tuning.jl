@@ -74,9 +74,9 @@ function tune!(
     max_relΔcone::Real = 0.01,      # limit on rel change in c(1)
     max_relΔΛ::Real    = 0.01,      # limit on rel change in Λ = Λ(1)
     nsteps_init::Int   = 32,
-    maxcor::Real       = 0.8,       # set nexpl in explorers s.t. correlation of V samples is lower than this
-    γ::Real            = 10.0,      # correction for the optimal_N formula
-    xpl_smooth_λ::Real = 3,         # smoothness knob for xpl params. λ==0 == no smoothing
+    maxcor::Real       = 0.7,       # set nexpl in explorers s.t. correlation of V samples is lower than this
+    γ::Real            = 18.0,      # correction for the optimal_N formula
+    xpl_smooth_λ::Real = 15,        # smoothness knob for xpl params. λ==0 == no smoothing
     check_N::Bool      = true,
     verbose::Bool      = true
     ) where {T,K}
