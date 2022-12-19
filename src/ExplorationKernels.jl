@@ -253,22 +253,23 @@ end
 # by smoothing across explorers
 # Note: instead of working in x = betas scale, we use x = "equal units of rejection"
 # assuming perfect tuning.
-function smooth_params!(xpls::Vector{<:MHSampler}, λ::AbstractFloat)
-    N   = length(xpls)
-    xs  = range(inv(N), 1., N)
-    lσs = [log(first(params(xpl))) for xpl in xpls]
-    # λ = LOO(xs, ys)
-    spl = fit(SmoothingSpline, xs, lσs, λ)
-    plσs= predict(spl)
-    for (i,xpl) in enumerate(xpls)
-        xpl.sigma[] = exp(plσs[i])
-    end
-end
+# function smooth_params!(xpls::Vector{<:MHSampler}, λ::AbstractFloat)
+#     N   = length(xpls)
+#     xs  = range(inv(N), 1., N)
+#     lσs = [log(first(params(xpl))) for xpl in xpls]
+#     # λ = LOO(xs, ys)
+#     spl = fit(SmoothingSpline, xs, lσs, λ)
+#     plσs= predict(spl)
+#     for (i,xpl) in enumerate(xpls)
+#         xpl.sigma[] = exp(plσs[i])
+#     end
+# end
 
 # smooth with running median
-function smooth_params!(xpls::Vector{<:MHSampler}, λ::Integer)
+function smooth_params!(xpls::Vector{<:MHSampler}, λ::AbstractFloat)
     σs  = [first(params(xpl)) for xpl in xpls]
-    pσs = running_median(σs, λ, :asymmetric_truncated) # asymmetric_truncated also smooths endpoints 
+    w   = closest_odd(λ*length(xpls)) 
+    pσs = running_median(σs, w, :asymmetric_truncated) # asymmetric_truncated also smooths endpoints 
     for (i,xpl) in enumerate(xpls)
         xpl.sigma[] = pσs[i]
     end

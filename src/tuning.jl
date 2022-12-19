@@ -73,11 +73,12 @@ function tune!(
     max_Δβs::Real      = 0.05,      # limit on max change in grid. Note: this is not a great indicator, so the limit is quite loose. Only helps with potential fake convergence at beginning
     max_relΔcone::Real = 0.01,      # limit on rel change in c(1)
     max_relΔΛ::Real    = 0.01,      # limit on rel change in Λ = Λ(1)
-    nsteps_init::Int   = 32,
-    maxcor::Real       = 0.7,       # set nexpl in explorers s.t. correlation of V samples is lower than this
-    γ::Real            = 18.0,      # correction for the optimal_N formula
-    xpl_smooth_λ::Real = 15,        # smoothness knob for xpl params. λ==0 == no smoothing
+    nsteps_init::Int   = 32,        # steps used in the first round
+    maxcor::Real       = 0.3,       # set nexpl in explorers s.t. correlation of V samples is lower than this
+    γ::Real            = 10.0,      # correction for the optimal_N formula
+    xpl_smooth_λ::Real = .08,       # smoothness knob for xpl params. λ==0 == no smoothing
     check_N::Bool      = true,
+    check_at_rnd::Int  = 7,         # early round with enough accuracy to check V integrability and N 
     verbose::Bool      = true
     ) where {T,K}
     !np.use_mean && (max_dr_ratio = Inf)      # equality of directional rejections only holds for the mean strategy
@@ -126,8 +127,8 @@ function tune!(
             println("\n")
         end
 
-        # good time to check if parameters are ok
-        if rnd == 7            
+        # time to check if parameters are ok
+        if rnd == check_at_rnd            
             if !np.log_grid && ar1_ratio > 1. + max_ar1_dif               # check if we need to switch interpolating Λ(β) in log scale to handle Inf derivative at 0.
                 throw(NonIntegrableVException())
             end
@@ -438,10 +439,11 @@ function tune_nexpls!(
     nexpls::Vector{TI},
     trVs::Vector{Vector{TF}},
     maxcor::TF,
-    λ::Int    = 0;
+    λ::AbstractFloat = 0.;
     maxTF::TF = inv(eps(TF))
     ) where {TI<:Int, TF<:AbstractFloat}
-    L = log(maxcor)
+    N       = length(nexpls)
+    L       = log(maxcor)
     idxfail = TI[]
     for i in eachindex(nexpls)
         # sanity checks of V samples
@@ -470,7 +472,6 @@ function tune_nexpls!(
     # interpolate any element that failed
     if length(idxfail) > 0
         @debug "tune_nexpls: fixing errors at $idxfail by interpolation."
-        N  = length(nexpls)
         idxgood = setdiff(1:N, idxfail)
         xs  = idxgood ./ N
         ys  = log.(nexpls[idxgood])
@@ -482,8 +483,9 @@ function tune_nexpls!(
 
     # minimal smoothing to remove extreme outliers caused by std(trV) ≈ 0
     # due to low acceptance rate (i.e., when in a corner of the state space) 
-    if λ > 0 
-        snexpls = running_median(nexpls, λ, :asymmetric_truncated)
+    if λ > 0.
+        w = closest_odd(λ*N) 
+        snexpls = running_median(nexpls, w, :asymmetric_truncated) # asymmetric_truncated also smooths endpoints
         for (i, s) in enumerate(snexpls)
             nexpls[i] = ceil(TI, s) 
         end

@@ -1,3 +1,11 @@
+# find odd number closest to a given real number
+# used for determining window of running_median
+# for this reason, the result is truncated at 3
+#     2k-1 < x < 2k+1
+#     2k-1 < x < 2(k+1)-1
+#     k < (x+1)/2 < k+1
+closest_odd(x) = max(3, 2round(Int, (x+1)/2)-1)
+
 # find root for monotonic univariate functions
 function monoroot(f, l::F, u::F; tol = 10eps(F), maxit = typemax(Int)) where {F<:AbstractFloat}
     @assert l <= u
