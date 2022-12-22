@@ -143,7 +143,7 @@ function tune!(
         conv = (rnd >= check_at_rnd) && !isnan(relΔcone) && 
             (relΔcone<max_relΔcone) && !isnan(relΔΛ) && (relΔΛ < max_relΔΛ) &&
             (Δβs<max_Δβs) && (ar_ratio < max_ar_ratio) && 
-            (dr_ratio < max_dr_ratio) && (abs(ar1_ratio-1.) < max_ar1_dif)
+            (dr_ratio < max_dr_ratio)
     end
 
     # at this point, ns has a fresh new grid, so explorers params, c, and  
