@@ -80,7 +80,10 @@ get_nlar(β₀,β₁,c₀,c₁,v) = (β₁-β₀)*v - (c₁-c₀)
 nlar_2_rp(nlar) = -expm1(-max(zero(nlar), nlar))
 nlar_2_ap(nlar) = exp(-max(zero(nlar), nlar))
 
-# methods for storing results
+#######################################
+# methods for storing results in traces
+#######################################
+
 function save_pre_step!(st::AbstractSTSampler, tr::NRSTTrace, n::Int; keep_xs::Bool=true)
     @unpack trX, trIP, trV = tr
     keep_xs && (trX[n] = copy(st.x)) # needs copy o.w. we get a ref to st.x
@@ -102,9 +105,9 @@ function save_post_step!(
     return
 end
 
-#######################################
+##############################################################################
 # RegenerativeSampler interface
-#######################################
+##############################################################################
 
 # check if state is in the atom
 # default method. works for NRST, SH16, and others
@@ -112,6 +115,11 @@ function isinatom(st::AbstractSTSampler{T,I}) where {T,I}
     first(st.ip)==zero(I) && last(st.ip)==-one(I)
 end
 
+#######################################
+# methods for storing results in traces
+#######################################
+
+# NRSTTrace
 function save_pre_step!(st::AbstractSTSampler, tr::NRSTTrace; keep_xs::Bool=true)
     @unpack trX, trIP, trV = tr
     keep_xs && push!(trX, copy(st.x))          # needs copy o.w. pushes a ref to st.x
@@ -130,6 +138,19 @@ function save_post_step!(
     l >= 1 && push!(tr.trXplAP[l], xplap)
     return
 end
+
+# MinimalTrace
+function save_pre_step!(::AbstractSTSampler, ::MinimalTrace) end
+function save_post_step!(st::AbstractSTSampler, tr::MinimalTrace, args...)
+    i = first(st.ip)
+    tr.nsteps[] += 1
+    i == tr.N && (tr.n_vis_top[] += 1)
+    tr.n_exp_steps[] += i == 0 ? 1 : st.np.nexpls[i]
+end
+
+#######################################
+# parallel runs
+#######################################
 
 # multithreading method with automatic determination of required number of tours
 const DEFAULT_α      = .95  # probability of the mean of indicators to be inside interval

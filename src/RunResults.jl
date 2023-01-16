@@ -12,12 +12,18 @@ abstract type AbstractTrace{T,TI<:Int,TF<:AbstractFloat} end
 
 struct MinimalTrace{T,TI<:Int,TF<:AbstractFloat} <: AbstractTrace{T,TI,TF}
     N::TI
-    n_steps::Base.RefValue{TI}
+    nsteps::Base.RefValue{TI}
     n_vis_top::Base.RefValue{TI}
-    n_v_evals::Base.RefValue{TI}
+    n_exp_steps::Base.RefValue{TI}
 end
 get_N(tr::MinimalTrace) = tr.N
-get_nsteps(tr::MinimalTrace) = tr.n_steps[]
+get_nsteps(tr::MinimalTrace) = tr.nsteps[]
+function MinimalTrace(::Type{T}, N::TI, ::Type{TF}) where {T,TI<:Int,TF<:AbstractFloat}
+    MinimalTrace{T,TI,TF}(N, Ref(zero(TI)), Ref(zero(TI)), Ref(zero(TI)))
+end
+function Base.similar(tr::TTrace) where {T,TI,TF,TTrace <: MinimalTrace{T,TI,TF}}
+    MinimalTrace(T, tr.N, TF)
+end
 
 #######################################
 # full trace
