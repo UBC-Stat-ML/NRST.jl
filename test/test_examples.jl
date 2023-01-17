@@ -82,6 +82,7 @@ ns, TE, Λ = NRSTSampler(
             rng,
 );
 res   = parallel_run(ns, rng, TE=TE);
+
 using Plots
 using Plots.PlotMeasures: px
 # using SmoothingSplines

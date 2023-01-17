@@ -140,12 +140,18 @@ function save_post_step!(
 end
 
 # MinimalTrace
-function save_pre_step!(::AbstractSTSampler, ::MinimalTrace) end
-function save_post_step!(st::AbstractSTSampler, tr::MinimalTrace, args...)
-    i = first(st.ip)
-    tr.nsteps[] += 1
-    i == tr.N && (tr.n_vis_top[] += 1)
-    tr.n_exp_steps[] += i == 0 ? 1 : st.np.nexpls[i]
+function save_pre_step!(st::AbstractSTSampler, tr::MinimalTrace)
+    ip     = st.ip
+    tr.ip .= ip
+    tr.visits[first(ip)+1, last(ip) == 1 ? 1 : 2] += 1
+    return
+end
+function save_post_step!(st::AbstractSTSampler, tr::MinimalTrace, rp, args...)
+    ip = tr.ip                                       # fetch previous state
+    tr.rpacc[ip[1]+1, ip[2] == 1 ? 1 : 2] += rp      # credit the rejection prob to the previous state (i.e., starting point of the jump)
+    i  = first(st.ip)                                # fetch current level
+    tr.n_exp_steps[] += i == 0 ? 1 : st.np.nexpls[i] # exploration comes after communication, so need the num of expl steps of the current level
+    return
 end
 
 #######################################

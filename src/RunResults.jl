@@ -12,14 +12,19 @@ abstract type AbstractTrace{T,TI<:Int,TF<:AbstractFloat} end
 
 struct MinimalTrace{T,TI<:Int,TF<:AbstractFloat} <: AbstractTrace{T,TI,TF}
     N::TI
-    nsteps::Base.RefValue{TI}
-    n_vis_top::Base.RefValue{TI}
-    n_exp_steps::Base.RefValue{TI}
+    ip::MVector{2,TI}              # current index process, used for accessing the visits and rpacc accumulators
+    nsteps::Base.RefValue{TI}      # steps so far
+    n_exp_steps::Base.RefValue{TI} # total number of exploration steps taken in any level
+    visits::Matrix{TI}             # accumulates visits to each (i,eps)
+    rpacc::Matrix{TF}              # accumulates rejection probabilities of moves *started from* each (i,eps)
 end
 get_N(tr::MinimalTrace) = tr.N
 get_nsteps(tr::MinimalTrace) = tr.nsteps[]
-function MinimalTrace(::Type{T}, N::TI, ::Type{TF}) where {T,TI<:Int,TF<:AbstractFloat}
-    MinimalTrace{T,TI,TF}(N, Ref(zero(TI)), Ref(zero(TI)), Ref(zero(TI)))
+function MinimalTrace(::Type{T}, N::TI, ::Type{TF}, args...) where {T,TI<:Int,TF<:AbstractFloat}
+    MinimalTrace{T,TI,TF}(
+        N, MVector(zero(TI), one(TI)), Ref(zero(TI)), Ref(zero(TI)), 
+        zeros(TI, N+1, 2), zeros(TF, N+1, 2)
+    )
 end
 function Base.similar(tr::TTrace) where {T,TI,TF,TTrace <: MinimalTrace{T,TI,TF}}
     MinimalTrace(T, tr.N, TF)
@@ -155,10 +160,10 @@ tourlengths(res::TouringRunResults) = get_nsteps.(res.trvec)
 function alloc_fields(N, T, K, I)
     xarray  = [T[] for _ in 0:N]         # i-th entry has samples at level i
     trVs    = [K[] for _ in 0:N]         # i-th entry has Vs corresponding to xarray[i]
-    totvis  = zeros(I, N+1, 2)           # total visits to each (i,eps) state
+    visits  = zeros(I, N+1, 2)           # total visits to each (i,eps) state
     rpacc   = zeros(K, N+1, 2)           # accumulates rejection probs of swaps started from each (i,eps)
     xplapac = zeros(K, N)                # accumulates explorers' acc probs
-    xarray, trVs, totvis, rpacc, xplapac
+    xarray, trVs, visits, rpacc, xplapac
 end
 
 # outer constructor that parses a vector of NRSTTraces
@@ -191,22 +196,20 @@ end
 
 # outer constructor that parses a vector of MinimalTraces
 function TouringRunResults(results::Vector{TST}) where {T,I,K,TST<:MinimalTrace{T,I,K}}
-    ntours  = length(results)
-    N       = get_N(first(results))
-    xarray, trVs, totvis, rpacc, xplapac = alloc_fields(N, T, K, I)
-    nvs  = zero(I)
-    nvsq = zero(K)
- 
+    ntours = length(results)
+    N      = get_N(first(results))
+    sumsq  = zeros(K, N+1)                                     # accumulate (in float to avoid overflow) squared number of visits for each 0:N level (for tour effectiveness)
+    xarray, trVs, visits, rpacc, xplapac = alloc_fields(N, T, K, I)
+
     # iterate tours
     for tr in results
-        nv    = tr.n_vis_top[]
-        nvs  += nv
-        nvsq += nv * nv 
+        visits .+= tr.visits
+        sumsq  .+= vec(sum(tr.visits, dims=2)).^2              # squared number of visits to each of 0:N (regardless of direction)
+        rpacc  .+= tr.rpacc
     end
     
-    # compute tour effectiveness at top level
-    TE_top  = iszero(nvs) ? zero(K) : (nvs * nvs) / (ntours * nvsq) # == (nvs/ntours)^2 / (nvsq/ntours)
-    toureff = zeros(N+1)
-    toureff[N+1] = TE_top
-    TouringRunResults(results, xarray, trVs, totvis, rpacc, xplapac, toureff)    
+    # compute tour effectiveness and return
+    toureff = vec(sum(visits, dims=2).^2) ./ (ntours*sumsq)    # = (sum(visits, dims=2)/ntours).^2 ./ (sumsq/ntours)
+    map!(TE -> isnan(TE) ? zero(K) : TE, toureff, toureff)     # correction for unvisited levels
+    TouringRunResults(results, xarray, trVs, visits, rpacc, xplapac, toureff)    
 end
