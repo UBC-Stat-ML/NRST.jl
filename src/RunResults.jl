@@ -1,8 +1,33 @@
 ##############################################################################
-# raw trace of a serial run
+# various trace objects for SimulatedTempering samplers
 ##############################################################################
 
 abstract type AbstractTrace{T,TI<:Int,TF<:AbstractFloat} end
+
+#######################################
+# minimal trace: only selected summaries, so storage is O(1) in N and nsteps
+# useful for running a huge number of tours in parallel while keeping memory 
+# usage low
+#######################################
+
+struct MinimalTrace{T,TI<:Int,TF<:AbstractFloat} <: AbstractTrace{T,TI,TF}
+    N::TI
+    nsteps::Base.RefValue{TI}
+    n_vis_top::Base.RefValue{TI}
+    n_exp_steps::Base.RefValue{TI}
+end
+get_N(tr::MinimalTrace) = tr.N
+get_nsteps(tr::MinimalTrace) = tr.nsteps[]
+function MinimalTrace(::Type{T}, N::TI, ::Type{TF}) where {T,TI<:Int,TF<:AbstractFloat}
+    MinimalTrace{T,TI,TF}(N, Ref(zero(TI)), Ref(zero(TI)), Ref(zero(TI)))
+end
+function Base.similar(tr::TTrace) where {T,TI,TF,TTrace <: MinimalTrace{T,TI,TF}}
+    MinimalTrace(T, tr.N, TF)
+end
+
+#######################################
+# full trace
+#######################################
 
 struct NRSTTrace{T,TI<:Int,TF<:AbstractFloat} <: AbstractTrace{T,TI,TF}
     trX::Vector{T}
@@ -15,7 +40,7 @@ end
 # outer constructors that allocate empty arrays
 function NRSTTrace(::Type{T}, N::TI, ::Type{TF}) where {T,TI<:Int,TF<:AbstractFloat}
     trX     = T[]
-    trIP    = SVector{2,TI}[]                
+    trIP    = SVector{2,TI}[]
     trV     = TF[]
     trRP    = TF[]
     trXplAP = [TF[] for _ in 1:N]
@@ -115,30 +140,35 @@ end
 # touring
 #######################################
 
-struct TouringRunResults{T,TI,TF} <: RunResults{T,TI,TF}
-    trvec::Vector{NRSTTrace{T,TI,TF}} # vector of raw traces from each tour
-    xarray::Vector{Vector{T}}         # length = N+1. i-th entry has samples at level i
-    trVs::Vector{Vector{TF}}          # length = N+1. i-th entry has Vs corresponding to xarray[i]
-    visits::Matrix{TI}                # total number of visits to each (i,eps)
-    rpacc::Matrix{TF}                 # accumulates rejection probs of swaps started from each (i,eps)
-    xplapac::Vector{TF}               # length N. accumulates explorers' acc probs
-    toureff::Vector{TF}               # tour effectiveness for each i ∈ 0:N
+struct TouringRunResults{T,TI,TF,TTrace<:AbstractTrace{T,TI,TF}} <: RunResults{T,TI,TF}
+    trvec::Vector{TTrace}     # vector of raw traces from each tour
+    xarray::Vector{Vector{T}} # length = N+1. i-th entry has samples at level i
+    trVs::Vector{Vector{TF}}  # length = N+1. i-th entry has Vs corresponding to xarray[i]
+    visits::Matrix{TI}        # total number of visits to each (i,eps)
+    rpacc::Matrix{TF}         # accumulates rejection probs of swaps started from each (i,eps)
+    xplapac::Vector{TF}       # length N. accumulates explorers' acc probs
+    toureff::Vector{TF}       # tour effectiveness for each i ∈ 0:N
 end
 get_ntours(res::TouringRunResults) = length(res.trvec)
 tourlengths(res::TouringRunResults) = get_nsteps.(res.trvec)
 
-# outer constructor that parses a vector of serial traces
-function TouringRunResults(results::Vector{TST}) where {T,I,K,TST<:NRSTTrace{T,I,K}}
-    ntours  = length(results)
-    N       = get_N(first(results))
+function alloc_fields(N, T, K, I)
     xarray  = [T[] for _ in 0:N]         # i-th entry has samples at level i
     trVs    = [K[] for _ in 0:N]         # i-th entry has Vs corresponding to xarray[i]
-    curvis  = Matrix{I}(undef, N+1, 2)   # visits in current tour to each (i,eps) state
-    sumsq   = zeros(K, N+1)              # accumulate (in float to avoid overflow) squared number of visits for each 0:N state (for tour effectiveness)
     totvis  = zeros(I, N+1, 2)           # total visits to each (i,eps) state
     rpacc   = zeros(K, N+1, 2)           # accumulates rejection probs of swaps started from each (i,eps)
     xplapac = zeros(K, N)                # accumulates explorers' acc probs
-    
+    xarray, trVs, totvis, rpacc, xplapac
+end
+
+# outer constructor that parses a vector of NRSTTraces
+function TouringRunResults(results::Vector{TST}) where {T,I,K,TST<:NRSTTrace{T,I,K}}
+    ntours  = length(results)
+    N       = get_N(first(results))
+    xarray, trVs, totvis, rpacc, xplapac = alloc_fields(N, T, K, I)
+    curvis  = Matrix{I}(undef, N+1, 2)   # visits in current tour to each (i,eps) state
+    sumsq   = zeros(K, N+1)              # accumulate (in float to avoid overflow) squared number of visits for each 0:N state (for tour effectiveness)
+
     # iterate tours
     for tr in results
         fill!(curvis, zero(I))                                 # reset tour visits
@@ -156,5 +186,27 @@ function TouringRunResults(results::Vector{TST}) where {T,I,K,TST<:NRSTTrace{T,I
     # compute tour effectiveness and return
     toureff = vec(sum(totvis, dims=2).^2) ./ (ntours*sumsq)    # = (sum(totvis, dims=2)/ntours).^2 ./ (sumsq/ntours)
     map!(TE -> isnan(TE) ? zero(K) : TE, toureff, toureff)     # correction for unvisited levels
+    TouringRunResults(results, xarray, trVs, totvis, rpacc, xplapac, toureff)    
+end
+
+# outer constructor that parses a vector of MinimalTraces
+function TouringRunResults(results::Vector{TST}) where {T,I,K,TST<:MinimalTrace{T,I,K}}
+    ntours  = length(results)
+    N       = get_N(first(results))
+    xarray, trVs, totvis, rpacc, xplapac = alloc_fields(N, T, K, I)
+    nvs  = zero(I)
+    nvsq = zero(K)
+ 
+    # iterate tours
+    for tr in results
+        nv    = tr.n_vis_top[]
+        nvs  += nv
+        nvsq += nv * nv 
+    end
+    
+    # compute tour effectiveness at top level
+    TE_top  = iszero(nvs) ? zero(K) : (nvs * nvs) / (ntours * nvsq) # == (nvs/ntours)^2 / (nvsq/ntours)
+    toureff = zeros(N+1)
+    toureff[N+1] = TE_top
     TouringRunResults(results, xarray, trVs, totvis, rpacc, xplapac, toureff)    
 end

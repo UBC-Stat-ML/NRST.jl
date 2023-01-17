@@ -25,9 +25,9 @@ function copyfields(st::AbstractSTSampler)
     return newnp, nuxpl, newx, MVector(0,1), ncurV
 end
 
-# for all ST samplers we can use an NRSTTrace
+# by default use the MinimalTrace
 function get_trace(st::TS, args...) where {T,TI,TF,TS <: AbstractSTSampler{T,TI,TF}}
-    NRSTTrace(T, st.np.N, TF, args...)
+    MinimalTrace(T, st.np.N, TF, args...)
 end
 
 ###############################################################################
@@ -80,7 +80,10 @@ get_nlar(β₀,β₁,c₀,c₁,v) = (β₁-β₀)*v - (c₁-c₀)
 nlar_2_rp(nlar) = -expm1(-max(zero(nlar), nlar))
 nlar_2_ap(nlar) = exp(-max(zero(nlar), nlar))
 
-# methods for storing results
+#######################################
+# methods for storing results in traces
+#######################################
+
 function save_pre_step!(st::AbstractSTSampler, tr::NRSTTrace, n::Int; keep_xs::Bool=true)
     @unpack trX, trIP, trV = tr
     keep_xs && (trX[n] = copy(st.x)) # needs copy o.w. we get a ref to st.x
@@ -102,9 +105,9 @@ function save_post_step!(
     return
 end
 
-#######################################
+##############################################################################
 # RegenerativeSampler interface
-#######################################
+##############################################################################
 
 # check if state is in the atom
 # default method. works for NRST, SH16, and others
@@ -112,6 +115,11 @@ function isinatom(st::AbstractSTSampler{T,I}) where {T,I}
     first(st.ip)==zero(I) && last(st.ip)==-one(I)
 end
 
+#######################################
+# methods for storing results in traces
+#######################################
+
+# NRSTTrace
 function save_pre_step!(st::AbstractSTSampler, tr::NRSTTrace; keep_xs::Bool=true)
     @unpack trX, trIP, trV = tr
     keep_xs && push!(trX, copy(st.x))          # needs copy o.w. pushes a ref to st.x
@@ -131,6 +139,19 @@ function save_post_step!(
     return
 end
 
+# MinimalTrace
+function save_pre_step!(::AbstractSTSampler, ::MinimalTrace) end
+function save_post_step!(st::AbstractSTSampler, tr::MinimalTrace, args...)
+    i = first(st.ip)
+    tr.nsteps[] += 1
+    i == tr.N && (tr.n_vis_top[] += 1)
+    tr.n_exp_steps[] += i == 0 ? 1 : st.np.nexpls[i]
+end
+
+#######################################
+# parallel runs
+#######################################
+
 # multithreading method with automatic determination of required number of tours
 const DEFAULT_α      = .95  # probability of the mean of indicators to be inside interval
 const DEFAULT_δ      = .10  # half-width of interval
@@ -140,20 +161,16 @@ function min_ntours_TE(TE, α=DEFAULT_α, δ=DEFAULT_δ, TE_min=DEFAULT_TE_min)
 end
 const DEFAULT_MAX_TOURS = min_ntours_TE(0.)
 
-# computes ntours if TE is passed, then call the method for RegenerativeSampler
+# computes ntours from TE
 function parallel_run(
-    st::AbstractSTSampler, 
+    st::AbstractSTSampler,
     rng::SplittableRandom;
-    ntours::Int       = -1,
     TE::AbstractFloat = NaN,
+    ntours::Int       = -1,        # need default value otherwise does not work
     α::AbstractFloat  = DEFAULT_α,
     δ::AbstractFloat  = DEFAULT_δ,
     kwargs...
     )
-    isfinite(TE) && (ntours = min_ntours_TE(TE,α,δ))
-    invoke(
-        parallel_run, 
-        Tuple{RegenerativeSampler,SplittableRandom},
-        st, rng; ntours=ntours, kwargs...
-    )
+    isfinite(TE) && (ntours=min_ntours_TE(TE,α,δ))
+    parallel_run(st, rng, get_trace(st); ntours = ntours, kwargs...)
 end

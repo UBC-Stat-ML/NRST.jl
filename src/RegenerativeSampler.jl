@@ -22,27 +22,6 @@ function tour!(
     save_last_step_tour!(rs, tr; kwargs...)
 end
 
-# method that allocates a trace
-function tour!(rs::RegenerativeSampler{T,I,K}, rng::AbstractRNG; kwargs...) where {T,I,K}
-    tr = get_trace(rs)
-    tour!(rs, rng, tr; kwargs...)
-    return tr
-end
-
-# run multiple tours (serially), return processed output
-function run_tours!(
-    rs::RegenerativeSampler,
-    rng::AbstractRNG;
-    ntours::Int,
-    kwargs...
-    )
-    results = [get_trace(rs) for _ in 1:ntours]
-    ProgressMeter.@showprogress 1 "Sampling: " for t in 1:ntours
-        results[t] = tour!(rs, rng;kwargs...)
-    end
-    return TouringRunResults(results)
-end
-
 ###############################################################################
 # run in parallel exploiting regenerations
 ###############################################################################
@@ -53,15 +32,14 @@ end
 # same after this returns
 function parallel_run(
     rs::RegenerativeSampler,
-    rng::SplittableRandom;
+    rng::SplittableRandom,
+    trace_template::AbstractTrace;
     ntours::Int,
-    keep_xs::Bool     = true,
     verbose::Bool     = true,
     check_every::Int  = 1_000,
     max_mem_use::Real = .8,
     kwargs...
     )
-    @assert ntours > 0
     GC.gc()                                                                   # setup allocates a lot so we need all mem we can get
     verbose && println(
         "\nRunning $ntours tours in parallel using " *
@@ -74,11 +52,11 @@ function parallel_run(
     mlim = ispbs ? get_cgroup_mem_limit(jobid) : Inf
 
     # pre-allocate traces and prngs, and then run in parallel
-    res  = [get_trace(rs) for _ in 1:ntours]                                  # get one empty trace for each task
+    res  = [similar(trace_template) for _ in 1:ntours]                        # get one empty trace for each task
     rngs = [split(rng) for _ in 1:ntours]                                     # split rng into ntours copies. must be done outside of loop because split changes rng state.
     p    = ProgressMeter.Progress(ntours; desc="Sampling: ", enabled=verbose) # prints a progress bar
     Threads.@threads for t in 1:ntours
-        tour!(copy(rs), rngs[t], res[t]; keep_xs=keep_xs, kwargs...)          # run a tour with tasks' own sampler, rng, and trace, avoiding race conditions. note: writing to separate locations in a common vector is fine. see: https://discourse.julialang.org/t/safe-loop-with-push-multi-threading/41892/6, and e.g. https://stackoverflow.com/a/8978397/5443023
+        tour!(copy(rs), rngs[t], res[t]; kwargs...)                           # run a tour with tasks' own sampler, rng, and trace, avoiding race conditions. note: writing to separate locations in a common vector is fine. see: https://discourse.julialang.org/t/safe-loop-with-push-multi-threading/41892/6, and e.g. https://stackoverflow.com/a/8978397/5443023
         ProgressMeter.next!(p)
 
         # if on PBS, check every 'check_every' tours if mem usage is high. If so, gc.

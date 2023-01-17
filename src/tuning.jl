@@ -55,7 +55,7 @@ function tune!(
     end
     # cannot estimate TE with the ensembles, since this is inherently a regenerative property
     verbose && println("\nEstimating Tour Effectiveness (TE) using $ntours NRST tours.\n")
-    res = parallel_run(ns, rng; ntours = ntours, keep_xs = false)
+    res = parallel_run(ns, rng; ntours = ntours)
     TE  = last(res.toureff)
     @printf("\nTuning completed! Summary:\n\tTE = %.2f\n\tΛ  = %.2f\n",TE, Λ)
     return TE, Λ
@@ -75,8 +75,8 @@ function tune!(
     max_relΔΛ::Real    = 0.01,      # limit on rel change in Λ = Λ(1)
     nsteps_init::Int   = 32,        # steps used in the first round
     maxcor::Real       = 0.6,       # set nexpl in explorers s.t. correlation of V samples is lower than this
-    γ::Real            = 24.0,      # correction for the optimal_N formula
-    xpl_smooth_λ::Real = .10,       # smoothness knob for xpl params. λ==0 == no smoothing
+    γ::Real            = 26.0,      # correction for the optimal_N formula
+    xpl_smooth_λ::Real = .1,        # smoothness knob for xpl params. λ==0 == no smoothing
     check_N::Bool      = true,
     check_at_rnd::Int  = 7,         # early round with enough accuracy to check V integrability and N 
     verbose::Bool      = true
