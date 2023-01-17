@@ -25,9 +25,9 @@ function copyfields(st::AbstractSTSampler)
     return newnp, nuxpl, newx, MVector(0,1), ncurV
 end
 
-# for all ST samplers we can use an NRSTTrace
+# by default use the MinimalTrace
 function get_trace(st::TS, args...) where {T,TI,TF,TS <: AbstractSTSampler{T,TI,TF}}
-    NRSTTrace(T, st.np.N, TF, args...)
+    MinimalTrace(T, st.np.N, TF, args...)
 end
 
 ###############################################################################
@@ -161,20 +161,16 @@ function min_ntours_TE(TE, α=DEFAULT_α, δ=DEFAULT_δ, TE_min=DEFAULT_TE_min)
 end
 const DEFAULT_MAX_TOURS = min_ntours_TE(0.)
 
-# computes ntours if TE is passed, then call the method for RegenerativeSampler
+# computes ntours from TE
 function parallel_run(
-    st::AbstractSTSampler, 
+    st::AbstractSTSampler,
     rng::SplittableRandom;
-    ntours::Int       = -1,
     TE::AbstractFloat = NaN,
+    ntours::Int       = -1,        # need default value otherwise does not work
     α::AbstractFloat  = DEFAULT_α,
     δ::AbstractFloat  = DEFAULT_δ,
     kwargs...
     )
-    isfinite(TE) && (ntours = min_ntours_TE(TE,α,δ))
-    invoke(
-        parallel_run, 
-        Tuple{RegenerativeSampler,SplittableRandom},
-        st, rng; ntours=ntours, kwargs...
-    )
+    isfinite(TE) && (ntours=min_ntours_TE(TE,α,δ))
+    parallel_run(st, rng, get_trace(st); ntours = ntours, kwargs...)
 end

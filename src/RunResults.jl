@@ -140,14 +140,14 @@ end
 # touring
 #######################################
 
-struct TouringRunResults{T,TI,TF} <: RunResults{T,TI,TF}
-    trvec::Vector{NRSTTrace{T,TI,TF}} # vector of raw traces from each tour
-    xarray::Vector{Vector{T}}         # length = N+1. i-th entry has samples at level i
-    trVs::Vector{Vector{TF}}          # length = N+1. i-th entry has Vs corresponding to xarray[i]
-    visits::Matrix{TI}                # total number of visits to each (i,eps)
-    rpacc::Matrix{TF}                 # accumulates rejection probs of swaps started from each (i,eps)
-    xplapac::Vector{TF}               # length N. accumulates explorers' acc probs
-    toureff::Vector{TF}               # tour effectiveness for each i ∈ 0:N
+struct TouringRunResults{T,TI,TF,TTrace<:AbstractTrace{T,TI,TF}} <: RunResults{T,TI,TF}
+    trvec::Vector{TTrace}     # vector of raw traces from each tour
+    xarray::Vector{Vector{T}} # length = N+1. i-th entry has samples at level i
+    trVs::Vector{Vector{TF}}  # length = N+1. i-th entry has Vs corresponding to xarray[i]
+    visits::Matrix{TI}        # total number of visits to each (i,eps)
+    rpacc::Matrix{TF}         # accumulates rejection probs of swaps started from each (i,eps)
+    xplapac::Vector{TF}       # length N. accumulates explorers' acc probs
+    toureff::Vector{TF}       # tour effectiveness for each i ∈ 0:N
 end
 get_ntours(res::TouringRunResults) = length(res.trvec)
 tourlengths(res::TouringRunResults) = get_nsteps.(res.trvec)
@@ -199,9 +199,9 @@ function TouringRunResults(results::Vector{TST}) where {T,I,K,TST<:MinimalTrace{
  
     # iterate tours
     for tr in results
-        nv   = tr.n_vis_top[]
-        nvs += nv
-        nvsq = nv * nv 
+        nv    = tr.n_vis_top[]
+        nvs  += nv
+        nvsq += nv * nv 
     end
     
     # compute tour effectiveness at top level

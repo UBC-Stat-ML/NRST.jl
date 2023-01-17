@@ -76,12 +76,12 @@ function NRST.V(tm::HierarchicalModel{TF}, x) where {TF}
 end
 
 rng = SplittableRandom(69929)
-tm  = HierarchicalModel()
+tm  = HierarchicalModel();
 ns, TE, Λ = NRSTSampler(
             tm,
             rng,
 );
-
+res   = parallel_run(ns, rng, TE=TE);
 using Plots
 using Plots.PlotMeasures: px
 # using SmoothingSplines

@@ -55,7 +55,7 @@ function tune!(
     end
     # cannot estimate TE with the ensembles, since this is inherently a regenerative property
     verbose && println("\nEstimating Tour Effectiveness (TE) using $ntours NRST tours.\n")
-    res = parallel_run(ns, rng; ntours = ntours, keep_xs = false)
+    res = parallel_run(ns, rng; ntours = ntours)
     TE  = last(res.toureff)
     @printf("\nTuning completed! Summary:\n\tTE = %.2f\n\tΛ  = %.2f\n",TE, Λ)
     return TE, Λ
