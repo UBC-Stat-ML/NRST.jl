@@ -4,30 +4,38 @@
 
 abstract type AbstractTrace{T,TI<:Int,TF<:AbstractFloat} end
 
+get_nsteps(tr::AbstractTrace) = length(tr.trIP) # recover nsteps
+
 #######################################
-# minimal trace: only selected summaries, so storage is O(1) in N and nsteps
-# useful for running a huge number of tours in parallel while keeping memory 
-# usage low
+# minimal trace: only ip and rejection probs
 #######################################
 
 struct MinimalTrace{T,TI<:Int,TF<:AbstractFloat} <: AbstractTrace{T,TI,TF}
     N::TI
-    ip::MVector{2,TI}              # current index process, used for accessing the visits and rpacc accumulators
-    nsteps::Base.RefValue{TI}      # steps so far
-    n_exp_steps::Base.RefValue{TI} # total number of exploration steps taken in any level
-    visits::Matrix{TI}             # accumulates visits to each (i,eps)
-    rpacc::Matrix{TF}              # accumulates rejection probabilities of moves *started from* each (i,eps)
+    trIP::Vector{SVector{2,TI}} # can use a vector of SVectors since traces should not be modified
+    trRP::Vector{TF}
 end
 get_N(tr::MinimalTrace) = tr.N
-get_nsteps(tr::MinimalTrace) = tr.nsteps[]
 function MinimalTrace(::Type{T}, N::TI, ::Type{TF}, args...) where {T,TI<:Int,TF<:AbstractFloat}
-    MinimalTrace{T,TI,TF}(
-        N, MVector(zero(TI), one(TI)), Ref(zero(TI)), Ref(zero(TI)), 
-        zeros(TI, N+1, 2), zeros(TF, N+1, 2)
-    )
+    MinimalTrace{T,TI,TF}(N, SVector{2,TI}[], TF[])
 end
 function Base.similar(tr::TTrace) where {T,TI,TF,TTrace <: MinimalTrace{T,TI,TF}}
     MinimalTrace(T, tr.N, TF)
+end
+
+# trace postprocessing
+function post_process(
+    tr::MinimalTrace{T,I,K},
+    visacc::Matrix{I},         # size (N+1) × 2. accumulates visits
+    rpacc::Matrix{K}           # size (N+1) × 2. accumulates rejection probs
+    ) where {T,I,K}
+    for (n, ip) in enumerate(tr.trIP)
+        l      = first(ip)
+        idx    = l + 1
+        idxeps = (last(ip) == one(I) ? 1 : 2)
+        visacc[idx, idxeps] += one(I)
+        rpacc[ idx, idxeps] += tr.trRP[n]
+    end
 end
 
 #######################################
@@ -61,7 +69,6 @@ function NRSTTrace(::Type{T}, N::TI, ::Type{TF}, nsteps::Int) where {T,TI<:Int,T
     NRSTTrace(trX, trIP, trV, trRP, trXplAP)
 end
 get_N(tr::NRSTTrace) = length(tr.trXplAP)  # recover N. cant do N=N(tr) because julia gets dizzy
-get_nsteps(tr::NRSTTrace) = length(tr.trV) # recover nsteps
 
 function Base.show(io::IO, mime::MIME"text/plain", tr::NRSTTrace)
     println(io, "An NRSTTrace object with fields:")
@@ -72,9 +79,39 @@ function Base.show(io::IO, mime::MIME"text/plain", tr::NRSTTrace)
     print(io, "\nXPLAP:");show(io,mime,tr.trXplAP)
 end
 
-#######################################
 # trace postprocessing
-#######################################
+function post_process(
+    tr::NRSTTrace{T,I,K},
+    xarray::Vector{Vector{T}}, # length = N+1. i-th entry has samples at state i
+    trVs::Vector{Vector{K}},   # length = N+1. i-th entry has Vs corresponding to xarray[i]
+    visacc::Matrix{I},         # size (N+1) × 2. accumulates visits
+    rpacc::Matrix{K},          # size (N+1) × 2. accumulates rejection probs
+    xplapac::Vector{K}         # length = N. accumulates explorers' acc probs
+    ) where {T,I,K}
+    i₀ = first(first(tr.trIP)) # first state in trace. for NRST, i_0==0, but not for others necessarily
+    for (n, ip) in enumerate(tr.trIP)
+        l      = first(ip)
+        idx    = l + 1
+        idxeps = (last(ip) == one(I) ? 1 : 2)
+        visacc[idx, idxeps] += one(I)
+        rpacc[ idx, idxeps] += tr.trRP[n]
+        if l >= 1 && n > 1                                        # some STs (e.g. GT95) can renew at i_0=1, so no counting that one
+            nvl = visacc[idx,1] + visacc[idx,2] - (l==i₀ ? 1 : 0) # (>=1) number of visits so far to level l, regardless of eps. since some STs can renew at i₀ neq 0, need to adjust accounting
+            try
+                xplapac[l] += tr.trXplAP[l][nvl]                
+            catch e
+                println("Error reading XplAP[l=$l][nvl=$nvl]: n=$n, i₀=$i₀.")
+                rethrow(e)
+            end
+        end
+        length(tr.trX) >= n && push!(xarray[idx], tr.trX[n])      # handle case keep_xs=false
+        push!(trVs[idx], tr.trV[n])
+    end
+end
+
+##############################################################################
+# summaries of traces
+##############################################################################
 
 abstract type RunResults{T,TI<:Int,TF<:AbstractFloat} end
 
@@ -111,34 +148,6 @@ function SerialRunResults(tr::NRSTTrace{T,I,K}) where {T,I,K}
     xplapac = zeros(K, N)        # accumulates explorers' acc probs
     post_process(tr, xarray, trVs, visacc, rpacc, xplapac)
     SerialRunResults(tr, xarray, trVs, visacc, rpacc, xplapac)
-end
-function post_process(
-    tr::NRSTTrace{T,I,K},
-    xarray::Vector{Vector{T}}, # length = N+1. i-th entry has samples at state i
-    trVs::Vector{Vector{K}},   # length = N+1. i-th entry has Vs corresponding to xarray[i]
-    visacc::Matrix{I},         # size (N+1) × 2. accumulates visits
-    rpacc::Matrix{K},          # size (N+1) × 2. accumulates rejection probs
-    xplapac::Vector{K}         # length = N. accumulates explorers' acc probs
-    ) where {T,I,K}
-    i₀ = first(first(tr.trIP)) # first state in trace. for NRST, i_0==0, but not for others necessarily
-    for (n, ip) in enumerate(tr.trIP)
-        l      = first(ip)
-        idx    = l + 1
-        idxeps = (last(ip) == one(I) ? 1 : 2)
-        visacc[idx, idxeps] += one(I)
-        rpacc[ idx, idxeps] += tr.trRP[n]
-        if l >= 1 && n > 1                                        # some STs (e.g. GT95) can renew at i_0=1, so no counting that one
-            nvl = visacc[idx,1] + visacc[idx,2] - (l==i₀ ? 1 : 0) # (>=1) number of visits so far to level l, regardless of eps. since some STs can renew at i₀ neq 0, need to adjust accounting
-            try
-                xplapac[l] += tr.trXplAP[l][nvl]                
-            catch e
-                println("Error reading XplAP[l=$l][nvl=$nvl]: n=$n, i₀=$i₀.")
-                rethrow(e)
-            end
-        end
-        length(tr.trX) >= n && push!(xarray[idx], tr.trX[n])      # handle case keep_xs=false
-        push!(trVs[idx], tr.trV[n])
-    end
 end
 
 #######################################
@@ -180,9 +189,7 @@ function TouringRunResults(results::Vector{TST}) where {T,I,K,TST<:NRSTTrace{T,I
         try
             post_process(tr, xarray, trVs, curvis, rpacc, xplapac) # parse tour trace
         catch e
-            println("Error processing a trace. Dumping trace info:")
-            display(tr)
-            rethrow(e)
+            println("Error processing a trace, dumping it:"); display(tr); rethrow(e)
         end
         totvis .+= curvis                                      # accumulate total visits
         sumsq  .+= vec(sum(curvis, dims=2)).^2                 # squared number of visits to each of 0:N (regardless of direction)
@@ -198,18 +205,24 @@ end
 function TouringRunResults(results::Vector{TST}) where {T,I,K,TST<:MinimalTrace{T,I,K}}
     ntours = length(results)
     N      = get_N(first(results))
-    sumsq  = zeros(K, N+1)                                     # accumulate (in float to avoid overflow) squared number of visits for each 0:N level (for tour effectiveness)
-    xarray, trVs, visits, rpacc, xplapac = alloc_fields(N, T, K, I)
+    curvis = Matrix{I}(undef, N+1, 2)                          # visits in current tour to each (i,eps) state
+    sumsq  = zeros(K, N+1)                                     # accumulate (in float to avoid overflow) squared number of visits for each 0:N state (for tour effectiveness)
+    xarray, trVs, totvis, rpacc, xplapac = alloc_fields(N, T, K, I)
 
     # iterate tours
     for tr in results
-        visits .+= tr.visits
-        sumsq  .+= vec(sum(tr.visits, dims=2)).^2              # squared number of visits to each of 0:N (regardless of direction)
-        rpacc  .+= tr.rpacc
+        fill!(curvis, zero(I))                                 # reset tour visits
+        try
+            post_process(tr, curvis, rpacc)                    # parse tour trace
+        catch e
+            println("Error processing a trace, dumping it:"); display(tr); rethrow(e)
+        end
+        totvis .+= curvis                                      # accumulate total visits
+        sumsq  .+= vec(sum(curvis, dims=2)).^2                 # squared number of visits to each of 0:N (regardless of direction)
     end
     
     # compute tour effectiveness and return
-    toureff = vec(sum(visits, dims=2).^2) ./ (ntours*sumsq)    # = (sum(visits, dims=2)/ntours).^2 ./ (sumsq/ntours)
+    toureff = vec(sum(totvis, dims=2).^2) ./ (ntours*sumsq)    # = (sum(visits, dims=2)/ntours).^2 ./ (sumsq/ntours)
     map!(TE -> isnan(TE) ? zero(K) : TE, toureff, toureff)     # correction for unvisited levels
-    TouringRunResults(results, xarray, trVs, visits, rpacc, xplapac, toureff)    
+    TouringRunResults(results, xarray, trVs, totvis, rpacc, xplapac, toureff)    
 end

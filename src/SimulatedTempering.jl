@@ -122,8 +122,8 @@ end
 # NRSTTrace
 function save_pre_step!(st::AbstractSTSampler, tr::NRSTTrace; keep_xs::Bool=true)
     @unpack trX, trIP, trV = tr
-    keep_xs && push!(trX, copy(st.x))          # needs copy o.w. pushes a ref to st.x
-    push!(trIP, copy(st.ip))                   # same
+    keep_xs && push!(trX, copy(st.x)) # needs copy o.w. pushes a ref to st.x
+    push!(trIP, st.ip)                # no "copy" because implicit conversion from MVector to SVector does the copying
     push!(trV, st.curV[])
     return
 end
@@ -141,16 +141,11 @@ end
 
 # MinimalTrace
 function save_pre_step!(st::AbstractSTSampler, tr::MinimalTrace)
-    ip     = st.ip
-    tr.ip .= ip
-    tr.visits[first(ip)+1, last(ip) == 1 ? 1 : 2] += 1
+    push!(tr.trIP, st.ip) # no "copy" because implicit conversion from MVector to SVector does the copying
     return
 end
-function save_post_step!(st::AbstractSTSampler, tr::MinimalTrace, rp, args...)
-    ip = tr.ip                                       # fetch previous state
-    tr.rpacc[ip[1]+1, ip[2] == 1 ? 1 : 2] += rp      # credit the rejection prob to the previous state (i.e., starting point of the jump)
-    i  = first(st.ip)                                # fetch current level
-    tr.n_exp_steps[] += i == 0 ? 1 : st.np.nexpls[i] # exploration comes after communication, so need the num of expl steps of the current level
+function save_post_step!(::AbstractSTSampler, tr::MinimalTrace, rp, args...)
+    push!(tr.trRP, rp)
     return
 end
 
