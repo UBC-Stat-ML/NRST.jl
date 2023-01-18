@@ -81,6 +81,9 @@ ns, TE, Λ = NRSTSampler(
             tm,
             rng,
 );
+tr = NRST.get_trace(ns);
+NRST.tour!(ns,rng, tr);
+tr.trIP
 res   = parallel_run(ns, rng, TE=TE);
 
 using Plots

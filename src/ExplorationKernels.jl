@@ -20,7 +20,7 @@ function explore!(
     )
     update_β!(ex, β)
     set_params!(ex, params)
-    acc = zero(typeof(β))
+    acc = zero(β)
     for _ in 1:nsteps
         acc += step!(ex, rng)
     end
@@ -100,9 +100,11 @@ function Base.copy(mh::MHSampler, newtm::TemperedModel, newx, newcurV)
 end
 
 # MH proposal = isotropic normal
+# TODO: check if using rand! with a multivariatenormal is faster, since it
+# should take advantage of SIMD
 function propose!(mhs::MHSampler, rng::AbstractRNG)
     for (i,xi) in enumerate(mhs.x)
-        mhs.xprop[i] = xi + mhs.sigma[]*randn(rng)
+        @inbounds mhs.xprop[i] = xi + mhs.sigma[]*randn(rng)
     end
 end
 
@@ -127,7 +129,7 @@ function step!(mhs::MHSampler, rng::AbstractRNG)
     ΔU  = pvβ - mhs.curVβ[]                 # compute energy differential
     acc = ΔU < randexp(rng)                 # twice as fast than -log(rand())
     acc && acc_prop!(mhs, pvref, pv, pvβ)   # if proposal accepted, update state and caches
-    ap  = exp(-max(0., ΔU))                 # compute acceptance probability
+    ap  = exp(-max(zero(ΔU), ΔU))           # compute acceptance probability
     return ap
 end
 
@@ -183,19 +185,6 @@ function tune!(
     erange     = (-3.,3.), # range for the exponent 
     tol        = 0.05
     ) where {F,K}
-    # # estimate minimal std dev along all dimensions, since this is the one that
-    # # is most restrictive for the isotropic proposal
-    # d   = length(mhs.x)
-    # trX = Matrix{K}(undef, d, ceil(Int, sqrt(d))*nsteps);
-    # _   = run!(mhs, rng, trX)
-    # sds = map(std, eachrow(trX))
-    # sd  = minimum(sds)
-    # if sd < 1e-10                    # this can happen when the particle is at some corner in space
-    #     sd = mean(sds)
-    #     if sd < 1e-10                # this can happen when no proposals where accepted
-    #         sd = minimum(abs,mhs.x)
-    #     end
-    # end
     # find e so that sigma=oldsigma*10^e produces the acc rate most similar to target
     # true acc(e) must be monotone in theory. noisy version may not but :shrug:
     oldsigma = mhs.sigma[]
@@ -203,7 +192,7 @@ function tune!(
         mhs.sigma[] = oldsigma * (10^e)
         run!(mhs, rng, nsteps) - target_acc
     end
-    eopt, fopt = monoroot(tfun, erange...; tol = tol, maxit = 8)
+    eopt, fopt  = monoroot(tfun, erange...; tol = tol, maxit = 8)
     mhs.sigma[] = oldsigma * (10^eopt)
     # @debug "tune-xpl: setting σ=$(mhs.sigma[]) with acc=$(fopt+target_acc)"
     any(erange .≈ eopt) && 
@@ -227,7 +216,7 @@ function get_explorer(
     #       same with the cached potential V 
     # note: tm might contain fields that are mutated whenever potentials are
     # computed (e.g. for TuringModel)
-    MHSampler(tm, xinit, one(first(xinit)), refV)
+    MHSampler(tm, xinit, one(TF), refV)
 end
 
 ###############################################################################
@@ -238,9 +227,9 @@ end
 # note: the resulting explorers are not tethered to any NRSTSampler, in the sense 
 # that the state x is not shared with any NRSTSampler. Conversely, if xpl is
 # the explorer of an NRSTSampler, this function does not change that.
-function replicate(xpl::ExplorationKernel, betas::AbstractVector{<:AbstractFloat})
+function replicate(xpl::TXpl, betas::AbstractVector{<:AbstractFloat}) where {TXpl <: ExplorationKernel}
     N    = length(betas) - 1
-    xpls = Vector{typeof(xpl)}(undef, N)
+    xpls = Vector{TXpl}(undef, N)
     for i in 1:N
         newxpl  = copy(xpl)           # use custom copy constructor
         update_β!(newxpl, betas[i+1]) # set β and recalculate Vβ
@@ -249,23 +238,11 @@ function replicate(xpl::ExplorationKernel, betas::AbstractVector{<:AbstractFloat
     return xpls
 end
 
+# smooth with running median
 # intuition: if optimal sigma=sigma(β) is smooth in β, then tuning can be improved
 # by smoothing across explorers
 # Note: instead of working in x = betas scale, we use x = "equal units of rejection"
 # assuming perfect tuning.
-# function smooth_params!(xpls::Vector{<:MHSampler}, λ::AbstractFloat)
-#     N   = length(xpls)
-#     xs  = range(inv(N), 1., N)
-#     lσs = [log(first(params(xpl))) for xpl in xpls]
-#     # λ = LOO(xs, ys)
-#     spl = fit(SmoothingSpline, xs, lσs, λ)
-#     plσs= predict(spl)
-#     for (i,xpl) in enumerate(xpls)
-#         xpl.sigma[] = exp(plσs[i])
-#     end
-# end
-
-# smooth with running median
 function smooth_params!(xpls::Vector{<:MHSampler}, λ::AbstractFloat)
     σs  = [first(params(xpl)) for xpl in xpls]
     w   = closest_odd(λ*length(xpls)) 
