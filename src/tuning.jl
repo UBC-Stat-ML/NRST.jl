@@ -75,7 +75,7 @@ function tune!(
     max_relΔΛ::Real    = 0.01,      # limit on rel change in Λ = Λ(1)
     nsteps_init::Int   = 32,        # steps used in the first round
     maxcor::Real       = 0.6,       # set nexpl in explorers s.t. correlation of V samples is lower than this
-    γ::Real            = 26.0,      # correction for the optimal_N formula
+    γ::Real            = 25.0,      # correction for the optimal_N formula
     xpl_smooth_λ::Real = .1,        # smoothness knob for xpl params. λ==0 == no smoothing
     check_N::Bool      = true,
     check_at_rnd::Int  = 7,         # early round with enough accuracy to check V integrability and N 

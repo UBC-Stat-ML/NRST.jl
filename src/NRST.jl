@@ -32,8 +32,7 @@ export tourlengths
 export run!
 
 # RegenerativeSampler.jl
-export run_tours!,
-    parallel_run
+export parallel_run
 
 # NRSTSampler.jl
 export NRSTSampler,
