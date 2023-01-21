@@ -27,7 +27,8 @@ end
 function post_process(
     tr::MinimalTrace{T,I,K},
     visacc::Matrix{I},         # size (N+1) × 2. accumulates visits
-    rpacc::Matrix{K}           # size (N+1) × 2. accumulates rejection probs
+    rpacc::Matrix{K},          # size (N+1) × 2. accumulates rejection probs
+    args...
     ) where {T,I,K}
     for (n, ip) in enumerate(tr.trIP)
         l      = first(ip)
@@ -82,10 +83,10 @@ end
 # trace postprocessing
 function post_process(
     tr::NRSTTrace{T,I,K},
-    xarray::Vector{Vector{T}}, # length = N+1. i-th entry has samples at state i
-    trVs::Vector{Vector{K}},   # length = N+1. i-th entry has Vs corresponding to xarray[i]
     visacc::Matrix{I},         # size (N+1) × 2. accumulates visits
     rpacc::Matrix{K},          # size (N+1) × 2. accumulates rejection probs
+    xarray::Vector{Vector{T}}, # length = N+1. i-th entry has samples at state i
+    trVs::Vector{Vector{K}},   # length = N+1. i-th entry has Vs corresponding to xarray[i]
     xplapac::Vector{K}         # length = N. accumulates explorers' acc probs
     ) where {T,I,K}
     i₀ = first(first(tr.trIP)) # first state in trace. for NRST, i_0==0, but not for others necessarily
@@ -166,63 +167,36 @@ end
 get_ntours(res::TouringRunResults) = length(res.trvec)
 tourlengths(res::TouringRunResults) = get_nsteps.(res.trvec)
 
-function alloc_fields(N, T, K, I)
-    xarray  = [T[] for _ in 0:N]         # i-th entry has samples at level i
-    trVs    = [K[] for _ in 0:N]         # i-th entry has Vs corresponding to xarray[i]
-    visits  = zeros(I, N+1, 2)           # total visits to each (i,eps) state
-    rpacc   = zeros(K, N+1, 2)           # accumulates rejection probs of swaps started from each (i,eps)
-    xplapac = zeros(K, N)                # accumulates explorers' acc probs
-    xarray, trVs, visits, rpacc, xplapac
-end
-
-# outer constructor that parses a vector of NRSTTraces
-function TouringRunResults(results::Vector{TST}) where {T,I,K,TST<:NRSTTrace{T,I,K}}
+# outer constructor that parses a vector of traces
+function TouringRunResults(results::Vector{TST}) where {T,I,K,TST<:AbstractTrace{T,I,K}}
     ntours  = length(results)
     N       = get_N(first(results))
-    xarray, trVs, totvis, rpacc, xplapac = alloc_fields(N, T, K, I)
-    curvis  = Matrix{I}(undef, N+1, 2)   # visits in current tour to each (i,eps) state
-    sumsq   = zeros(K, N+1)              # accumulate (in float to avoid overflow) squared number of visits for each 0:N state (for tour effectiveness)
+    xarray  = [T[] for _ in 0:N]                                   # i-th entry has samples at level i
+    trVs    = [K[] for _ in 0:N]                                   # i-th entry has Vs corresponding to xarray[i]
+    totvis  = zeros(I, N+1, 2)                                     # total visits to each (i,eps) state
+    rpacc   = zeros(K, N+1, 2)                                     # accumulates rejection probs of swaps started from each (i,eps)
+    xplapac = zeros(K, N)                                          # accumulates explorers' acc probs
+    curvis  = Matrix{I}(undef, N+1, 2)                             # visits in current tour to each (i,eps) state
+    sumsq   = zeros(K, N+1)                                        # accumulate (in float to avoid overflow) squared number of visits for each 0:N state (for tour effectiveness)
 
     # iterate tours
     for tr in results
-        fill!(curvis, zero(I))                                 # reset tour visits
+        fill!(curvis, zero(I))                                     # reset tour visits
         try
-            post_process(tr, xarray, trVs, curvis, rpacc, xplapac) # parse tour trace
+            post_process(tr, curvis, rpacc, xarray, trVs, xplapac) # parse tour trace
         catch e
-            println("Error processing a trace, dumping it:"); display(tr); rethrow(e)
+            println("Error processing a trace, dumping it:")
+            display(tr); rethrow(e)
         end
-        totvis .+= curvis                                      # accumulate total visits
-        sumsq  .+= vec(sum(curvis, dims=2)).^2                 # squared number of visits to each of 0:N (regardless of direction)
+        totvis .+= curvis                                          # accumulate total visits
+        sumsq  .+= vec(sum(curvis, dims=2)).^2                     # squared number of visits to each of 0:N (regardless of direction)
     end
     
     # compute tour effectiveness and return
-    toureff = vec(sum(totvis, dims=2).^2) ./ (ntours*sumsq)    # = (sum(totvis, dims=2)/ntours).^2 ./ (sumsq/ntours)
-    map!(TE -> isnan(TE) ? zero(K) : TE, toureff, toureff)     # correction for unvisited levels
-    TouringRunResults(results, xarray, trVs, totvis, rpacc, xplapac, toureff)    
+    toureff = vec(sum(totvis, dims=2).^2) ./ (ntours*sumsq)        # = (sum(totvis, dims=2)/ntours).^2 ./ (sumsq/ntours)
+    map!(TE -> isnan(TE) ? zero(K) : TE, toureff, toureff)         # correction for unvisited levels
+    TouringRunResults(
+        results, xarray, trVs, totvis, rpacc, xplapac, toureff
+    )    
 end
 
-# outer constructor that parses a vector of MinimalTraces
-function TouringRunResults(results::Vector{TST}) where {T,I,K,TST<:MinimalTrace{T,I,K}}
-    ntours = length(results)
-    N      = get_N(first(results))
-    curvis = Matrix{I}(undef, N+1, 2)                          # visits in current tour to each (i,eps) state
-    sumsq  = zeros(K, N+1)                                     # accumulate (in float to avoid overflow) squared number of visits for each 0:N state (for tour effectiveness)
-    xarray, trVs, totvis, rpacc, xplapac = alloc_fields(N, T, K, I)
-
-    # iterate tours
-    for tr in results
-        fill!(curvis, zero(I))                                 # reset tour visits
-        try
-            post_process(tr, curvis, rpacc)                    # parse tour trace
-        catch e
-            println("Error processing a trace, dumping it:"); display(tr); rethrow(e)
-        end
-        totvis .+= curvis                                      # accumulate total visits
-        sumsq  .+= vec(sum(curvis, dims=2)).^2                 # squared number of visits to each of 0:N (regardless of direction)
-    end
-    
-    # compute tour effectiveness and return
-    toureff = vec(sum(totvis, dims=2).^2) ./ (ntours*sumsq)    # = (sum(visits, dims=2)/ntours).^2 ./ (sumsq/ntours)
-    map!(TE -> isnan(TE) ? zero(K) : TE, toureff, toureff)     # correction for unvisited levels
-    TouringRunResults(results, xarray, trVs, totvis, rpacc, xplapac, toureff)    
-end
