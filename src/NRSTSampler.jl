@@ -34,11 +34,11 @@ function NRSTSampler(
     kwargs...
     )
     ns      = init_sampler(tm, rng, N, nexpl, use_mean, reject_big_vs, log_grid)
-    TE, Λ   = (NaN,NaN)
+    stats   = ()
     adapt_N = 0
     while tune
         try
-            TE, Λ = tune!(ns, rng; check_N=(adapt_N<adapt_N_rounds), kwargs...)
+            stats = tune!(ns, rng; check_N=(adapt_N<adapt_N_rounds), kwargs...)
             tune  = false
         catch e
             if e isa BadNException
@@ -61,7 +61,7 @@ function NRSTSampler(
             end
         end        
     end
-    return ns, TE, Λ
+    return (ns, stats...)
 end
 
 function init_sampler(

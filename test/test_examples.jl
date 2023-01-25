@@ -80,32 +80,39 @@ tm  = HierarchicalModel();
 ns, TE, Λ = NRSTSampler(
             tm,
             rng,
+            use_mean=false,
+            maxcor=0.95,
+            γ=15.0,
+            xpl_smooth_λ=0.1
 );
-tr = NRST.get_trace(ns);
-NRST.tour!(ns,rng, tr);
-tr.trIP
-res   = parallel_run(ns, rng, TE=TE);
+# fit a GPD to the number of visits to the top level
+function fit_gpd(res::TouringRunResults)
+    N     = get_N(res)
+    nvtop = [sum(ip -> first(ip)==N, tr.trIP) for tr in res.trvec]
+    sort!(nvtop)
+    idx_first = findfirst(x->x>0,nvtop)
+    ParetoSmooth.gpd_fit(float.(nvtop[idx_first:end]),1.0)
+end
 
+res = parallel_run(ns,rng,ntours=16384);
+res.toureff[end]
+N     = NRST.get_N(res)
+nvtop = [sum(ip -> first(ip)==N, tr.trIP) for tr in res.trvec]
+sort!(nvtop)
+idx = min(length(nvtop)-100+1,findfirst(x->x>0,nvtop))
+ParetoSmooth.gpd_fit(float.(nvtop[idx:end]),1.0)
+fit_gpd(res)
+using DataFrames
+using CSV
+df = DataFrame() # init empty DataFrame
+insertcols!(df, :error => "estimated ξ = $(round(ξ,digits=2)) >= 0.5")
+size(df)
+ncol(df)==1
+
+isempty(df)
 using Plots
 using Plots.PlotMeasures: px
-# using SmoothingSplines
-
-# σs = [first(pars) for pars in ns.np.xplpars]
-# lσs= log.(σs)
-# plot(lσs)
-# N = ns.np.N
-# xs = range(inv(N),1.,N)
-# λ = 1e-5
-# spl = fit(SmoothingSpline, xs, lσs, λ);
-# plσs = predict(spl)
-# pσs = exp.(plσs)
-# plot(xs,lσs)
-# plot!(xs,plσs)
-# plot(xs,σs)
-# plot!(xs,pσs)
-
-# ntours = NRST.min_ntours_TE(TE);
-res   = parallel_run(ns,rng,TE=TE,keep_xs=false);
+res   = parallel_run(ns,rng,TE=TE);
 plots = diagnostics(ns, res);
 hl    = ceil(Int, length(plots)/2)
 pdiags=plot(
