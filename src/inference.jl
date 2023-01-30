@@ -104,9 +104,10 @@ function summarize_inference(res::TouringRunResults, at, α, means, avars, pvars
 end
 
 # estimate log-partition function: β ↦ log(Z(β)/Z(0))
-function log_partition(np::NRSTProblem, res::RunResults)
-    np.use_mean ? -np.c : stepping_stone(np.betas, res.trVs)
+function log_partition(np::NRSTProblem, trVs::AbstractVector)
+    np.use_mean ? -np.c : stepping_stone(np.betas, trVs)
 end
+log_partition(np::NRSTProblem, res::RunResults) = log_partition(np,res.trVs)
 
 # TODO: revive this?
 # # estimate log-partition function, with a pesimistic asymptotic error bound

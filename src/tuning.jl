@@ -21,8 +21,8 @@ function tune!(
     else
         ens = replicate(ns.xpl, ns.np.betas)                  # create a vector of explorers, whose states are fully independent of ns and its own explorer
     end
-    oldsumnexpl = sum(ns.np.nexpls)
-    nsteps, Λ   = tune!(ns.np, ens, rng;verbose=verbose,kwargs...)
+    oldsumnexpl  = sum(ns.np.nexpls)
+    nsteps,Λ,lZs = tune!(ns.np, ens, rng;verbose=verbose,kwargs...)
 
     # If using independent samplers, need to run NRST once to improve c,Λ estimates
     if ensemble != "NRPT" && do_stage_2
@@ -40,17 +40,22 @@ function tune!(
         res = parallel_run(ns, rng; ntours = ntours, keep_xs = false)
         tune_c!(ns.np, res)
     else
-        # ntours = min_ntours_TE(TE_ELE,0.8,0.1)
-        # cannot use estimated TE_ELE because nexpls changed. if they decreased,
-        # then TE_ELE is too optimistic. 
-        # 1 PT step = oldsumnexpl steps in the exploration kernels
-        # 1 Tour    = 2sum(nexpl) steps in the exploration kernels
+        # two criteria for determining ntours necessary to estimate TE, take max
+        # First: equal effort approach. Use same effort as last PT run:
+        #   1 PT step = oldsumnexpl steps in the exploration kernels
+        #   1 Tour    = 2sum(nexpl) steps in the exploration kernels
         # replace sum(nexpls) -> ns.np.N*median(nexpls) to be robust to cases 
         # where only 1 level has all the exploration steps 
-        ntours = clamp(
-            ceil(Int, nsteps * oldsumnexpl / max(1, 2*sum(ns.np.nexpls)) ),
-            # ceil(Int, nsteps * oldsumnexpl / max(1, 2*ns.np.N*median(ns.np.nexpls)) )
-            min_ntours, DEFAULT_MAX_TOURS
+        # Second: minimum expected visits to top level. Require
+        #   E[visits to N] = 2(p_N/p_0)ntours >= 2min_ntours => ntours >= min_ntours(p0/pN)
+        p_ratio = exp((lZs[begin]+ns.np.c[begin]) - (lZs[end]+ns.np.c[end]))   # no need to normalize because this is a ratio of probs
+        @debug "tune!: p_ratio=$p_ratio"
+        ntours = min(DEFAULT_MAX_TOURS,
+            max(
+                ceil(Int, nsteps * oldsumnexpl / max(1, 2*sum(ns.np.nexpls)) ),
+                # ceil(Int, nsteps * oldsumnexpl / max(1, 2*ns.np.N*median(ns.np.nexpls)) )
+                ceil(Int, min_ntours*p_ratio)
+            )
         )
     end
     # cannot estimate TE with the ensembles, since this is inherently a regenerative property
@@ -157,6 +162,7 @@ function tune!(
     tune_explorers!(np, ens, rng, smooth_λ=xpl_smooth_λ)
     verbose && print("done!\n\tTuning c and nexpls using $nsteps steps...")
     res = @timed tune_c_nexpls!(np, ens, rng, nsteps, maxcor, xpl_smooth_λ)
+    lZs = res.value
     verbose && @printf("done!\n\t\tElapsed: %.1fs\n\n", res.time)
     verbose && show(lineplot_term(
         np.betas[2:end], np.nexpls, xlabel = "β",
@@ -164,7 +170,7 @@ function tune!(
     )); println("\n")
 
     # after these steps, NRST is coherently tuned and can be used to sample
-    return nsteps, oldΛ
+    return nsteps, oldΛ, lZs
 end
 
 
@@ -502,7 +508,9 @@ function tune_c_nexpls!(
     nsteps::Int,
     args...
     )
-    tune_nexpls!(np.nexpls, tune_c!(np, xpls, rng, nsteps), args...)
+    trVs = tune_c!(np, xpls, rng, nsteps)
+    tune_nexpls!(np.nexpls, trVs, args...)
+    return log_partition(np, trVs)
 end
 
 # method for NRPT: use NRPT for tuning c (higher quality), and then extract
@@ -515,12 +523,13 @@ function tune_c_nexpls!(
     nsteps::Int,
     args...
     )
-    _    = tune_c!(np, nrpt, rng, nsteps)
+    ptVs = tune_c!(np, nrpt, rng, nsteps)
     xpls = get_xpls(nrpt)
     @assert [xpl.curβ[] for xpl in xpls] == np.betas[2:end]     # consistency check: since tune_explorers is called before this function, the explorers should have the current grid values 
     @assert params.(xpls) == np.xplpars                         # consistency check: params should match too for the same reason
     trVs = collectVs(np, xpls, rng, np.nexpls[1]*nsteps, false) # make equivalent effort to an NRPT step
     tune_nexpls!(np.nexpls, trVs, args...)
+    return log_partition(np, ptVs)
 end
 
 ##############################################################################
