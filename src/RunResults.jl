@@ -4,28 +4,53 @@
 
 abstract type AbstractTrace{T,TI<:Int,TF<:AbstractFloat} end
 
-get_nsteps(tr::AbstractTrace) = length(tr.trIP) # recover nsteps
-
 #######################################
-# minimal trace: only ip and rejection probs
+# ConstCostTrace: O(1) cost wrt tour length
 #######################################
 
-struct MinimalTrace{T,TI<:Int,TF<:AbstractFloat} <: AbstractTrace{T,TI,TF}
+struct ConstCostTrace{T,TI<:Int,TF<:AbstractFloat} <: AbstractTrace{T,TI,TF}
+    N::TI
+    n_steps::Base.RefValue{TI}
+    n_vis_top::Base.RefValue{TI}
+end
+get_N(tr::ConstCostTrace) = tr.N
+get_nsteps(tr::ConstCostTrace) = tr.n_steps[]
+
+function ConstCostTrace(::Type{T}, N::TI, ::Type{TF}, args...) where {T,TI<:Int,TF<:AbstractFloat}
+    ConstCostTrace{T,TI,TF}(N, Ref(zero(TI)), Ref(zero(TI)))
+end
+function Base.similar(tr::TTrace) where {T,TI,TF,TTrace <: ConstCostTrace{T,TI,TF}}
+    ConstCostTrace(T, tr.N, TF)
+end
+
+# trace postprocessing
+function post_process(tr::ConstCostTrace, visacc::Matrix, args...)
+    visacc[end, begin] += tr.n_vis_top[] # for simplicity, assign all visits to the top level to only one of the directions
+    return
+end
+
+#######################################
+# IPRPTrace: only ip and rejection probs
+#######################################
+
+struct IPRPTrace{T,TI<:Int,TF<:AbstractFloat} <: AbstractTrace{T,TI,TF}
     N::TI
     trIP::Vector{SVector{2,TI}} # can use a vector of SVectors since traces should not be modified
     trRP::Vector{TF}
 end
-get_N(tr::MinimalTrace) = tr.N
-function MinimalTrace(::Type{T}, N::TI, ::Type{TF}, args...) where {T,TI<:Int,TF<:AbstractFloat}
-    MinimalTrace{T,TI,TF}(N, SVector{2,TI}[], TF[])
+get_N(tr::IPRPTrace) = tr.N
+get_nsteps(tr::IPRPTrace) = length(tr.trIP) # recover nsteps
+
+function IPRPTrace(::Type{T}, N::TI, ::Type{TF}, args...) where {T,TI<:Int,TF<:AbstractFloat}
+    IPRPTrace{T,TI,TF}(N, SVector{2,TI}[], TF[])
 end
-function Base.similar(tr::TTrace) where {T,TI,TF,TTrace <: MinimalTrace{T,TI,TF}}
-    MinimalTrace(T, tr.N, TF)
+function Base.similar(tr::TTrace) where {T,TI,TF,TTrace <: IPRPTrace{T,TI,TF}}
+    IPRPTrace(T, tr.N, TF)
 end
 
 # trace postprocessing
 function post_process(
-    tr::MinimalTrace{T,I,K},
+    tr::IPRPTrace{T,I,K},
     visacc::Matrix{I},         # size (N+1) × 2. accumulates visits
     rpacc::Matrix{K},          # size (N+1) × 2. accumulates rejection probs
     args...
@@ -70,6 +95,7 @@ function NRSTTrace(::Type{T}, N::TI, ::Type{TF}, nsteps::Int) where {T,TI<:Int,T
     NRSTTrace(trX, trIP, trV, trRP, trXplAP)
 end
 get_N(tr::NRSTTrace) = length(tr.trXplAP)  # recover N. cant do N=N(tr) because julia gets dizzy
+get_nsteps(tr::NRSTTrace) = length(tr.trIP) # recover nsteps
 
 function Base.show(io::IO, mime::MIME"text/plain", tr::NRSTTrace)
     println(io, "An NRSTTrace object with fields:")
@@ -120,6 +146,11 @@ get_N(res::RunResults) = length(res.trVs)-1 # retrieve max tempering level
 rejrates(res::RunResults) = res.rpacc ./ res.visits # matrix of rejection rates
 averej(res::RunResults) = averej(rejrates(res))
 averej(R::Matrix) = (R[1:(end-1),1] + R[2:end,2])/2
+
+# estimate Λs using rejections rates estimated from a run
+function get_lambdas(averej::Vector{K}) where {K<:AbstractFloat}
+    pushfirst!(cumsum(averej), zero(K))
+end
 
 # tour effectiveness estimator under ELE assumption
 toureffELE(ar::AbstractVector) = inv(1 + 2*sum(r->r/(1-r), ar)) # special case of symmetric rejections

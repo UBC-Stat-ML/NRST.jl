@@ -162,7 +162,7 @@ function tune!(
     tune_explorers!(np, ens, rng, smooth_λ=xpl_smooth_λ)
     verbose && print("done!\n\tTuning c and nexpls using $nsteps steps...")
     res = @timed tune_c_nexpls!(np, ens, rng, nsteps, maxcor, xpl_smooth_λ)
-    lZs = res.value
+    Λ, lZs = res.value
     verbose && @printf("done!\n\t\tElapsed: %.1fs\n\n", res.time)
     verbose && show(lineplot_term(
         np.betas[2:end], np.nexpls, xlabel = "β",
@@ -170,7 +170,7 @@ function tune!(
     )); println("\n")
 
     # after these steps, NRST is coherently tuned and can be used to sample
-    return nsteps, oldΛ, lZs
+    return nsteps, Λ, lZs
 end
 
 
@@ -431,11 +431,6 @@ function gen_lambda_fun(betas::Vector{K}, averej::Vector{K}, uselog::Bool) where
     return (f_Λnorm, Λsnorm, Λs)
 end
 
-# estimate Λs at current betas using rejections rates
-function get_lambdas(averej::Vector{K}) where {K<:AbstractFloat}
-    pushfirst!(cumsum(averej), zero(K))
-end
-
 ##############################################################################
 # tune nexpls by imposing a threshold on autocorrelation
 # warning: do not use with trVs generated from NRST, since those include refreshments!
@@ -524,12 +519,14 @@ function tune_c_nexpls!(
     args...
     )
     ptVs = tune_c!(np, nrpt, rng, nsteps)
+    Λ    = last(get_lambdas(averej(est_rej_probs(ptVs, np.betas, np.c)))) # final estimate of Λ using the most recent grid and c values
+    lZs  = log_partition(np, ptVs)                                        # estimate log(Z_i/Z_0)
     xpls = get_xpls(nrpt)
-    @assert [xpl.curβ[] for xpl in xpls] == np.betas[2:end]     # consistency check: since tune_explorers is called before this function, the explorers should have the current grid values 
-    @assert params.(xpls) == np.xplpars                         # consistency check: params should match too for the same reason
-    trVs = collectVs(np, xpls, rng, np.nexpls[1]*nsteps, false) # make equivalent effort to an NRPT step
+    @assert [xpl.curβ[] for xpl in xpls] == np.betas[2:end]               # consistency check: since tune_explorers is called before this function, the explorers should have the current grid values 
+    @assert params.(xpls) == np.xplpars                                   # consistency check: params should match too for the same reason
+    trVs = collectVs(np, xpls, rng, np.nexpls[1]*nsteps, false)           # make equivalent effort to an NRPT step
     tune_nexpls!(np.nexpls, trVs, args...)
-    return log_partition(np, ptVs)
+    return Λ, lZs
 end
 
 ##############################################################################

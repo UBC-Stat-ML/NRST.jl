@@ -26,6 +26,11 @@ end
 # run in parallel exploiting regenerations
 ###############################################################################
 
+# when called without trace_template, use a default one
+function parallel_run(rs::RegenerativeSampler, rng::SplittableRandom; kwargs...)
+    parallel_run(rs, rng, get_trace(rs); kwargs...)
+end
+
 # multithreading method
 # uses a copy of rs with indep state per task. 
 # note: rs itself is never used to sample so its state should be exactly the
@@ -36,20 +41,23 @@ function parallel_run(
     trace_template::AbstractTrace;
     ntours::Int,
     verbose::Bool     = true,
-    check_every::Int  = 1_000,
-    max_mem_use::Real = .8,
+    # check_every::Int  = 1_000,
+    # max_gc_calls::Int = 3,
+    # max_mem_use::Real = .8,
     kwargs...
     )
+    @assert ntours>0
     GC.gc()                                                                   # setup allocates a lot so we need all mem we can get
     verbose && println(
         "\nRunning $ntours tours in parallel using " *
         "$(Threads.nthreads()) threads.\n"
     )
     
-    # detect and handle memory management within PBS
-    jobid= get_PBS_jobid()
-    ispbs= !(jobid == "")
-    mlim = ispbs ? get_cgroup_mem_limit(jobid) : Inf
+    # # detect and handle memory management within PBS
+    # jobid= get_PBS_jobid()
+    # ispbs= !(jobid == "")
+    # mlim = ispbs ? get_cgroup_mem_limit(jobid) : Inf
+    # ngcs = 0
 
     # pre-allocate traces and prngs, and then run in parallel
     res  = [similar(trace_template) for _ in 1:ntours]                        # get one empty trace for each task
@@ -59,15 +67,17 @@ function parallel_run(
         tour!(copy(rs), rngs[t], res[t]; kwargs...)                           # run a tour with tasks' own sampler, rng, and trace, avoiding race conditions. note: writing to separate locations in a common vector is fine. see: https://discourse.julialang.org/t/safe-loop-with-push-multi-threading/41892/6, and e.g. https://stackoverflow.com/a/8978397/5443023
         ProgressMeter.next!(p)
 
-        # if on PBS, check every 'check_every' tours if mem usage is high. If so, gc.
-        if ispbs && mod(t, check_every)==0
-            per_mem_used = get_cgroup_mem_usage(jobid)/mlim
-            @debug "Tour $t: $(round(100*per_mem_used))% memory used."
-            if per_mem_used > max_mem_use
-                @debug "Calling GC.gc() due to usage above threshold"
-                GC.gc()
-            end
-        end
+        # # if on PBS, check every 'check_every' tours if mem usage is high. If so, gc.
+        # if ispbs && mod(t, check_every)==0
+        #     per_mem_used = get_cgroup_mem_usage(jobid)/mlim
+        #     @debug "Tour $t: $(round(100*per_mem_used))% memory used."
+        #     if per_mem_used > max_mem_use
+        #         ngcs >= max_gc_calls && error("Reached max number of GC calls.")
+        #         @debug "Calling GC.gc() due to usage above threshold"
+        #         GC.gc()
+        #         ngcs += 1
+        #     end
+        # end
     end
     TouringRunResults(res)                                                    # post-process and return 
 end

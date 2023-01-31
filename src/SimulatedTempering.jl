@@ -25,9 +25,9 @@ function copyfields(st::AbstractSTSampler)
     return newnp, nuxpl, newx, MVector(0,1), ncurV
 end
 
-# by default use the MinimalTrace
+# by default use a ConstCostTrace
 function get_trace(st::TS, args...) where {T,TI,TF,TS <: AbstractSTSampler{T,TI,TF}}
-    MinimalTrace(T, st.np.N, TF, args...)
+    ConstCostTrace(T, st.np.N, TF, args...)
 end
 
 ###############################################################################
@@ -139,13 +139,21 @@ function save_post_step!(
     return
 end
 
-# MinimalTrace
-function save_pre_step!(st::AbstractSTSampler, tr::MinimalTrace)
+# IPRPTrace
+function save_pre_step!(st::AbstractSTSampler, tr::IPRPTrace)
     push!(tr.trIP, st.ip) # no "copy" because implicit conversion from MVector to SVector does the copying
     return
 end
-function save_post_step!(::AbstractSTSampler, tr::MinimalTrace, rp, args...)
+function save_post_step!(::AbstractSTSampler, tr::IPRPTrace, rp, args...)
     push!(tr.trRP, rp)
+    return
+end
+
+# ConstCostTrace
+function save_pre_step!(::AbstractSTSampler, ::ConstCostTrace) end
+function save_post_step!(st::AbstractSTSampler, tr::ConstCostTrace, args...)
+    tr.n_steps[] += 1
+    first(st.ip) == st.np.N && (tr.n_vis_top[] += 1)
     return
 end
 
@@ -165,13 +173,17 @@ const DEFAULT_MAX_TOURS = min_ntours_TE(0.)
 # computes ntours from TE
 function parallel_run(
     st::AbstractSTSampler,
-    rng::SplittableRandom;
+    rng::SplittableRandom,
+    trace_template::AbstractTrace;
     TE::AbstractFloat = NaN,
-    ntours::Int       = -1,        # need default value otherwise does not work
+    ntours::Int       = 0,
     α::AbstractFloat  = DEFAULT_α,
     δ::AbstractFloat  = DEFAULT_δ,
     kwargs...
     )
-    isfinite(TE) && (ntours=min_ntours_TE(TE,α,δ))
-    parallel_run(st, rng, get_trace(st); ntours = ntours, kwargs...)
+    isfinite(TE) && iszero(ntours) && (ntours=min_ntours_TE(TE,α,δ))
+    Base.@invoke parallel_run(
+        st::RegenerativeSampler, rng::SplittableRandom, trace_template::AbstractTrace;
+        ntours = ntours, kwargs...
+    )
 end

@@ -85,31 +85,8 @@ ns, TE, Λ = NRSTSampler(
             γ=15.0,
             xpl_smooth_λ=0.1
 );
-# fit a GPD to the number of visits to the top level
-function fit_gpd(res::TouringRunResults)
-    N     = get_N(res)
-    nvtop = [sum(ip -> first(ip)==N, tr.trIP) for tr in res.trvec]
-    sort!(nvtop)
-    idx_first = findfirst(x->x>0,nvtop)
-    ParetoSmooth.gpd_fit(float.(nvtop[idx_first:end]),1.0)
-end
 
-res = parallel_run(ns,rng,ntours=16384);
-res.toureff[end]
-N     = NRST.get_N(res)
-nvtop = [sum(ip -> first(ip)==N, tr.trIP) for tr in res.trvec]
-sort!(nvtop)
-idx = min(length(nvtop)-100+1,findfirst(x->x>0,nvtop))
-ParetoSmooth.gpd_fit(float.(nvtop[idx:end]),1.0)
-fit_gpd(res)
-using DataFrames
-using CSV
-df = DataFrame() # init empty DataFrame
-insertcols!(df, :error => "estimated ξ = $(round(ξ,digits=2)) >= 0.5")
-size(df)
-ncol(df)==1
-
-isempty(df)
+NRST.min_ntours_TE(TE)
 using Plots
 using Plots.PlotMeasures: px
 res   = parallel_run(ns,rng,TE=TE);
