@@ -10,7 +10,7 @@ optimal_N(Λ, γ) = ceil(Int, γ*Λ*(1+sqrt(1 + inv(1+2Λ))))
 function tune!(
     ns::NRSTSampler,
     rng::AbstractRNG;
-    min_ntours::Int  = 2_048,
+    min_ntours::Int  = 4_096,
     ensemble::String = "NRPT",
     do_stage_2::Bool = true,
     verbose::Bool    = true,
@@ -24,41 +24,26 @@ function tune!(
     oldsumnexpl  = sum(ns.np.nexpls)
     nsteps,Λ,lZs = tune!(ns.np, ens, rng;verbose=verbose,kwargs...)
 
-    # If using independent samplers, need to run NRST once to improve c,Λ estimates
-    if ensemble != "NRPT" && do_stage_2
-        # TODO: this is outdated. just delete?
-        # two heuristics for determining appropriate number of tours, choose max of both:
-        # 1) rationale:
-        #    - above, each explorer produces nsteps samples
-        #    - here, every tour each explorer runs twice on average
-        #      => ntours=nsteps/(2mean(nexpls)) gives same comp cost on avg
-        #    - increase by 50% to be safe: 1/2 * 3/2 = 3/4 = .75 factor in front
-        # 2) heuristic for when nexpls→∞, where 1) fails
-        ntours_f = max(0.75*nsteps/mean(ns.np.nexpls), 150*nsteps^(1/4))
-        ntours   = max(min_ntours, min(2nsteps, ceil(Int, ntours_f)))
-        verbose && println("\nImproving c(β) and estimating TE using $ntours NRST tours.\n")
-        res = parallel_run(ns, rng; ntours = ntours, keep_xs = false)
-        tune_c!(ns.np, res)
-    else
-        # two criteria for determining ntours necessary to estimate TE, take max
-        # First: equal effort approach. Use same effort as last PT run:
-        #   1 PT step = oldsumnexpl steps in the exploration kernels
-        #   1 Tour    = 2sum(nexpl) steps in the exploration kernels
-        # replace sum(nexpls) -> ns.np.N*median(nexpls) to be robust to cases 
-        # where only 1 level has all the exploration steps 
-        # Second: minimum expected visits to top level. Require
-        #   E[visits to N] = 2(p_N/p_0)ntours >= 2min_ntours => ntours >= min_ntours(p0/pN)
-        p_ratio = exp((lZs[begin]+ns.np.c[begin]) - (lZs[end]+ns.np.c[end]))   # no need to normalize because this is a ratio of probs
-        @debug "tune!: p_ratio=$p_ratio"
-        ntours = min(DEFAULT_MAX_TOURS,
-            max(
-                ceil(Int, nsteps * oldsumnexpl / max(1, 2*sum(ns.np.nexpls)) ),
-                # ceil(Int, nsteps * oldsumnexpl / max(1, 2*ns.np.N*median(ns.np.nexpls)) )
-                ceil(Int, min_ntours*p_ratio)
-            )
+    # estimate TE with preliminary NRST run: needed because we cannot estimate TE
+    # with ensembles, since this is inherently a regenerative property.
+    # two criteria for determining ntours necessary to estimate TE, take max
+    # First: equal effort approach. Use same effort as last PT run:
+    #   1 PT step = oldsumnexpl steps in the exploration kernels
+    #   1 Tour    = 2sum(nexpl) steps in the exploration kernels
+    # replace sum(nexpls) -> ns.np.N*median(nexpls) to be robust to cases 
+    # where only 1 level has all the exploration steps 
+    # Second: match expected visits to top level under mean strategy. Require
+    #   E[visits to N] = 2(p_N/p_0)ntours == 2min_ntours => ntours == min_ntours(p0/pN)
+    # This defaults to min_ntours under mean strategy (that's why its called min_tours)
+    p_ratio = exp((first(lZs)+first(ns.np.c)) - (last(lZs)+last(ns.np.c)))          # == p0/pN. no need to normalize because this is a ratio of probs
+    @debug "tune!: p_ratio=$p_ratio"
+    ntours = min(DEFAULT_MAX_TOURS,
+        max(
+            ceil(Int, nsteps * oldsumnexpl / max(1, 2*sum(ns.np.nexpls)) ),
+            # ceil(Int, nsteps * oldsumnexpl / max(1, 2*ns.np.N*median(ns.np.nexpls)) )
+            ceil(Int, min_ntours*p_ratio)
         )
-    end
-    # cannot estimate TE with the ensembles, since this is inherently a regenerative property
+    )
     verbose && println("\nEstimating Tour Effectiveness (TE) using $ntours NRST tours.\n")
     res = parallel_run(ns, rng; ntours = ntours)
     TE  = last(res.toureff)
@@ -66,7 +51,7 @@ function tune!(
     return TE, Λ
 end
 
-# stage I tuning: bootstrap independent runs of explorers
+# stage I tuning: bootstrap ensembles of explorers
 function tune!(
     np::NRSTProblem{T,K},
     ens,                            # ensemble of exploration kernels: either Vector{<:ExplorationKernel} (indep sampling) or NRPTSampler
