@@ -15,7 +15,7 @@ struct ConstCostTrace{T,TI<:Int,TF<:AbstractFloat} <: AbstractTrace{T,TI,TF}
 end
 get_N(tr::ConstCostTrace) = tr.N
 get_nsteps(tr::ConstCostTrace) = tr.n_steps[]
-
+get_nvtop(tr::ConstCostTrace) = tr.n_vis_top[]
 function ConstCostTrace(::Type{T}, N::TI, ::Type{TF}, args...) where {T,TI<:Int,TF<:AbstractFloat}
     ConstCostTrace{T,TI,TF}(N, Ref(zero(TI)), Ref(zero(TI)))
 end
@@ -39,8 +39,11 @@ struct IPRPTrace{T,TI<:Int,TF<:AbstractFloat} <: AbstractTrace{T,TI,TF}
     trRP::Vector{TF}
 end
 get_N(tr::IPRPTrace) = tr.N
-get_nsteps(tr::IPRPTrace) = length(tr.trIP) # recover nsteps
-
+get_nsteps(tr::Union{IPRPTrace,NRSTTrace}) = length(tr.trIP) # recover nsteps
+function get_nvtop(tr::Union{IPRPTrace,NRSTTrace})
+    N = get_N(tr)
+    sum(ip -> first(ip)==N, tr.trIP)
+end
 function IPRPTrace(::Type{T}, N::TI, ::Type{TF}, args...) where {T,TI<:Int,TF<:AbstractFloat}
     IPRPTrace{T,TI,TF}(N, SVector{2,TI}[], TF[])
 end
@@ -95,7 +98,6 @@ function NRSTTrace(::Type{T}, N::TI, ::Type{TF}, nsteps::Int) where {T,TI<:Int,T
     NRSTTrace(trX, trIP, trV, trRP, trXplAP)
 end
 get_N(tr::NRSTTrace) = length(tr.trXplAP)  # recover N. cant do N=N(tr) because julia gets dizzy
-get_nsteps(tr::NRSTTrace) = length(tr.trIP) # recover nsteps
 
 function Base.show(io::IO, mime::MIME"text/plain", tr::NRSTTrace)
     println(io, "An NRSTTrace object with fields:")
