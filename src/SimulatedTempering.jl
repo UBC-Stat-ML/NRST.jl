@@ -153,7 +153,9 @@ end
 function save_pre_step!(::AbstractSTSampler, ::ConstCostTrace) end
 function save_post_step!(st::AbstractSTSampler, tr::ConstCostTrace, args...)
     tr.n_steps[] += 1
-    first(st.ip) == st.np.N && (tr.n_vis_top[] += 1)
+    i = first(st.ip)
+    i == st.np.N && (tr.n_vis_top[] += 1)
+    tr.n_v_evals[] += i == 0 ? 1 : st.np.nexpls[i] # note: this assumes expl steps is after comm -> not true for GT95
     return
 end
 

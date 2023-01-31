@@ -12,12 +12,15 @@ struct ConstCostTrace{T,TI<:Int,TF<:AbstractFloat} <: AbstractTrace{T,TI,TF}
     N::TI
     n_steps::Base.RefValue{TI}
     n_vis_top::Base.RefValue{TI}
+    n_v_evals::Base.RefValue{TI}
 end
 get_N(tr::ConstCostTrace) = tr.N
 get_nsteps(tr::ConstCostTrace) = tr.n_steps[]
 get_nvtop(tr::ConstCostTrace) = tr.n_vis_top[]
+get_nvevals(tr::ConstCostTrace) = tr.n_v_evals[]
+
 function ConstCostTrace(::Type{T}, N::TI, ::Type{TF}, args...) where {T,TI<:Int,TF<:AbstractFloat}
-    ConstCostTrace{T,TI,TF}(N, Ref(zero(TI)), Ref(zero(TI)))
+    ConstCostTrace{T,TI,TF}(N, Ref(zero(TI)), Ref(zero(TI)), Ref(zero(TI)))
 end
 function Base.similar(tr::TTrace) where {T,TI,TF,TTrace <: ConstCostTrace{T,TI,TF}}
     ConstCostTrace(T, tr.N, TF)
