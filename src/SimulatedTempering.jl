@@ -26,8 +26,8 @@ function copyfields(st::AbstractSTSampler)
 end
 
 # by default use a ConstCostTrace
-function get_trace(st::TS, args...) where {T,TI,TF,TS <: AbstractSTSampler{T,TI,TF}}
-    ConstCostTrace(T, st.np.N, TF, args...)
+function get_trace(st::TS, ::Type{TTrace}=ConstCostTrace) where {T,TI,TF,TS <: AbstractSTSampler{T,TI,TF},TTrace <: AbstractTrace}
+    TTrace(T, st.np.N, TF)
 end
 
 ###############################################################################
