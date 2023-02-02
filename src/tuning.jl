@@ -53,7 +53,7 @@ end
 
 # stage I tuning: bootstrap ensembles of explorers
 function tune!(
-    np::NRSTProblem{T,K},
+    np::NRSTProblem,
     ens,                            # ensemble of exploration kernels: either Vector{<:ExplorationKernel} (indep sampling) or NRPTSampler
     rng::AbstractRNG;
     max_rounds::Int    = 14,
@@ -64,13 +64,13 @@ function tune!(
     max_relΔcone::Real = 0.01,      # limit on rel change in c(1)
     max_relΔΛ::Real    = 0.01,      # limit on rel change in Λ = Λ(1)
     nsteps_init::Int   = 32,        # steps used in the first round
-    maxcor::Real       = 0.6,       # set nexpl in explorers s.t. correlation of V samples is lower than this
-    γ::Real            = 25.0,      # correction for the optimal_N formula
+    maxcor::Real       = 0.9,       # set nexpl in explorers s.t. correlation of V samples is lower than this
+    γ::Real            = 30.0,      # correction for the optimal_N formula
     xpl_smooth_λ::Real = .1,        # smoothness knob for xpl params. λ==0 == no smoothing
     check_N::Bool      = true,
     check_at_rnd::Int  = 7,         # early round with enough accuracy to check V integrability and N 
     verbose::Bool      = true
-    ) where {T,K}
+    )
     !np.use_mean && (max_dr_ratio = Inf)      # equality of directional rejections only holds for the mean strategy
     if verbose
         println(
@@ -86,7 +86,6 @@ function tune!(
     rnd     = 0
     nsteps  = nsteps_init÷2                 # nsteps is doubled at the beginning of the loop
     oldcone = relΔcone = oldΛ = relΔΛ = NaN
-    Rout    = Matrix{K}(undef, np.N+1, 2)   # capture R matrix generated inside the loop
     conv    = false
     while !conv && (rnd < max_rounds)
         rnd    += 1
@@ -99,7 +98,6 @@ function tune!(
         verbose && print("\tTuning c and grid using $nsteps steps per explorer...")
         res        = @timed tune_c_betas!(np, ens, rng, nsteps)
         Δβs,Λ,ar,R = res.value # note: rejections are before grid adjustment, so they are technically stale, but are still useful to assess convergence. compute std dev of average of up and down rejs
-        copyto!(Rout, R)
         mar        = mean(ar)
         ar_ratio   = std(ar)/mar
         ar1_ratio  = ar[1]/mean(ar[2:end])
