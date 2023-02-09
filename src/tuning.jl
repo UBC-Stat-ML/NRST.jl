@@ -58,17 +58,17 @@ function tune!(
     rng::AbstractRNG;
     max_rounds::Int    = 14,
     max_ar_ratio::Real = 0.10,      # limit on std(ar)/mean(ar), ar: average of Ru and Rd, the directional rejection rates
-    max_ar1_dif::Real  = 0.50,      # |ar[1]/mean(ar[-1]) - 1| < max_ar1_dif
+    max_ar1_dif::Real  = 0.50,      # |ar[1]/mean(ar[-1]) - 1| < max_ar1_dif -> ar at i=1 is usually the most problematic. this puts emphasis there
     max_dr_ratio::Real = 0.05,      # limit on mean(|Ru-Rd|)/mean(ar). Note: this only makes sense for use_mean=true
     max_Δβs::Real      = 0.05,      # limit on max change in grid. Note: this is not a great indicator, so the limit is quite loose. Only helps with potential fake convergence at beginning
-    max_relΔcone::Real = 0.01,      # limit on rel change in c(1)
-    max_relΔΛ::Real    = 0.01,      # limit on rel change in Λ = Λ(1)
-    nsteps_init::Int   = 32,        # steps used in the first round
+    max_relΔcone::Real = 0.005,     # limit on rel change in c(1)
+    max_relΔΛ::Real    = 0.005,     # limit on rel change in Λ = Λ(1)
+    nsteps_init::Int   = 2,         # steps used in the first round
     maxcor::Real       = 0.9,       # set nexpl in explorers s.t. correlation of V samples is lower than this
-    γ::Real            = 30.0,      # correction for the optimal_N formula
+    γ::Real            = 8.0,       # correction for the optimal_N formula
     xpl_smooth_λ::Real = .1,        # smoothness knob for xpl params. λ==0 == no smoothing
     check_N::Bool      = true,
-    check_at_rnd::Int  = 7,         # early round with enough accuracy to check V integrability and N 
+    check_at_rnd::Int  = 10,        # early round with enough accuracy to check V integrability and N 
     verbose::Bool      = true
     )
     !np.use_mean && (max_dr_ratio = Inf)      # equality of directional rejections only holds for the mean strategy
@@ -95,7 +95,7 @@ function tune!(
         verbose && println("done!")
         
         # tune c and betas
-        verbose && print("\tTuning c and grid using $nsteps steps per explorer...")
+        verbose && print("\tTuning c and grid using $nsteps steps...")
         res        = @timed tune_c_betas!(np, ens, rng, nsteps)
         Δβs,Λ,ar,R = res.value # note: rejections are before grid adjustment, so they are technically stale, but are still useful to assess convergence. compute std dev of average of up and down rejs
         mar        = mean(ar)

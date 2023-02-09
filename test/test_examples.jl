@@ -80,12 +80,8 @@ tm  = HierarchicalModel();
 ns, TE, Λ = NRSTSampler(
             tm,
             rng,
-            use_mean=false,
-            maxcor=0.9,
-            γ=30.0,
-            xpl_smooth_λ=0.1
 );
-NRST.min_ntours_TE(TE,0.95,0.2)
+NRST.min_ntours_TE(TE,0.95,0.5)
 NRST.min_ntours_TE(1e-5,0.95,0.2)
 using Plots
 using Plots.PlotMeasures: px
