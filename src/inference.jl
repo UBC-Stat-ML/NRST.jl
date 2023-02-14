@@ -87,10 +87,11 @@ end
 
 # compute half width of α-CI, ESS, and build summarized dataframe
 function summarize_inference(res::TouringRunResults, at, α, means, avars, pvars)
-    qmult    = quantile(Normal(), (1+α)/2)
+    qmult    = norminvcdf((1+α)/2)
     nsamples = vec(sum(res.visits[at .+ 1,:], dims=2))
-    hws      = qmult * sqrt.(avars ./ nsamples) # half-widths of interval
-    ESS      = nsamples .* (pvars ./ avars)
+    ntours   = get_ntours(res)
+    hws      = qmult * sqrt.(avars ./ ntours)          # half-widths of intervals. recall that CLT is ~ sqrt(ntours)
+    ESS      = ntours .* (pvars ./ avars)              # effective sample size. recall that CLT is ~ sqrt(ntours)
     return DataFrame(
         "Level"      => at,
         "Mean"       => means,

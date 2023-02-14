@@ -4,6 +4,10 @@
 
 abstract type AbstractTrace{T,TI<:Int,TF<:AbstractFloat} end
 
+function Base.similar(tr::TTrace) where {T,TI,TF,TTrace <: AbstractTrace{T,TI,TF}}
+    TTrace.name.wrapper(T, get_N(tr), TF) # hack: https://discourse.julialang.org/t/get-generic-constructor-of-parametric-type/57189/2
+end
+
 #######################################
 # ConstCostTrace: O(1) cost wrt tour length
 #######################################
@@ -21,9 +25,6 @@ get_nvevals(tr::ConstCostTrace) = tr.n_v_evals[]
 
 function ConstCostTrace(::Type{T}, N::TI, ::Type{TF}, args...) where {T,TI<:Int,TF<:AbstractFloat}
     ConstCostTrace{T,TI,TF}(N, Ref(zero(TI)), Ref(zero(TI)), Ref(zero(TI)))
-end
-function Base.similar(tr::TTrace) where {T,TI,TF,TTrace <: ConstCostTrace{T,TI,TF}}
-    ConstCostTrace(T, tr.N, TF)
 end
 
 # trace postprocessing
@@ -46,9 +47,6 @@ get_N(tr::IPRPTrace) = tr.N
 
 function IPRPTrace(::Type{T}, N::TI, ::Type{TF}, args...) where {T,TI<:Int,TF<:AbstractFloat}
     IPRPTrace{T,TI,TF}(N, SVector{2,TI}[], TF[])
-end
-function Base.similar(tr::TTrace) where {T,TI,TF,TTrace <: IPRPTrace{T,TI,TF}}
-    IPRPTrace(T, tr.N, TF)
 end
 
 # trace postprocessing
