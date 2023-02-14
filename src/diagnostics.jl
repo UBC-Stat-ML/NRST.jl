@@ -141,22 +141,15 @@ function diagnostics(ns::RegenerativeSampler, res::TouringRunResults)
         density!(pdens, res.trVs[i], color = colorgrad[i], label="")
     end
 
-    # ESS/ntours versus toureff for a bounded function
+    # ESS/ntours versus toureff for the sine function
     # note: TE bound is for true ESS and true TE. Sample estimates might not work. 
-    # use logistic(Z(V)) where Z is standardization using median
-    # looks weird but has benefits over other potential bounded functions
-    # - V(x) is always defined for any model that got up to here
-    # - Z(V) with median is defined even for non-integrable-under-reference V
-    # - logistic(Z(V)) is bounded and has non trivial values in general -- ie,
-    #   not always 0 or not always 1 -- since Z(V) cannot be too far of 0
-    # The last condition fails for example for indicators like {V>v} for some
-    # v, since the distribution of V changes radically between temperatures.
-    mV = median(Base.Flatten(res.trVs))
-    sV = median(abs.(Base.Flatten(res.trVs) .- mV))
-    inf_df = inference_on_V(res, h = v -> logistic((v-mV)/sV), at = 0:N)
+    # periodic+continuous (thus bounded) functions of V are nice diagnostic tools
+    # because they don't care about the magnitude or scale of V, and much less 
+    # about the type of x. Therefore, they can be applied to any problem.
+    inf_df = inference_on_V(res, h = sin, at = 0:N)
     pvess  = plot(
-        ns.np.betas, inf_df[:,"ESS"] ./ ntours, xlabel = "β", 
-        label = "ESS/#tours", palette = DEF_PAL
+        ns.np.betas, inf_df[:,"rESS"], xlabel = "β", 
+        label = "rESS", palette = DEF_PAL
     )
     plot!(pvess, ns.np.betas, res.toureff, label="Tour Eff.")
     hline!(pvess, [1.], linestyle = :dash, label="")

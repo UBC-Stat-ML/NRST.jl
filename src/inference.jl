@@ -95,12 +95,12 @@ function summarize_inference(res::TouringRunResults, at, α, means, avars, pvars
     return DataFrame(
         "Level"      => at,
         "Mean"       => means,
-        "Asym. Var." => avars,
         "C.I. Low"   => means .- hws,
         "C.I. High"  => means .+ hws,
+        "Asym. Var." => avars,
         "Post. Var." => pvars,
-        "# Samples"  => nsamples,
-        "rESS"       => rESS
+        "rESS"       => rESS,
+        "# Samples"  => nsamples
     )
 end
 

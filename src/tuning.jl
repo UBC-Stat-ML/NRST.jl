@@ -10,7 +10,7 @@ optimal_N(Λ, γ) = ceil(Int, γ*Λ*(1+sqrt(1 + inv(1+2Λ))))
 function tune!(
     ns::NRSTSampler,
     rng::AbstractRNG;
-    min_ntours::Int  = 4_096,
+    min_ntours::Int  = 2_048,
     ensemble::String = "NRPT",
     do_stage_2::Bool = true,
     verbose::Bool    = true,
@@ -38,11 +38,11 @@ function tune!(
     p_ratio = exp((first(lZs)+first(ns.np.c)) - (last(lZs)+last(ns.np.c)))          # == p0/pN. no need to normalize because this is a ratio of probs
     @debug "tune!: p_ratio=$p_ratio"
     ntours = min(DEFAULT_MAX_TOURS,
-        max(
-            ceil(Int, nsteps * oldsumnexpl / max(1, 2*sum(ns.np.nexpls)) ),
+        ceil(Int, max(
+            nsteps * oldsumnexpl / max(1, 2*sum(ns.np.nexpls)),
             # ceil(Int, nsteps * oldsumnexpl / max(1, 2*ns.np.N*median(ns.np.nexpls)) )
-            ceil(Int, min_ntours*p_ratio)
-        )
+            min_ntours*(p_ratio^1.3) # exponent is a safety factor
+        ))
     )
     verbose && println("\nEstimating Tour Effectiveness (TE) using $ntours NRST tours.\n")
     res = parallel_run(ns, rng; ntours = ntours)
