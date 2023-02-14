@@ -91,7 +91,7 @@ function summarize_inference(res::TouringRunResults, at, α, means, avars, pvars
     nsamples = vec(sum(res.visits[at .+ 1,:], dims=2))
     ntours   = get_ntours(res)
     hws      = qmult * sqrt.(avars ./ ntours)          # half-widths of intervals. recall that CLT is ~ sqrt(ntours)
-    ESS      = ntours .* (pvars ./ avars)              # effective sample size. recall that CLT is ~ sqrt(ntours)
+    rESS     = pvars ./ avars                          # relative effective sample size
     return DataFrame(
         "Level"      => at,
         "Mean"       => means,
@@ -100,7 +100,7 @@ function summarize_inference(res::TouringRunResults, at, α, means, avars, pvars
         "C.I. High"  => means .+ hws,
         "Post. Var." => pvars,
         "# Samples"  => nsamples,
-        "ESS"        => ESS
+        "rESS"       => rESS
     )
 end
 
