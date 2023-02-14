@@ -25,10 +25,17 @@ function copyfields(st::AbstractSTSampler)
     return newnp, nuxpl, newx, MVector(0,1), ncurV
 end
 
-# by default use a ConstCostTrace
-function get_trace(st::TS, ::Type{TTrace}=ConstCostTrace) where {T,TI,TF,TS <: AbstractSTSampler{T,TI,TF},TTrace <: AbstractTrace}
-    TTrace(T, st.np.N, TF)
+#######################################
+# traces
+#######################################
+
+# generic constructor for each AbstractTrace when given an AbstractSTSampler
+function (::Type{TTrace})(st::AbstractSTSampler) where {TTrace <: AbstractTrace}
+    TTrace(typeof(st.x), st.np.N, eltype(st.curV))
 end
+
+# default trace for ST samplers
+get_trace(st::AbstractSTSampler) = ConstCostTrace(st)
 
 ###############################################################################
 # sampling methods
