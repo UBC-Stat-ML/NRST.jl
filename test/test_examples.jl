@@ -80,6 +80,7 @@ tm  = HierarchicalModel();
 ns, TE, Λ = NRSTSampler(
             tm,
             rng,
+            xpl_smooth_λ=1e-7
 );
 
 using Plots

@@ -6,12 +6,14 @@ abstract type AbstractSTSampler{T,TI<:Int,TF<:AbstractFloat,TXp<:ExplorationKern
 
 # copy-constructor, using a given AbstractSTSampler (usually already tuned)
 Base.copy(st::TS) where {TS <: AbstractSTSampler} = TS(copyfields(st)...)
-function copyfields(st::AbstractSTSampler)
-    newtm = copy(st.np.tm)                   # the only element in np that we (may) need to copy
-    newnp = NRSTProblem(st.np, newtm)        # build new Problem from the old one but using new tm
+function copyfields(st::TST) where {T,TI,TF,TXp,TST<:AbstractSTSampler{T,TI,TF,TXp}}
+    newtm = copy(st.np.tm)                         # the only element in np that we (may) need to copy
+    newnp = NRSTProblem(st.np, newtm)              # build new Problem from the old one but using new tm
     newx  = copy(st.x)
     ncurV = Ref(st.curV[])
-    nuxpl = copy(st.xpl, newtm, newx, ncurV) # copy st.xpl sharing stuff with the new sampler
+    nuxpl = TXp.name.wrapper(                      # build a new explorer sharing stuff with the new sampler. uses # hack: https://discourse.julialang.org/t/get-generic-constructor-of-parametric-type/57189/2
+        newtm, newx, st.xpl.curβ[], ncurV
+    )
     return newnp, nuxpl, newx, MVector(0,1), ncurV
 end
 

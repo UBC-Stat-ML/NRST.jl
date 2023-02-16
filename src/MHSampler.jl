@@ -9,42 +9,30 @@
 ###############################################################################
 
 struct MHSampler{TTM<:TemperedModel,K<:AbstractFloat,A<:AbstractVector{K}} <: ExplorationKernel
+    # fields common to every ExplorationKernel
     tm::TTM                   # TemperedModel
-    x::A                      # current state
-    xprop::A                  # storage for proposal
-    sigma::Base.RefValue{K}   # step length (stored as ref to make it mutable)
+    x::A                      # current state (shared with NRSTSampler)
     curβ::Base.RefValue{K}    # current beta
     curVref::Base.RefValue{K} # current reference potential
-    curV::Base.RefValue{K}    # current target potential
-    curVβ::Base.RefValue{K}   # current tempered potential 
+    curV::Base.RefValue{K}    # current target potential (shared with NRSTSampler)
+    curVβ::Base.RefValue{K}   # current tempered potential
+    # idiosyncratic fields
+    xprop::A                  # storage for proposal
+    sigma::Base.RefValue{K}   # step length (stored as ref to make it mutable) 
 end
 
 # outer constructor
-function MHSampler(tm, xinit, β, curV, sigma=1.0)
-    vref    = Vref(tm, xinit)
-    vβ      = vref + β*curV[]
-    MHSampler(
-        tm, xinit, similar(xinit), Ref(sigma), Ref(β), Ref(vref), curV, Ref(vβ)
-    )
+function MHSampler(tm, x, curβ, curVref, curV, curVβ; sigma=1.0)
+    MHSampler(tm, x, curβ, curVref, curV, curVβ, similar(x), Ref(sigma))
 end
-set_x!(mhs, newx) = copyto!(mhs.x, newx)                # set x to new value
-params(mh::MHSampler) = (sigma=mh.sigma[],)             # namedtuple of parameters
-function set_params!(mh::MHSampler, params::NamedTuple) # set sigma from a NamedTuple
+params(mh::MHSampler) = (sigma=mh.sigma[],)                   # get params as namedtuple
+function set_params!(mh::MHSampler, params::NamedTuple)       # set sigma from a NamedTuple
     mh.sigma[] = params.sigma
 end
 
-# copy constructors
-function Base.copy(mh::MHSampler)
-    newtm = copy(mh.tm)
-    newx  = copy(mh.x)
-    ncurV = Ref(mh.curV[])
-    copy(mh, newtm, newx, ncurV)
-end
-function Base.copy(mh::MHSampler, newtm::TemperedModel, newx, newcurV)
-    MHSampler(
-        newtm, newx, similar(mh.xprop), Ref(mh.sigma[]), Ref(mh.curβ[]),
-        Ref(mh.curVref[]), newcurV, Ref(mh.curVβ[])
-    )
+# copy constructor
+function Base.copy(mh::MHSampler, args...)
+    MHSampler(args..., similar(mh.xprop), Ref(mh.sigma[]))
 end
 
 # MH proposal = isotropic normal
