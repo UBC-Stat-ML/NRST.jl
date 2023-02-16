@@ -18,8 +18,6 @@ function Base.copy(xpl::ExplorationKernel)
         Ref(xpl.curV[]), Ref(xpl.curVβ[])
     )
 end
-set_x!(xpl::ExplorationKernel, newx) = copyto!(xpl.x, newx) # set x to new value
-
 
 #######################################
 # methods interfacing with an NRSTSampler

@@ -11,15 +11,130 @@ struct SliceSampler{TTM<:TemperedModel,TF<:AbstractFloat,TV<:AbstractVector{TF},
     curV::Base.RefValue{TF}    # current target potential (shared with NRSTSampler)
     curVβ::Base.RefValue{TF}   # current tempered potential
     # idiosyncratic fields
-    w::Base.RefValue{TF}       # initial window width
-    p::TI                      # max window width = w2^p
+    xprop::TV                  # temp storage for the proposal
+    w::Base.RefValue{TF}       # initial slice width
+    p::TI                      # max slice width = w2^p
 end
+
+#######################################
+# construction and copying
+#######################################
 
 # outer constructor
 function SliceSampler(tm, x, curβ, curVref, curV, curVβ; w=10.0, p=20)
-    SliceSampler(tm, x, curβ, curVref, curV, curVβ, Ref(w), p)
+    SliceSampler(tm, x, curβ, curVref, curV, curVβ, similar(x), Ref(w), p)
 end
-params(ss::SliceSampler) = (w=ss.w[],)                            # get params as namedtuple
-function set_params!(ss::MHSampler, params::NamedTuple)           # set sigma from a NamedTuple
+params(ss::SliceSampler) = (w=ss.w[],)                  # get params as namedtuple
+function set_params!(ss::MHSampler, params::NamedTuple) # set sigma from a NamedTuple
     ss.w[] = params.w
+end
+
+# copy constructor
+function Base.copy(ss::SliceSampler, args...)
+    SliceSampler(args..., similar(x), Ref(ss.w[]), ss.p)
+end
+
+#######################################
+# sampling methods
+#######################################
+
+# compute all potentials by setting xprop[i] = newxi
+function potentials(ss::SliceSampler, i::Int, newxi::Real)
+    ss.xprop[i] = newxi
+    potentials(ss, ss.xprop)
+end
+Vβ(ps::Tuple) = ps[3] # extract the tempered potential from a tuple of potentials
+
+# initialize slice and compute potentials at both endpoints
+function init_slice(ss::SliceSampler, rng::AbstractRNG, xi::Real)
+    L   = xi - ss.w[]*rand(rng)
+    R   = L + ss.w[]
+    Lps = potentials(ss, i, L) # note: (L|R)ps are tuples
+    Rps = potentials(ss, i, R)
+    L, R, Lps, Rps
+end
+
+# grow slice until condition is met (Alg. in Fig 4)
+# y < πβ(x) <=> vβ₀ := -log(y) > -log(pi_beta(x)) =: Vβ(x) 
+in_slice(ss::SliceSampler, ps::Tuple) = (ss.curVβ[] > Vβ(ps))
+function grow_slice(ss::SliceSampler, rng::AbstractRNG, i, L, R, Lps, Rps)
+    k = zero(ss.p)
+    while (in_slice(ss, Lps) || in_slice(ss, Rps)) && k < ss.p
+        grow_left = rand(rng) < 0.5
+        if grow_left
+            L  -= (R-L)
+            Lps = potentials(ss, i, L) 
+        else
+            R  += (R-L)
+            Rps = potentials(ss, i, R) 
+        end
+        k += 1
+    end
+    L, R, Lps, Rps, k # k == number of V(x) evaluations
+end
+
+# select point by shrinking (Alg. in Fig 5)
+function shrink_slice(ss::SliceSampler, rng::AbstractRNG, i, xi, L, R, Lps, Rps)
+    newxi = xi
+    bL    = L
+    bR    = R
+    nvs   = 0
+    while true
+        newxi = bL + (bR-bL)*rand(rng)
+        newps = potentials(ss, i, newxi)
+        nvs  += 1
+        if in_slice(ss, newps)
+            acc,nv = is_acceptable(ss, i, xi, newxi, L, R, Lps, Rps)
+            nvs   += nv
+            acc && break
+        end
+        newxi < xi ? (bL = newxi) : (bR = newxi)            
+    end
+    return newxi, newps, nvs
+end
+
+# check acceptability of candidate point (Alg. in Fig 6)
+function is_acceptable(ss::SliceSampler, i, xi, newxi, L, R, Lps, Rps)
+    w    = ss.w[]
+    hL   = L
+    hR   = R
+    hLps = Lps
+    hRps = Rps
+    acc  = true
+    nvs  = 0
+    while hR-hL > 1.1*w
+        M = 0.5(hL+hR)
+        D = (xi < M && newxi >= M) || (xi >= M && newxi < M) # are xi and newxi on Different sides wrt M?
+        if newxi < M
+            hR   = M
+            hRps = potentials(ss, i, hR)
+        else
+            hL   = M
+            hLps = potentials(ss, i, hL)
+        end
+        nvs += 1
+        if D && !in_slice(ss, hLps) && !in_slice(ss, hRps)
+            acc = false
+            break
+        end
+    end
+    return acc, nvs
+end
+
+# univariate step
+function step!(ss::SliceSampler, rng::AbstractRNG, i::Int)
+    xi = ss.xprop[i]
+    L, R, Lps, Rps, k = grow_slice(ss, rng, i, init_slice(ss, rng, xi)...)
+    nvs  = k + 2 # number of V(x) evaluations
+    newxi, newps, nv = shrink_slice(ss, rng, i, xi, L, R, Lps, Rps)
+    nvs += nv
+end
+
+function step!(ss::SliceSampler, rng::AbstractRNG)
+    copyto!(ss.xprop, ss.x)  # init xprop with current x
+    for i in eachindex(ss.x)
+        step!(ss, rng, i)
+    end
+    copyto!(ss.x, ss.xprop)  # update x
+    return
 end

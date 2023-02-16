@@ -21,6 +21,10 @@ struct MHSampler{TTM<:TemperedModel,K<:AbstractFloat,A<:AbstractVector{K}} <: Ex
     sigma::Base.RefValue{K}   # step length (stored as ref to make it mutable) 
 end
 
+#######################################
+# construction and copying
+#######################################
+
 # outer constructor
 function MHSampler(tm, x, curβ, curVref, curV, curVβ; sigma=1.0)
     MHSampler(tm, x, curβ, curVref, curV, curVβ, similar(x), Ref(sigma))
@@ -35,6 +39,10 @@ function Base.copy(mh::MHSampler, args...)
     MHSampler(args..., similar(mh.xprop), Ref(mh.sigma[]))
 end
 
+#######################################
+# sampling methods
+#######################################
+
 # MH proposal = isotropic normal
 function propose!(mhs::MHSampler, rng::AbstractRNG)
     for (i,xi) in enumerate(mhs.x)
@@ -44,8 +52,8 @@ end
 
 # accept proposal: x <- xprop and update potentials 
 function acc_prop!(mhs::MHSampler, vref::F, v::F, vβ::F) where {F<:AbstractFloat}
-    set_x!(mhs, mhs.xprop)
-    set_potentials!(mhs, vref, v, vβ)
+    copyto!(mhs.x, mhs.xprop)         # set x to the proposed value
+    set_potentials!(mhs, vref, v, vβ) # update potentials
 end
 
 # basic Metropolis step (i.e, with symmetric proposal)
@@ -93,6 +101,10 @@ end
 # tracev = Vector{Float64}(undef, 1000)
 # nacc = run!(mhs,x->(0.5sum(abs2,x)),tracev)
 
+#######################################
+# tuning
+#######################################
+
 # tune sigma using a grid search approach
 function tune!(
     mhs::MHSampler{F,K},
@@ -131,7 +143,6 @@ function smooth_params!(xpls::Vector{<:MHSampler}, λ::AbstractFloat)
         xpl.sigma[] = pσs[i]
     end
 end
-
 
 ###############################################################################
 # set MHSampler as default kernel for some statespaces
