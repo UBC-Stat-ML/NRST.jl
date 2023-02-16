@@ -23,11 +23,13 @@ function randrefwithv!(tm::TemperedModel, rng::AbstractRNG, x) # sample x∼π�
     return V(tm, x)   # return energy at new point
 end
 function randrefmayreject!(tm::TemperedModel, rng::AbstractRNG, x, reject_big_vs::Bool)
-    v = randrefwithv!(tm, rng, x)
+    v  = randrefwithv!(tm, rng, x)
+    nv = 1
     while reject_big_vs && v > BIG
-        v = randrefwithv!(tm, rng, x)
+        nv += 1
+        v   = randrefwithv!(tm, rng, x)
     end
-    return v
+    return v, nv
 end
 
 # simple case: user passes proper Functions

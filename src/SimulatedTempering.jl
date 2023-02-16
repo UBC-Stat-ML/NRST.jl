@@ -4,16 +4,6 @@
 
 abstract type AbstractSTSampler{T,TI<:Int,TF<:AbstractFloat,TXp<:ExplorationKernel,TProb<:NRSTProblem} <: RegenerativeSampler{T,TI,TF} end
 
-# grid initialization
-init_grid(N::Int) = collect(range(0.,1.,N+1)) # vcat(0., range(1e-8, 1., N))
-
-# safe initialization for arrays with float entries
-# robust against disruptions by heavy tailed reference distributions
-function initx(pre_x::AbstractArray{TF}, rng::AbstractRNG) where {TF<:AbstractFloat}
-    x = rand(rng, Uniform(-one(TF), one(TF)), size(pre_x))
-    x .* (sign.(x) .* sign.(pre_x)) # quick and dirty way to respect sign constraints 
-end
-
 # copy-constructor, using a given AbstractSTSampler (usually already tuned)
 Base.copy(st::TS) where {TS <: AbstractSTSampler} = TS(copyfields(st)...)
 function copyfields(st::AbstractSTSampler)
@@ -44,29 +34,31 @@ get_trace(st::AbstractSTSampler) = ConstCostTrace(st)
 # NRST step = comm_step ∘ expl_step => (X,0,-1) is atom
 # default method. works for NRST, SH16, and others
 function step!(st::AbstractSTSampler, rng::AbstractRNG)
-    rp    = comm_step!(st, rng) # returns rejection probability
-    xplap = expl_step!(st, rng) # returns explorers' acceptance probability
-    return rp, xplap
+    rp      = comm_step!(st, rng) # returns rejection probability
+    xap,nvs = expl_step!(st, rng) # returns explorers' acceptance probability and number of V(x) evaluations
+    return rp, xap, nvs
 end
 
 # sample from ref (possibly using rejection to avoid V=inf) and update curV accordingly
 function refreshx!(st::AbstractSTSampler, rng::AbstractRNG)
-    st.curV[] = randrefmayreject!(st.np.tm, rng, st.x, st.np.reject_big_vs)
+    v, nvs = randrefmayreject!(st.np.tm, rng, st.x, st.np.reject_big_vs)
+    st.curV[] = v
+    nvs
 end
 
 # exploration step
 function expl_step!(st::TS, rng::AbstractRNG) where {T,I,K,TS<:AbstractSTSampler{T,I,K}}
     @unpack np,xpl,ip = st
-    xplap = one(K)
+    xap = one(K)
     if ip[1] == zero(I)
-        refreshx!(st, rng)                            # sample from ref
+        nvs    = refreshx!(st, rng)                   # sample from ref, return number of V evals (>1 if rejections occured) 
     else
         β      = np.betas[ip[1]+1]                    # get the β for the level
         nexpl  = np.nexpls[ip[1]]                     # get number of exploration steps needed at this level
         params = np.xplpars[ip[1]]                    # get explorer params for this level 
-        xplap  = explore!(xpl, rng, β, params, nexpl) # explore for nexpl steps. note: st.x and st.curV are shared with xpl
+        xap,nvs= explore!(xpl, rng, β, params, nexpl) # explore for nexpl steps. note: st.x and st.curV are shared with xpl
     end
-    return xplap
+    return xap,nvs
 end
 
 # negative log acceptance ratio (nlar) for communication step
@@ -158,11 +150,11 @@ end
 
 # ConstCostTrace
 function save_pre_step!(::AbstractSTSampler, ::ConstCostTrace) end
-function save_post_step!(st::AbstractSTSampler, tr::ConstCostTrace, args...)
+function save_post_step!(st::AbstractSTSampler, tr::ConstCostTrace, _, _, nvs)
     tr.n_steps[] += 1
     i = first(st.ip)
     i == st.np.N && (tr.n_vis_top[] += 1)
-    tr.n_v_evals[] += i == 0 ? 1 : st.np.nexpls[i] # note: this assumes expl steps is after comm -> not true for GT95
+    tr.n_v_evals[] += nvs
     return
 end
 

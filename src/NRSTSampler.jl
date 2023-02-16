@@ -91,6 +91,16 @@ function NRSTSampler(V, Vref, randref, args...;kwargs...)
     NRSTSampler(tm,args...;kwargs...)
 end
 
+# grid initialization
+init_grid(N::Int) = collect(range(0.,1.,N+1))
+
+# safe initialization for arrays with float entries
+# robust against disruptions by heavy tailed reference distributions
+function initx(pre_x::AbstractArray{TF}, rng::AbstractRNG) where {TF<:AbstractFloat}
+    x = rand(rng, Uniform(-one(TF), one(TF)), size(pre_x))
+    x .* (sign.(x) .* sign.(pre_x)) # quick and dirty way to respect sign constraints 
+end
+
 ###############################################################################
 # sampling methods
 ###############################################################################
@@ -135,7 +145,7 @@ end
 
 # handling last tour step
 function save_last_step_tour!(ns::NRSTSampler{T,I,K}, tr; kwargs...) where {T,I,K}
-    save_pre_step!(ns, tr; kwargs...)       # store state at atom
-    save_post_step!(ns, tr, one(K), K(NaN)) # we know that (-1,-1) would be rejected if attempted so we store this. also, the expl step would not use an explorer; thus the NaN.
+    save_pre_step!(ns, tr; kwargs...)               # store state at atom
+    save_post_step!(ns, tr, one(K), K(NaN), one(I)) # we know that (-1,-1) would be rejected if attempted so we store this. also, the expl step would not use an explorer; thus the NaN. Finally, we assume the draw from the reference would succeed, thus using only 1 V(x) eval 
 end
 

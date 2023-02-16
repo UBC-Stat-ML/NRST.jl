@@ -10,17 +10,11 @@ optimal_N(Λ, γ) = ceil(Int, γ*Λ*(1+sqrt(1 + inv(1+2Λ))))
 function tune!(
     ns::NRSTSampler,
     rng::AbstractRNG;
-    min_ntours::Int  = 2_048,
-    ensemble::String = "NRPT",
-    do_stage_2::Bool = true,
-    verbose::Bool    = true,
+    min_ntours::Int = 2_048,
+    verbose::Bool   = true,
     kwargs...
     )
-    if ensemble == "NRPT"
-        ens = NRPTSampler(ns)                                 # PT sampler, whose state is fully independent of ns
-    else
-        ens = replicate(ns.xpl, ns.np.betas)                  # create a vector of explorers, whose states are fully independent of ns and its own explorer
-    end
+    ens          = NRPTSampler(ns)                                  # PT sampler, whose state is fully independent of ns
     oldsumnexpl  = sum(ns.np.nexpls)
     nsteps,Λ,lZs = tune!(ns.np, ens, rng;verbose=verbose,kwargs...)
 
@@ -285,7 +279,7 @@ function collectVs(
     # sample from reference
     x = similar(first(xpls).x)             # temp
     for i in 1:(nsteps*sample_ref)         # nsteps*false = 0 so no samples taken when sample_ref=false
-        trVs[1][i] = randrefmayreject!(np.tm, rng, x, np.reject_big_vs)
+        trVs[1][i], _ = randrefmayreject!(np.tm, rng, x, np.reject_big_vs)
     end
 
     # sample with explorers
@@ -294,7 +288,7 @@ function collectVs(
         xpl = xpls[i]
         rng = rngs[i]
         update_β!(xpl, np.betas[i+1])      # needed because most likely the grid was updated
-        ar  = run!(xpl, rng, trVs[i+1])    # run and collect Vs
+        run!(xpl, rng, trVs[i+1])          # run and collect Vs
     end
     store_params!(np, xpls)                # store params in case anything was re-tuned
     return trVs

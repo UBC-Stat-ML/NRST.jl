@@ -7,17 +7,12 @@ abstract type RegenerativeSampler{T,TI<:Int,TF<:AbstractFloat} <: MCMCSampler{T,
 # run a full tour, starting from a renewal, and ending at the atom
 # note: by doing the above, calling this function repeatedly should give the
 # same output as the sequential version.
-function tour!(
-    rs::RegenerativeSampler{T,I,K},
-    rng::AbstractRNG, 
-    tr::AbstractTrace; 
-    kwargs...
-    ) where {T,I,K}
-    renew!(rs, rng)                         # init with a renewal
+function tour!(rs::RegenerativeSampler, rng::AbstractRNG, tr::AbstractTrace; kwargs...)
+    renew!(rs, rng)                           # init with a renewal
     while !isinatom(rs)
-        save_pre_step!(rs, tr; kwargs...)   # save current state
-        rp, xplap = step!(rs, rng)          # do NRST step, produce new state, rej prob of temp step, and average xpl acc prob from expl step 
-        save_post_step!(rs, tr, rp, xplap)  # save rej prob and xpl acc prob
+        save_pre_step!(rs, tr; kwargs...)     # save current state
+        rp, xap, nvs = step!(rs, rng)         # do NRST step, produce new state, rej prob of temp step, and average xpl acc prob from expl step 
+        save_post_step!(rs, tr, rp, xap, nvs) # save rej prob, xpl acc prob, and number of V(x) evals
     end
     save_last_step_tour!(rs, tr; kwargs...)
 end
