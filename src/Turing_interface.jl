@@ -16,8 +16,8 @@ end
 # outer constructor
 function TuringTemperedModel(model::DPPL.Model)
     viout = DPPL.VarInfo(model)            # build a TypedVarInfo
-    spl   = DPPL.SampleFromPrior()         # used for sampling and to "link!" (transform to unrestricted space)
-    DPPL.link!(viout, spl)                 # force transformation 𝕏 → ℝ
+    spl   = DPPL.SampleFromPrior()         # used for sampling and to "link!!" (transform to unrestricted space)
+    DPPL.link!!(viout, spl, model)         # force transformation 𝕏 → ℝ
     TuringTemperedModel(model, spl, viout)
 end
 
@@ -41,7 +41,7 @@ end
 # sampling from the prior
 function Base.rand(tm::TuringTemperedModel, rng::AbstractRNG)
     vi = DPPL.VarInfo(rng, tm.model, tm.spl, DPPL.PriorContext())         # one-liner of the following, after filling-in the missing context variable: https://github.com/TuringLang/DynamicPPL.jl/blob/715526ffa70292436e479e18d762e7ebf31c9181/src/sampler.jl#L86
-    DPPL.link!(vi, tm.spl)                                                # these two steps are same as the following except avoid re-computing logjoint (not needed now): https://github.com/TuringLang/Turing.jl/blob/5990fae9f176e84d83bd119fa4a6b0e68f028493/src/inference/hmc.jl#L153
+    DPPL.link!!(vi, tm.spl, tm.model)                                     # these two steps are same as the following except avoid re-computing logjoint (not needed now): https://github.com/TuringLang/Turing.jl/blob/5990fae9f176e84d83bd119fa4a6b0e68f028493/src/inference/hmc.jl#L153
     vi[tm.spl]
 end
 Random.rand!(tm::TuringTemperedModel, rng, x) = copyto!(x, rand(tm, rng)) # fallback since it is not possible to reuse x in a cleverer way
@@ -58,13 +58,13 @@ end
 # evaluate target potential
 function V(tm::TuringTemperedModel, x)
     vi  = DPPL.VarInfo(tm.viout, tm.spl, x)
-    DPPL.invlink!(vi, tm.spl)                      # this is to avoid getting the logabsdetjac, which is already in the Vref
+    DPPL.invlink!!(vi, tm.spl, tm.model)           # this is to avoid getting the logabsdetjac, which is already in the Vref
     pot = -DPPL.getlogp(last(
         DPPL.evaluate_threadunsafe!!(              # we copy vi when doing stuff in parallel so it's ok
             tm.model, vi, DPPL.LikelihoodContext()
         )
     ))
-    DPPL.link!(vi, tm.spl)                         # need to re-link because apparently vi and viout share the same metadata field: https://github.com/TuringLang/DynamicPPL.jl/blob/715526ffa70292436e479e18d762e7ebf31c9181/src/varinfo.jl#L113
+    DPPL.link!!(vi, tm.spl, tm.model)              # need to re-link because apparently vi and viout share the same metadata field: https://github.com/TuringLang/DynamicPPL.jl/blob/715526ffa70292436e479e18d762e7ebf31c9181/src/varinfo.jl#L113
     return pot
 end
 

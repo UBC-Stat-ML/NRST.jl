@@ -47,8 +47,8 @@ end
 Vβ(ps::Tuple) = ps[3] # extract the tempered potential from a tuple of potentials
 
 # build a slice
-function build_slice(ss::SliceSampler, rng::AbstractRNG, i::Int)
-    grow_slice(ss, rng, i, init_slice(ss, rng, i)...)
+function build_slice(ss::SliceSampler, rng::AbstractRNG, i::Int, newv::Real)
+    grow_slice(ss, rng, i, init_slice(ss, rng, i)..., newv)
 end
 
 # initialize slice and compute potentials at both endpoints
@@ -62,11 +62,11 @@ function init_slice(ss::SliceSampler, rng::AbstractRNG, i::Int)
 end
 
 # grow slice using the doubling approach (Alg. in Fig 4)
-# y < πβ(x) <=> vβ₀ := -log(y) > -log(pi_beta(x)) =: Vβ(x) 
-in_slice(ss::SliceSampler, ps::Tuple) = (ss.curVβ[] > Vβ(ps))
-function grow_slice(ss::SliceSampler, rng::AbstractRNG, i, L, R, Lps, Rps)
+# y < πβ(x) <=> newv > -log(pi_beta(x)) =: Vβ(x) 
+in_slice(newv::Real, ps::Tuple) = (newv > Vβ(ps))
+function grow_slice(ss::SliceSampler, rng::AbstractRNG, i, L, R, Lps, Rps, newv)
     k = zero(ss.p)
-    while (in_slice(ss, Lps) || in_slice(ss, Rps)) && k < ss.p
+    while (in_slice(newv, Lps) || in_slice(newv, Rps)) && k < ss.p
         grow_left = rand(rng) < 0.5
         if grow_left
             L  -= (R-L)
@@ -81,7 +81,7 @@ function grow_slice(ss::SliceSampler, rng::AbstractRNG, i, L, R, Lps, Rps)
 end
 
 # select point by shrinking (Alg. in Fig 5)
-function shrink_slice(ss::SliceSampler, rng::AbstractRNG, i, L, R, Lps, Rps)
+function shrink_slice(ss::SliceSampler, rng::AbstractRNG, i, L, R, Lps, Rps, newv)
     xi    = ss.x[i]
     newxi = xi                           # init with the current point
     newps = potentials(ss)               # init with the potentials at the current point
@@ -92,8 +92,8 @@ function shrink_slice(ss::SliceSampler, rng::AbstractRNG, i, L, R, Lps, Rps)
         newxi = bL + (bR-bL)*rand(rng)   # select a point in (bL,bR) at random
         newps = potentials(ss, i, newxi) # compute the potentials at that point
         nvs  += 1
-        if in_slice(ss, newps)
-            acc,nv = is_acceptable(ss, i, newxi, L, R, Lps, Rps)
+        if in_slice(newv, newps)
+            acc,nv = is_acceptable(ss, i, newxi, L, R, Lps, Rps, newv)
             nvs   += nv
             acc && break
         end
@@ -103,7 +103,7 @@ function shrink_slice(ss::SliceSampler, rng::AbstractRNG, i, L, R, Lps, Rps)
 end
 
 # check acceptability of candidate point (Alg. in Fig 6)
-function is_acceptable(ss::SliceSampler, i, newxi, L, R, Lps, Rps)
+function is_acceptable(ss::SliceSampler, i, newxi, L, R, Lps, Rps, newv)
     xi   = ss.x[i]
     w    = ss.w[]
     hL   = L
@@ -123,7 +123,7 @@ function is_acceptable(ss::SliceSampler, i, newxi, L, R, Lps, Rps)
             hLps = potentials(ss, i, hL)
         end
         nvs += 1
-        if D && !in_slice(ss, hLps) && !in_slice(ss, hRps)
+        if D && !in_slice(newv, hLps) && !in_slice(newv, hRps)
             acc = false
             break
         end
@@ -133,12 +133,13 @@ end
 
 # univariate step
 function step!(ss::SliceSampler, rng::AbstractRNG, i::Int)
-    L,R,Lps,Rps,nv = build_slice(ss, rng, i)
-    nvs  = nv + 2                 # number of V(x) evaluations
-    newxi,newps,nv = shrink_slice(ss, rng, i, L, R, Lps, Rps)
+    newv = ss.curVβ[] + randexp(rng) # draw a new slice. note: y = pibeta(x)*U(0,1) <=> -log(y) =: newv = Vβ(x) + Exp(1)
+    L,R,Lps,Rps,nv = build_slice(ss, rng, i, newv)
+    nvs  = nv + 2                    # number of V(x) evaluations
+    newxi,newps,nv = shrink_slice(ss, rng, i, L, R, Lps, Rps, newv)
     nvs += nv
-    ss.xprop[i]    = newxi        # update proposal (actual state is updated after looping over all i) 
-    set_potentials!(ss, newps...) # update potentials
+    ss.xprop[i]    = newxi           # update proposal (actual state is updated after looping over all i) 
+    set_potentials!(ss, newps...)    # update potentials
     return nvs
 end
 

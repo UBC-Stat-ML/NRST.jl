@@ -1,4 +1,101 @@
 ###############################################################################
+# ToyModel
+###############################################################################
+1+2
+using NRST, Distributions, DynamicPPL
+using SplittableRandoms
+
+@model function ToyModel()
+    x ~ Normal()
+end
+tm  = NRST.TuringTemperedModel(ToyModel())
+rng = SplittableRandom(1)
+x   = [randn(rng)]
+ps  = NRST.potentials(tm,x)
+ss  = NRST.SliceSampler(
+    tm, x, Ref(1.0), Ref(ps[1]), Ref(0.0), Ref(ps[1])
+);
+nsteps=30000
+xs = similar(x, nsteps)
+nv = zeros(Int, nsteps)
+for i in 1:nsteps
+    nv[i] = NRST.step!(ss,rng)
+    xs[i] = ss.x[1]
+    # println("Step $i: nv=$(nv[i])\tx=$(round(xs[i],digits=2))\tVβ=$(ss.curVβ[])")
+end
+
+using HypothesisTests
+pvalue(OneSampleADTest(xs, Normal()))
+
+
+# init_slice
+i = 1
+xi  = ss.x[i]              # current value at position i
+L   = xi - ss.w[]*rand(rng)
+R   = L + ss.w[]
+Lps = NRST.potentials(ss, i, L) # note: (L|R)ps are tuples
+Rps = NRST.potentials(ss, i, R)
+
+# grow_slice
+k = zero(ss.p)
+while (NRST.in_slice(ss, Lps) || NRST.in_slice(ss, Rps)) && k < ss.p
+    grow_left = rand(rng) < 0.5
+    if grow_left
+        L  -= (R-L)
+        Lps = NRST.potentials(ss, i, L) 
+    else
+        R  += (R-L)
+        Rps = potentials(ss, i, R) 
+    end
+    k += 1
+end
+
+# shrink_slice
+xi    = ss.x[i]
+newxi = xi                           # init with the current point
+newps = NRST.potentials(ss)               # init with the potentials at the current point
+bL    = L
+bR    = R
+nvs   = 0                            # counts number of V(x) evaluations
+while true
+    newxi = bL + (bR-bL)*rand(rng)   # select a point in (bL,bR) at random
+    newps = NRST.potentials(ss, i, newxi) # compute the potentials at that point
+    nvs  += 1
+    if NRST.in_slice(ss, newps)
+        acc,nv = is_acceptable(ss, i, newxi, L, R, Lps, Rps)
+        nvs   += nv
+        acc && break
+    end
+    newxi < xi ? (bL = newxi) : (bR = newxi)            
+end
+
+# is_acceptable
+xi   = ss.x[i]
+w    = ss.w[]
+hL   = L
+hR   = R
+hLps = Lps
+hRps = Rps
+acc  = true
+nvs  = 0
+while hR-hL > 1.1*w
+    M = 0.5(hL+hR)
+    D = (xi < M && newxi >= M) || (xi >= M && newxi < M) # are xi and newxi on Different sides wrt M?
+    if newxi < M
+        hR   = M
+        hRps = NRST.potentials(ss, i, hR)
+    else
+        hL   = M
+        hLps = NRST.potentials(ss, i, hL)
+    end
+    nvs += 1
+    if D && !in_slice(ss, hLps) && !in_slice(ss, hRps)
+        acc = false
+        break
+    end
+end
+
+###############################################################################
 # HierarchicalModel
 ###############################################################################
 
@@ -101,8 +198,9 @@ ns = NRSTSampler(
     tune=false
 )[1];
 ss = NRST.SliceSampler(ns.np.tm, ns.x, ns.xpl.curβ, ns.xpl.curVref, ns.xpl.curV, ns.xpl.curVβ);
+println(NRST.step!(ss,rng))
 ss.x
-NRST.step!(ss,rng)
+ss.curVβ[]
 ###############################################################################
 # end
 ###############################################################################
