@@ -51,7 +51,7 @@ function update_β!(ex::ExplorationKernel, β::AbstractFloat)
 end
 
 #######################################
-# methods used only within an explorer
+# methods for handling potentials
 #######################################
 
 # compute all potentials at some x
@@ -60,6 +60,9 @@ function potentials(ex::ExplorationKernel, newx)
     vβ = vref + ex.curβ[]*v
     vref, v, vβ
 end
+
+# return the potentials for the current point
+potentials(ex::ExplorationKernel) = (ex.curVref[], ex.curV[], ex.curVβ[])
 
 # set potentials. used during sampling with an explorer
 function set_potentials!(ex::ExplorationKernel, vref::F, v::F, vβ::F) where {F<:AbstractFloat}

@@ -77,22 +77,32 @@ end
 
 rng = SplittableRandom(69929)
 tm  = HierarchicalModel();
-ns, TE, Λ = NRSTSampler(
-            tm,
-            rng,
-            xpl_smooth_λ=1e-7
-);
+# ns, TE, Λ = NRSTSampler(
+#             tm,
+#             rng,
+#             xpl_smooth_λ=1e-7,
+# );
 
-using Plots
-using Plots.PlotMeasures: px
-res   = parallel_run(ns,rng,NRST.NRSTTrace(ns),TE=TE,δ=0.5);
-plots = diagnostics(ns, res);
-hl    = ceil(Int, length(plots)/2)
-pdiags=plot(
-    plots..., layout = (hl,2), size = (900,hl*333),left_margin = 40px,
-    right_margin = 40px
-)
+# using Plots
+# using Plots.PlotMeasures: px
+# res   = parallel_run(ns,rng,NRST.NRSTTrace(ns),TE=TE,δ=0.5);
+# plots = diagnostics(ns, res);
+# hl    = ceil(Int, length(plots)/2)
+# pdiags=plot(
+#     plots..., layout = (hl,2), size = (900,hl*333),left_margin = 40px,
+#     right_margin = 40px
+# )
 
+
+
+ns = NRSTSampler(
+    tm,
+    rng,
+    tune=false
+)[1];
+ss = NRST.SliceSampler(ns.np.tm, ns.x, ns.xpl.curβ, ns.xpl.curVref, ns.xpl.curV, ns.xpl.curVβ);
+ss.x
+NRST.step!(ss,rng)
 ###############################################################################
 # end
 ###############################################################################
