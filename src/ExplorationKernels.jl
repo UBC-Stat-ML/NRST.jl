@@ -19,6 +19,39 @@ function Base.copy(xpl::ExplorationKernel)
     )
 end
 
+# by default, tuning does nothing
+function tune!(::ExplorationKernel, args...; kwargs...) end
+
+# same with smoothing
+function smooth_params!(::Vector{<:ExplorationKernel}, args...) end
+
+#######################################
+# sampling methods
+#######################################
+
+# run sampler keeping track only of cummulative acceptance probability
+# used in tuning
+function run!(ex::ExplorationKernel, rng::AbstractRNG, nsteps::Int)
+    sum_ap = zero(eltype(ex.curV))
+    for _ in 1:nsteps
+        ap, _   = step!(ex, rng)
+        sum_ap += ap
+    end
+    return (sum_ap/nsteps)
+end
+
+# run sampler keeping track of V
+function run!(ex::ExplorationKernel, rng::AbstractRNG, trV::Vector{K}) where {K}
+    sum_ap = zero(K)
+    nsteps = length(trV)
+    for n in 1:nsteps
+        ap, _   = step!(ex, rng)
+        sum_ap += ap
+        trV[n]  = ex.curV[]
+    end
+    return (sum_ap/nsteps)
+end
+
 #######################################
 # methods interfacing with an NRSTSampler
 #######################################
@@ -49,6 +82,8 @@ function update_β!(ex::ExplorationKernel, β::AbstractFloat)
     ex.curVref[] = Vref(ex.tm, ex.x)          # vref is *not* shared so needs updating
     ex.curVβ[]   = ex.curVref[] + β*ex.curV[] # vβ is *not* shared so needs updating
 end
+
+default_nexpl_steps(ex::ExplorationKernel) = 10
 
 #######################################
 # methods for handling potentials

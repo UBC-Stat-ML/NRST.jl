@@ -21,7 +21,7 @@ end
 #######################################
 
 # outer constructor
-function SliceSampler(tm, x, curβ, curVref, curV, curVβ; w=10.0, p=20)
+function SliceSampler(tm, x, curβ, curVref, curV, curVβ; w=10.0, p=20, kwargs...)
     SliceSampler(tm, x, curβ, curVref, curV, curVβ, similar(x), Ref(w), p)
 end
 params(ss::SliceSampler) = (w=ss.w[],)                  # get params as namedtuple
@@ -34,6 +34,8 @@ end
 function Base.copy(ss::SliceSampler, args...)
     SliceSampler(args..., similar(x), Ref(ss.w[]), ss.p)
 end
+
+default_nexpl_steps(ss::SliceSampler) = one(ss.p)
 
 #######################################
 # sampling methods
@@ -145,11 +147,11 @@ end
 
 # multivariate step
 function step!(ss::SliceSampler, rng::AbstractRNG)
-    nvs = 0                       # number of V(x) evaluations
-    copyto!(ss.xprop, ss.x)       # init xprop with current x
+    nvs = zero(ss.p)                 # number of V(x) evaluations
+    copyto!(ss.xprop, ss.x)          # init xprop with current x
     for i in eachindex(ss.x)
         nvs += step!(ss, rng, i)
     end
-    copyto!(ss.x, ss.xprop)       # update state (potentials are updated inside the loop)
-    return nvs
+    copyto!(ss.x, ss.xprop)          # update state (potentials are updated inside the loop)
+    return one(eltype(ss.curV)), nvs # return "acceptance probability" and number of V evals
 end

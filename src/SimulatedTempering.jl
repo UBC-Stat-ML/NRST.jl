@@ -43,7 +43,7 @@ end
 
 # sample from ref (possibly using rejection to avoid V=inf) and update curV accordingly
 function refreshx!(st::AbstractSTSampler, rng::AbstractRNG)
-    v, nvs = randrefmayreject!(st.np.tm, rng, st.x, st.np.reject_big_vs)
+    v, nvs    = randrefmayreject!(st.np.tm, rng, st.x, st.np.reject_big_vs)
     st.curV[] = v
     nvs
 end
@@ -132,7 +132,8 @@ function save_post_step!(
     st::AbstractSTSampler,
     tr::NRSTTrace,
     rp::AbstractFloat, 
-    xplap::AbstractFloat
+    xplap::AbstractFloat,
+    args...
     )
     push!(tr.trRP, rp)
     l = st.ip[1]

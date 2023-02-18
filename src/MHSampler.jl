@@ -26,7 +26,7 @@ end
 #######################################
 
 # outer constructor
-function MHSampler(tm, x, curβ, curVref, curV, curVβ; sigma=1.0)
+function MHSampler(tm, x, curβ, curVref, curV, curVβ; sigma=1.0, kwargs...)
     MHSampler(tm, x, curβ, curVref, curV, curVβ, similar(x), Ref(sigma))
 end
 params(mh::MHSampler) = (sigma=mh.sigma[],)                   # get params as namedtuple
@@ -75,32 +75,6 @@ function step!(mhs::MHSampler, rng::AbstractRNG)
     return ap, 1                            # return ap and 1 == number of V(x) evals -> happens inside potentials()
 end
 
-# run sampler keeping track only of cummulative acceptance probability
-# used in tuning
-function run!(mhs::MHSampler, rng::AbstractRNG, nsteps::Int)
-    sum_ap = 0.
-    for _ in 1:nsteps
-        ap, _   = step!(mhs, rng)
-        sum_ap += ap
-    end
-    return (sum_ap/nsteps)
-end
-
-# run sampler keeping track of V
-function run!(mhs::MHSampler{F,K}, rng::AbstractRNG, trV::Vector{K}) where {F,K}
-    sum_ap = zero(K)
-    nsteps = length(trV)
-    for n in 1:nsteps
-        ap, _   = step!(mhs, rng)
-        sum_ap += ap
-        trV[n]  = mhs.curV[]
-    end
-    return (sum_ap/nsteps)
-end
-# # test
-# tracev = Vector{Float64}(undef, 1000)
-# nacc = run!(mhs,x->(0.5sum(abs2,x)),tracev)
-
 #######################################
 # tuning
 #######################################
@@ -148,17 +122,17 @@ end
 # set MHSampler as default kernel for some statespaces
 ###############################################################################
 
-# default exploration kernel for x in ℝᵈ
-function get_explorer(
-    tm::TemperedModel, 
-    xinit::AbstractVector{TF}, 
-    refV::Base.RefValue{TF}
-    ) where {TF<:AbstractFloat}
-    # note: by not copying xinit, NRSTSampler and explorer share the same x state
-    #       same with the cached potential V 
-    # note: tm might contain fields that are mutated whenever potentials are
-    # computed (e.g. for TuringModel)
-    MHSampler(tm, xinit, one(TF), refV)
-end
+# # default exploration kernel for x in ℝᵈ
+# function get_explorer(
+#     tm::TemperedModel, 
+#     xinit::AbstractVector{TF}, 
+#     refV::Base.RefValue{TF}
+#     ) where {TF<:AbstractFloat}
+#     # note: by not copying xinit, NRSTSampler and explorer share the same x state
+#     #       same with the cached potential V 
+#     # note: tm might contain fields that are mutated whenever potentials are
+#     # computed (e.g. for TuringModel)
+#     MHSampler(tm, xinit, one(TF), refV)
+# end
 
 

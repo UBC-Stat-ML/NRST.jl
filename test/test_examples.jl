@@ -1,42 +1,4 @@
 ###############################################################################
-# ToyModel
-###############################################################################
-
-using Random, SplittableRandoms
-using NRST, Distributions, DynamicPPL
-
-@model function ToyModel()
-    y1 ~ Normal(3,0.1)
-    y2 ~ Laplace(-3,5)
-    y3 ~ Gumbel()
-end
-tm  = NRST.TuringTemperedModel(ToyModel())
-rng = SplittableRandom(1)
-x   = rand(tm,rng)
-ps  = NRST.potentials(tm,x)
-ss  = NRST.SliceSampler(
-    tm, x, Ref(1.0), Ref(ps[1]), Ref(0.0), Ref(ps[1])
-);
-
-using HypothesisTests
-
-nsteps=200
-xs = collect(hcat(map(_ -> (NRST.step!(ss,rng); copy(ss.x)),1:nsteps)...)');
-all(
-    [
-        pvalue(
-            ApproximateOneSampleKSTest(
-                xs[:,i], 
-                first(getproperty(tm.viout.metadata,sym).dists) 
-            )
-        ) 
-    for (i,sym) in enumerate(propertynames(tm.viout.metadata))
-    ] .> 0.01
-)
-using StatsPlots
-density(xs[:,3])
-plot!(TDist(3))
-###############################################################################
 # HierarchicalModel
 ###############################################################################
 
@@ -115,21 +77,21 @@ end
 
 rng = SplittableRandom(69929)
 tm  = HierarchicalModel();
-# ns, TE, Λ = NRSTSampler(
-#             tm,
-#             rng,
-#             xpl_smooth_λ=1e-7,
-# );
+ns, TE, Λ = NRSTSampler(
+            tm,
+            rng,
+            xpl_smooth_λ=1e-7,
+);
 
-# using Plots
-# using Plots.PlotMeasures: px
-# res   = parallel_run(ns,rng,NRST.NRSTTrace(ns),TE=TE,δ=0.5);
-# plots = diagnostics(ns, res);
-# hl    = ceil(Int, length(plots)/2)
-# pdiags=plot(
-#     plots..., layout = (hl,2), size = (900,hl*333),left_margin = 40px,
-#     right_margin = 40px
-# )
+using Plots
+using Plots.PlotMeasures: px
+res   = parallel_run(ns,rng,NRST.NRSTTrace(ns),TE=TE,δ=0.5);
+plots = diagnostics(ns, res);
+hl    = ceil(Int, length(plots)/2)
+pdiags=plot(
+    plots..., layout = (hl,2), size = (900,hl*333),left_margin = 40px,
+    right_margin = 40px
+)
 
 
 

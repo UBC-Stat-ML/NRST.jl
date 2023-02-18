@@ -63,7 +63,8 @@ function tune!(
     xpl_smooth_λ::Real = .1,        # smoothness knob for xpl params. λ==0 == no smoothing
     check_N::Bool      = true,
     check_at_rnd::Int  = 10,        # early round with enough accuracy to check V integrability and N 
-    verbose::Bool      = true
+    verbose::Bool      = true,
+    kwargs...
     )
     !np.use_mean && (max_dr_ratio = Inf)      # equality of directional rejections only holds for the mean strategy
     if verbose

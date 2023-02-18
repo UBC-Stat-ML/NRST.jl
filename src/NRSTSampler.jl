@@ -20,20 +20,18 @@ struct BadNException{TI<:Int} <: Exception
 end
 struct NonIntegrableVException <: Exception end
 
-# constructor that also builds an NRSTProblem and does initial tuning
+# outer constructor
 function NRSTSampler(
     tm::TemperedModel,
-    rng::AbstractRNG;
+    rng::AbstractRNG,
+    ::Type{TXpl}        = SliceSampler;
     N::Int              = 30,
-    nexpl::Int          = 10, 
-    use_mean::Bool      = true,
-    reject_big_vs::Bool = true,
     log_grid::Bool      = false,
     tune::Bool          = true,
-    adapt_N_rounds::Int = 3, 
+    adapt_N_rounds::Int = 3,
     kwargs...
-    )
-    ns      = init_sampler(tm, rng, N, nexpl, use_mean, reject_big_vs, log_grid)
+    ) where {TXpl <: ExplorationKernel}
+    ns      = init_sampler(tm, rng, TXpl; N=N, log_grid=log_grid, kwargs...)
     stats   = ()
     adapt_N = 0
     while tune
@@ -45,17 +43,13 @@ function NRSTSampler(
                 @warn "N=$(e.Ncur) too " * (e.Nopt > e.Ncur ? "low" : "high") * 
                       ". Setting N=$(e.Nopt) and restarting."
                 N = e.Nopt
-                ns = init_sampler(
-                    tm, rng, N, nexpl, use_mean, reject_big_vs, log_grid
-                )
+                ns = init_sampler(tm, rng, TXpl; N=N, log_grid=log_grid, kwargs...)
                 adapt_N += 1
             elseif e isa NonIntegrableVException
                 @warn "V might not be integrable under the reference. " *
                       "Adjusting the adaptation to this fact and restarting."
                 log_grid = true
-                ns = init_sampler(
-                    tm, rng, N, nexpl, use_mean, reject_big_vs, log_grid
-                )
+                ns = init_sampler(tm, rng, TXpl; N=N, log_grid=log_grid, kwargs...)
             else
                 rethrow(e)
             end
@@ -64,35 +58,38 @@ function NRSTSampler(
     return (ns, stats...)
 end
 
+# constructor for a given (V,Vref,randref) triplet
+function NRSTSampler(V::Function, Vref::Function, randref::Function, args...;kwargs...)
+    tm = SimpleTemperedModel(V, Vref, randref)
+    NRSTSampler(tm,args...;kwargs...)
+end
+
+# initialize a sampler
 function init_sampler(
     tm::TemperedModel,
     rng::AbstractRNG,
+    ::Type{TXpl};
     N::Int,
-    nexpl::Int, 
-    use_mean::Bool,
-    reject_big_vs::Bool,
-    log_grid::Bool
-    )
+    log_grid::Bool,
+    use_mean::Bool      = true,
+    reject_big_vs::Bool = true,
+    kwargs...
+    ) where {TXpl <: ExplorationKernel}
     betas = init_grid(N)
     x     = initx(rand(tm, rng), rng)                            # draw an initial point
     curV  = Ref(V(tm, x))
-    xpl   = get_explorer(tm, x, curV)
+    xpl   = TXpl(tm, x, one(eltype(curV)), curV; kwargs...)
+    nexpl = default_nexpl_steps(xpl)
     np    = NRSTProblem(                                         # instantiate an NRSTProblem
         tm, N, betas, similar(betas), use_mean, reject_big_vs, 
         log_grid, fill(nexpl, N), fill(params(xpl), N)
     )
     ip    = MVector(zero(N), one(N))
-    return NRSTSampler(np, xpl, x, ip, curV)
+    NRSTSampler(np, xpl, x, ip, curV)
 end
 
-# constructor for a given (V,Vref,randref) triplet
-function NRSTSampler(V, Vref, randref, args...;kwargs...)
-    tm = SimpleTemperedModel(V, Vref, randref)
-    NRSTSampler(tm,args...;kwargs...)
-end
-
-# grid initialization
-init_grid(N::Int) = collect(range(0.,1.,N+1))
+init_grid(N::Int) = collect(range(0.,1.,N+1)) # grid initialization
+initx(pre_x, args...) = pre_x                 # default x initialization
 
 # safe initialization for arrays with float entries
 # robust against disruptions by heavy tailed reference distributions
