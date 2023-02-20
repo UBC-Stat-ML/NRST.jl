@@ -11,7 +11,6 @@ struct SliceSampler{TTM<:TemperedModel,TF<:AbstractFloat,TV<:AbstractVector{TF},
     curV::Base.RefValue{TF}    # current target potential (shared with NRSTSampler)
     curVβ::Base.RefValue{TF}   # current tempered potential
     # idiosyncratic fields
-    xprop::TV                  # temp storage for calculating potentials during sampling
     w::Base.RefValue{TF}       # initial slice width
     p::TI                      # max slice width = w2^p
 end
@@ -22,17 +21,17 @@ end
 
 # outer constructor
 function SliceSampler(tm, x, curβ, curVref, curV, curVβ; w=10.0, p=20, kwargs...)
-    SliceSampler(tm, x, curβ, curVref, curV, curVβ, similar(x), Ref(w), p)
+    SliceSampler(tm, x, curβ, curVref, curV, curVβ, Ref(w), p)
 end
 params(ss::SliceSampler) = (w=ss.w[],)                  # get params as namedtuple
 function set_params!(ss::SliceSampler, params::NamedTuple) # set sigma from a NamedTuple
     ss.w[] = params.w
 end
 
-# copy constructor
+# low level copy constructor
 # note: this is called only from the generic method for copying ExplorationKernels
 function Base.copy(ss::SliceSampler, args...)
-    SliceSampler(args..., similar(x), Ref(ss.w[]), ss.p)
+    SliceSampler(args..., Ref(ss.w[]), ss.p)
 end
 
 default_nexpl_steps(ss::SliceSampler) = one(ss.p)
@@ -41,12 +40,14 @@ default_nexpl_steps(ss::SliceSampler) = one(ss.p)
 # sampling methods
 #######################################
 
-# compute all potentials by setting xprop[i] = newxi
+# compute all potentials by temporarilly changing x[i]
 function potentials(ss::SliceSampler, i::Int, newxi::Real)
-    ss.xprop[i] = newxi
-    potentials(ss, ss.xprop)
+    xi      = ss.x[i]
+    ss.x[i] = newxi
+    ps      = potentials(ss, ss.x)
+    ss.x[i] = xi
+    return ps
 end
-Vβ(ps::Tuple) = ps[3] # extract the tempered potential from a tuple of potentials
 
 # build a slice
 function build_slice(ss::SliceSampler, rng::AbstractRNG, i::Int, newv::Real)
@@ -64,12 +65,13 @@ function init_slice(ss::SliceSampler, rng::AbstractRNG, i::Int)
 end
 
 # grow slice using the doubling approach (Alg. in Fig 4)
-# y < πβ(x) <=> newv > -log(pi_beta(x)) =: Vβ(x) 
+# y < πβ(x) <=> newv > -log(pi_beta(x)) =: Vβ(x)
+Vβ(ps::Tuple) = last(ps) # extract the tempered potential from a tuple of potentials
 in_slice(newv::Real, ps::Tuple) = (newv > Vβ(ps))
 function grow_slice(ss::SliceSampler, rng::AbstractRNG, i, L, R, Lps, Rps, newv)
     k = zero(ss.p)
     while (in_slice(newv, Lps) || in_slice(newv, Rps)) && k < ss.p
-        grow_left = rand(rng) < 0.5
+        grow_left = rand(rng, Bool)
         if grow_left
             L  -= (R-L)
             Lps = potentials(ss, i, L) 
@@ -135,23 +137,21 @@ end
 
 # univariate step
 function step!(ss::SliceSampler, rng::AbstractRNG, i::Int)
-    newv = ss.curVβ[] + randexp(rng) # draw a new slice. note: y = pibeta(x)*U(0,1) <=> -log(y) =: newv = Vβ(x) + Exp(1)
+    newv    = ss.curVβ[] + randexp(rng) # draw a new slice. note: y = pibeta(x)*U(0,1) <=> -log(y) =: newv = Vβ(x) + Exp(1)
     L,R,Lps,Rps,nv = build_slice(ss, rng, i, newv)
-    nvs  = nv + 2                    # number of V(x) evaluations
+    nvs     = nv + 2                    # number of V(x) evaluations = 2 (init_slice) + nv (grow_slice)
     newxi,newps,nv = shrink_slice(ss, rng, i, L, R, Lps, Rps, newv)
-    nvs += nv
-    ss.xprop[i]    = newxi           # update proposal (actual state is updated after looping over all i) 
-    set_potentials!(ss, newps...)    # update potentials
+    nvs    += nv
+    ss.x[i] = newxi                     # update state
+    set_potentials!(ss, newps...)       # update potentials
     return nvs
 end
 
-# multivariate step
+# multivariate step: Gibbs update
 function step!(ss::SliceSampler, rng::AbstractRNG)
     nvs = zero(ss.p)                 # number of V(x) evaluations
-    copyto!(ss.xprop, ss.x)          # init xprop with current x
     for i in eachindex(ss.x)
         nvs += step!(ss, rng, i)
     end
-    copyto!(ss.x, ss.xprop)          # update state (potentials are updated inside the loop)
     return one(eltype(ss.curV)), nvs # return "acceptance probability" and number of V evals
 end
