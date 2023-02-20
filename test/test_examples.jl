@@ -75,13 +75,17 @@ function NRST.V(tm::HierarchicalModel{TF}, x) where {TF}
     return acc
 end
 
-rng = SplittableRandom(69929)
+rng = SplittableRandom(6929)
 tm  = HierarchicalModel();
 ns, TE, Λ = NRSTSampler(
             tm,
             rng,
             xpl_smooth_λ=1e-7,
+            maxcor=0.1
 );
+
+nrpt = NRST.NRPTSampler(ns);
+NRST.tune_c_nexpls!(ns.np, nrpt, rng, 16384, 0.7, 1e-7)
 
 using Plots
 using Plots.PlotMeasures: px

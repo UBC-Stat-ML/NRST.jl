@@ -62,7 +62,7 @@ function tune!(
     γ::Real            = 8.0,       # correction for the optimal_N formula
     xpl_smooth_λ::Real = .1,        # smoothness knob for xpl params. λ==0 == no smoothing
     check_N::Bool      = true,
-    check_at_rnd::Int  = 10,        # early round with enough accuracy to check V integrability and N 
+    check_at_rnd::Int  = 9,         # early round with enough accuracy to check V integrability and N 
     verbose::Bool      = true,
     kwargs...
     )
