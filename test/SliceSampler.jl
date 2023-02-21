@@ -11,8 +11,9 @@
     nxs = 10000
 
     @testset "SliceSamplerStepping" begin 
-        ss  = NRST.SliceSamplerStepping(
-            tm, x, Ref(1.0), Ref(ps[1]), Ref(0.0), Ref(ps[1])
+        ss  = NRST.SliceSampler(
+            tm, x, Ref(1.0), Ref(ps[1]), Ref(0.0), Ref(ps[1]), 
+            SSS=NRST.SliceSamplerStepping
         );
         xs  = collect(hcat(map(_ -> (NRST.step!(ss,rng); copy(ss.x)),1:nxs)...)');
         @test all(
@@ -29,7 +30,7 @@
     end
 
     @testset "SliceSamplerDoubling" begin 
-        ss  = NRST.SliceSamplerDoubling(
+        ss  = NRST.SliceSampler(
             tm, x, Ref(1.0), Ref(ps[1]), Ref(0.0), Ref(ps[1])
         );
         xs  = collect(hcat(map(_ -> (NRST.step!(ss,rng); copy(ss.x)),1:nxs)...)');

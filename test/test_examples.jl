@@ -13,9 +13,10 @@ const tm  = NRST.TuringTemperedModel(ToyModel())
 const rng = SplittableRandom(1)
 const x   = rand(tm,rng)
 const ps  = NRST.potentials(tm,x)
-const ss  = NRST.SliceSamplerSteppingOut(
-    tm, x, Ref(1.0), Ref(ps[1]), Ref(0.0), Ref(ps[1])
+const ss  = NRST.SliceSampler(
+    tm, x, Ref(1.0), Ref(ps[1]), Ref(0.0), Ref(ps[1]), SSS=NRST.SliceSamplerStepping
 );
+
 NRST.step!(ss,rng)
 for _ in 1:10000
     NRST.step!(ss,rng)
