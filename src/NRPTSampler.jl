@@ -1,6 +1,10 @@
-# IDEA: just use collection of N+1 NRST samplers, since they already provide API
+###############################################################################
+# Non-reversible Parallel Tempering
+# Idea: just use collection of N+1 NRST samplers, since they already provide API
 # for exploration plus keeping track of perm index (ip[1]), state x, and 
 # corresponding V(x). Then DEO swaps amount to interchanging ip[1] 
+###############################################################################
+
 struct NRPTSampler{TS<:NRSTSampler}
     nss::Vector{TS} # vector of N+1 NRSTSamplers
 end
@@ -28,13 +32,19 @@ function get_xpls(nrpt::NRPTSampler)
 end
 
 # struct for storing minimal info about an nsteps run
-struct NRPTTrace{TF<:AbstractFloat,TI<:Int}
+struct NRPTTrace{T, TF<:AbstractFloat, TI<:Int}
     n::Base.RefValue{TI} # current step
-    Vs::Matrix{TF}       # matrix of size (N+1)×nsteps for collecting V values 
+    xs::Matrix{T}        # matrix of size (N+1)×nsteps for collecting x samples
+    Vs::Matrix{TF}       # matrix of size (N+1)×nsteps for collecting V values
     rpsum::Vector{TF}    # vector of length N, accumulates sum of rej prob of swaps started from i=0:N-1
 end
-function NRPTTrace(N::Int, nsteps::Int)
-    NRPTTrace(Ref(zero(N)), Matrix{Float64}(undef, N+1, nsteps), zeros(Float64, N))
+function NRPTTrace(nrpt::NRPTSampler, nsteps::Int)
+    N = get_N(nrpt)
+    T = typeof(first(nrpt.nss).x)
+    NRPTTrace(
+        Ref(zero(N)), Matrix{T}(undef, N+1, nsteps), 
+        Matrix{Float64}(undef, N+1, nsteps), zeros(Float64, N)
+    )
 end
 averej(tr::NRPTTrace) = tr.rpsum/(tr.n[]/2)                 # compute average rejection, using that DEO uses each swap half the time
 rows2vov(M::AbstractMatrix) = [copy(r) for r in eachrow(M)] # used for converting the tr.Vs matrix to vector of vectors
@@ -48,9 +58,10 @@ end
 
 # store in trace
 function store_results!(nrpt::NRPTSampler, tr::NRPTTrace)
-    # copy the i-th machine's V to the l(i)+1 position in storage, where l(i)
+    # copy the i-th machine's data to the l(i)+1 position in storage, where l(i)
     # is the level the i-th machine is currently in charge of 
     for (i, l) in enumerate(get_perm(nrpt))
+        tr.xs[l+1, tr.n[]] = copy(nrpt.nss[i].x)
         tr.Vs[l+1, tr.n[]] = nrpt.nss[i].curV[]
     end
 end
@@ -112,7 +123,7 @@ function run!(nrpt::NRPTSampler, rng::AbstractRNG, tr::NRPTTrace)
     end
 end
 function run!(nrpt::NRPTSampler, rng::AbstractRNG, nsteps::Int)
-    tr = NRPTTrace(get_N(nrpt), nsteps)
+    tr = NRPTTrace(nrpt, nsteps)
     run!(nrpt, rng, tr)
     return tr
 end

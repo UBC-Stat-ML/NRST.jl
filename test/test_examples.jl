@@ -105,5 +105,6 @@ ns, TE, Λ = NRSTSampler(
             use_mean=true,
             γ = 1.0,
             xpl_smooth_λ=0.00001,
-            maxcor=0.7
+            maxcor=0.7,
+            tune=false
 );

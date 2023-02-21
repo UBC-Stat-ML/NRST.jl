@@ -24,7 +24,7 @@ struct NonIntegrableVException <: Exception end
 function NRSTSampler(
     tm::TemperedModel,
     rng::AbstractRNG,
-    ::Type{TXpl}        = SliceSampler;
+    ::Type{TXpl}        = SliceSamplerDoubling;
     N::Int              = 30,
     log_grid::Bool      = false,
     tune::Bool          = true,
