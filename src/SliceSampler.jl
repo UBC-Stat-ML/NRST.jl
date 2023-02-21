@@ -1,29 +1,14 @@
 ###############################################################################
-# Slice sampler with doubling strategy (schema 4 in Neal (2003))
+# Slice samplers à la Neal (2003)
 ###############################################################################
 
-struct SliceSampler{TTM<:TemperedModel,TF<:AbstractFloat,TV<:AbstractVector{TF},TI<:Int} <: ExplorationKernel
-    # fields common to every ExplorationKernel
-    tm::TTM                    # TemperedModel
-    x::TV                      # current state (shared with NRSTSampler)
-    curβ::Base.RefValue{TF}    # current beta
-    curVref::Base.RefValue{TF} # current reference potential
-    curV::Base.RefValue{TF}    # current target potential (shared with NRSTSampler)
-    curVβ::Base.RefValue{TF}   # current tempered potential
-    # idiosyncratic fields
-    w::Base.RefValue{TF}       # initial slice width
-    p::TI                      # max slice width = w2^p
-end
+abstract type SliceSampler{TTM<:TemperedModel,TF<:AbstractFloat,TV<:AbstractVector{TF},TI<:Int} <: ExplorationKernel end
 
 #######################################
 # construction and copying
 #######################################
 
-# outer constructor
-function SliceSampler(tm, x, curβ, curVref, curV, curVβ; w=10.0, p=20, kwargs...)
-    SliceSampler(tm, x, curβ, curVref, curV, curVβ, Ref(w), p)
-end
-params(ss::SliceSampler) = (w=ss.w[],)                  # get params as namedtuple
+params(ss::SliceSampler) = (w=ss.w[],)                     # get params as namedtuple
 function set_params!(ss::SliceSampler, params::NamedTuple) # set sigma from a NamedTuple
     ss.w[] = params.w
 end
@@ -70,24 +55,6 @@ function init_slice(ss::SliceSampler, rng::AbstractRNG, i::Int)
     L, R, Lps, Rps
 end
 
-# grow slice using the doubling approach (Alg. in Fig 4)
-function grow_slice(ss::SliceSampler, rng::AbstractRNG, i, L, R, Lps, Rps, newv)
-    k = zero(ss.p)
-    while (in_slice(newv, Lps) || in_slice(newv, Rps)) && k < ss.p
-        grow_left = rand(rng, Bool)
-        if grow_left
-            L  -= (R-L)
-            Lps = potentials(ss, i, L) 
-        else
-            R  += (R-L)
-            Rps = potentials(ss, i, R) 
-        end
-        k += 1
-        # @debug "grow_slice: (k=$k): (L,R)=($L,$R)"
-    end
-    L, R, Lps, Rps, k # k == number of V(x) evaluations
-end
-
 # select point by shrinking (Alg. in Fig 5)
 function shrink_slice(ss::SliceSampler, rng::AbstractRNG, i, L, R, Lps, Rps, newv)
     xi    = ss.x[i]
@@ -117,8 +84,121 @@ function shrink_slice(ss::SliceSampler, rng::AbstractRNG, i, L, R, Lps, Rps, new
     return newxi, newps, nvs
 end
 
+# by default all proposals are accepted
+is_acceptable(::SliceSampler{TTM,TF,TV,TI}, args...) where {TTM,TF,TV,TI} = (true, zero(TI))
+
+# univariate step
+function step!(ss::SliceSampler, rng::AbstractRNG, i::Int)
+    newv    = ss.curVβ[] + randexp(rng)  # draw a new slice. note: y = pibeta(x)*U(0,1) <=> -log(y) =: newv = Vβ(x) + Exp(1)
+    L,R,Lps,Rps,nv = build_slice(ss, rng, i, newv)
+    nvs     = nv + 2                     # number of V(x) evaluations = 2 (init_slice) + nv (grow_slice)
+    newxi,newps,nv = shrink_slice(ss, rng, i, L, R, Lps, Rps, newv)
+    nvs    += nv
+    ss.x[i] = newxi                      # update state
+    set_potentials!(ss, newps...)        # update potentials
+    return nvs
+end
+
+# multivariate step: Gibbs update
+function step!(ss::SliceSampler, rng::AbstractRNG)
+    nvs = zero(ss.p)                     # number of V(x) evaluations
+    for i in eachindex(ss.x)
+        nvs += step!(ss, rng, i)
+    end
+    return one(eltype(ss.curV)), nvs     # return "acceptance probability" and number of V evals
+end
+
+###############################################################################
+# Slice sampler with stepping out strategy (schema 3 in Neal (2003))
+###############################################################################
+
+struct SliceSamplerStepping{TTM,TF,TV,TI} <: SliceSampler{TTM,TF,TV,TI}
+    # fields common to every ExplorationKernel
+    tm::TTM                                    # TemperedModel
+    x::TV                                      # current state (shared with NRSTSampler)
+    curβ::Base.RefValue{TF}                    # current beta
+    curVref::Base.RefValue{TF}                 # current reference potential
+    curV::Base.RefValue{TF}                    # current target potential (shared with NRSTSampler)
+    curVβ::Base.RefValue{TF}                   # current tempered potential
+    # idiosyncratic fields
+    w::Base.RefValue{TF}                       # initial slice width
+    p::TI                                      # max slice width = pw (this is m in Neal's notation)
+end
+
+# outer constructor
+function SliceSamplerStepping(tm, x, curβ, curVref, curV, curVβ; w=4.0, p=20, kwargs...)
+    SliceSamplerStepping(tm, x, curβ, curVref, curV, curVβ, Ref(w), p)
+end
+
+#######################################
+# sampling methods
+#######################################
+
+# grow slice using the stepping out approach (Alg. in Fig 3)
+function grow_slice(ss::SliceSamplerStepping, rng::AbstractRNG, i, L, R, Lps, Rps, newv)
+    w = ss.w[]
+    p = ss.p
+    J = floor(Int, p*rand(rng))          # max number of steps to the left
+    K = (p - one(p)) - J                 # max number of steps to the right
+    while J > 0 && in_slice(newv, Lps)
+        L  -= w
+        Lps = potentials(ss, i, L)
+        J  -= 1 
+    end
+    while K > 0 && in_slice(newv, Rps)
+        R  += w
+        Rps = potentials(ss, i, R)
+        K  -= 1 
+    end
+    L, R, Lps, Rps, (p - one(p)) - (J+K) # number of V(x) evaluations
+end
+
+###############################################################################
+# Slice sampler with doubling strategy (schema 4 in Neal (2003))
+###############################################################################
+
+struct SliceSamplerDoubling{TTM,TF,TV,TI} <: SliceSampler{TTM,TF,TV,TI}
+    # fields common to every ExplorationKernel
+    tm::TTM                                    # TemperedModel
+    x::TV                                      # current state (shared with NRSTSampler)
+    curβ::Base.RefValue{TF}                    # current beta
+    curVref::Base.RefValue{TF}                 # current reference potential
+    curV::Base.RefValue{TF}                    # current target potential (shared with NRSTSampler)
+    curVβ::Base.RefValue{TF}                   # current tempered potential
+    # idiosyncratic fields
+    w::Base.RefValue{TF}                       # initial slice width
+    p::TI                                      # max slice width = w2^p
+end
+
+# outer constructor
+function SliceSamplerDoubling(tm, x, curβ, curVref, curV, curVβ; w=14.0, p=20, kwargs...)
+    SliceSamplerDoubling(tm, x, curβ, curVref, curV, curVβ, Ref(w), p)
+end
+
+#######################################
+# sampling methods
+#######################################
+
+# grow slice using the doubling approach (Alg. in Fig 4)
+function grow_slice(ss::SliceSamplerDoubling, rng::AbstractRNG, i, L, R, Lps, Rps, newv)
+    k = zero(ss.p)
+    while (in_slice(newv, Lps) || in_slice(newv, Rps)) && k < ss.p
+        grow_left = rand(rng, Bool)
+        if grow_left
+            L  -= (R-L)
+            Lps = potentials(ss, i, L) 
+        else
+            R  += (R-L)
+            Rps = potentials(ss, i, R) 
+        end
+        k += 1
+        # @debug "grow_slice: (k=$k): (L,R)=($L,$R)"
+    end
+    L, R, Lps, Rps, k # k == number of V(x) evaluations
+end
+
 # check acceptability of candidate point (Alg. in Fig 6)
-function is_acceptable(ss::SliceSampler, i, newxi, L, R, Lps, Rps, newv)
+function is_acceptable(ss::SliceSamplerDoubling, i, newxi, L, R, Lps, Rps, newv)
     xi   = ss.x[i]
     w    = ss.w[]
     hL   = L
@@ -144,25 +224,4 @@ function is_acceptable(ss::SliceSampler, i, newxi, L, R, Lps, Rps, newv)
         end
     end
     return acc, nvs
-end
-
-# univariate step
-function step!(ss::SliceSampler, rng::AbstractRNG, i::Int)
-    newv    = ss.curVβ[] + randexp(rng)  # draw a new slice. note: y = pibeta(x)*U(0,1) <=> -log(y) =: newv = Vβ(x) + Exp(1)
-    L,R,Lps,Rps,nv = build_slice(ss, rng, i, newv)
-    nvs     = nv + 2                     # number of V(x) evaluations = 2 (init_slice) + nv (grow_slice)
-    newxi,newps,nv = shrink_slice(ss, rng, i, L, R, Lps, Rps, newv)
-    nvs    += nv
-    ss.x[i] = newxi                      # update state
-    set_potentials!(ss, newps...)        # update potentials
-    return nvs
-end
-
-# multivariate step: Gibbs update
-function step!(ss::SliceSampler, rng::AbstractRNG)
-    nvs = zero(ss.p)                     # number of V(x) evaluations
-    for i in eachindex(ss.x)
-        nvs += step!(ss, rng, i)
-    end
-    return one(eltype(ss.curV)), nvs     # return "acceptance probability" and number of V evals
 end
