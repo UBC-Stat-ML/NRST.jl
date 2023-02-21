@@ -49,6 +49,11 @@ function potentials(ss::SliceSampler, i::Int, newxi::Real)
     return ps
 end
 
+# check if point is in slice by looking at its potential
+# note: y < πβ(x) <=> newv > -log(pi_beta(x)) =: Vβ(x)
+Vβ(ps::Tuple) = last(ps)                          # extract the tempered potential from a tuple of potentials
+in_slice(newv::Real, ps::Tuple) = (newv > Vβ(ps))
+
 # build a slice
 function build_slice(ss::SliceSampler, rng::AbstractRNG, i::Int, newv::Real)
     grow_slice(ss, rng, i, init_slice(ss, rng, i)..., newv)
@@ -61,13 +66,11 @@ function init_slice(ss::SliceSampler, rng::AbstractRNG, i::Int)
     R   = L + ss.w[]
     Lps = potentials(ss, i, L) # note: (L|R)ps are tuples
     Rps = potentials(ss, i, R)
+    # @debug "init_slice: (L,R)=($L,$R)"
     L, R, Lps, Rps
 end
 
 # grow slice using the doubling approach (Alg. in Fig 4)
-# y < πβ(x) <=> newv > -log(pi_beta(x)) =: Vβ(x)
-Vβ(ps::Tuple) = last(ps) # extract the tempered potential from a tuple of potentials
-in_slice(newv::Real, ps::Tuple) = (newv > Vβ(ps))
 function grow_slice(ss::SliceSampler, rng::AbstractRNG, i, L, R, Lps, Rps, newv)
     k = zero(ss.p)
     while (in_slice(newv, Lps) || in_slice(newv, Rps)) && k < ss.p
@@ -80,6 +83,7 @@ function grow_slice(ss::SliceSampler, rng::AbstractRNG, i, L, R, Lps, Rps, newv)
             Rps = potentials(ss, i, R) 
         end
         k += 1
+        # @debug "grow_slice: (k=$k): (L,R)=($L,$R)"
     end
     L, R, Lps, Rps, k # k == number of V(x) evaluations
 end
@@ -92,12 +96,19 @@ function shrink_slice(ss::SliceSampler, rng::AbstractRNG, i, L, R, Lps, Rps, new
     bL    = L
     bR    = R
     nvs   = 0                            # counts number of V(x) evaluations
+    tol   = 10eps(typeof(xi))
     while true
+        if bR-bL < tol                   # failsafe for degenerate distributions and potential rounding issues. See e.g. here: https://github.com/UBC-Stat-ML/blangSDK/blob/e9f57ad63476a18added1dd97e761d5f5b26adf0/src/main/java/blang/mcmc/RealSliceSampler.java#L109 
+            newxi = xi
+            newps = potentials(ss)
+            break
+        end
         newxi = bL + (bR-bL)*rand(rng)   # select a point in (bL,bR) at random
         newps = potentials(ss, i, newxi) # compute the potentials at that point
         nvs  += 1
         if in_slice(newv, newps)
             acc,nv = is_acceptable(ss, i, newxi, L, R, Lps, Rps, newv)
+            # @debug "shrink_slice: (bL,bR)=($bL,$bR), newxi=$newxi => acc=$(acc)!"
             nvs   += nv
             acc && break
         end
@@ -117,7 +128,7 @@ function is_acceptable(ss::SliceSampler, i, newxi, L, R, Lps, Rps, newv)
     acc  = true
     nvs  = 0
     while hR-hL > 1.1*w
-        M = 0.5(hL+hR)
+        M = (hL+hR)/2.0
         D = (xi < M && newxi >= M) || (xi >= M && newxi < M) # are xi and newxi on Different sides wrt M?
         if newxi < M
             hR   = M
@@ -137,21 +148,21 @@ end
 
 # univariate step
 function step!(ss::SliceSampler, rng::AbstractRNG, i::Int)
-    newv    = ss.curVβ[] + randexp(rng) # draw a new slice. note: y = pibeta(x)*U(0,1) <=> -log(y) =: newv = Vβ(x) + Exp(1)
+    newv    = ss.curVβ[] + randexp(rng)  # draw a new slice. note: y = pibeta(x)*U(0,1) <=> -log(y) =: newv = Vβ(x) + Exp(1)
     L,R,Lps,Rps,nv = build_slice(ss, rng, i, newv)
-    nvs     = nv + 2                    # number of V(x) evaluations = 2 (init_slice) + nv (grow_slice)
+    nvs     = nv + 2                     # number of V(x) evaluations = 2 (init_slice) + nv (grow_slice)
     newxi,newps,nv = shrink_slice(ss, rng, i, L, R, Lps, Rps, newv)
     nvs    += nv
-    ss.x[i] = newxi                     # update state
-    set_potentials!(ss, newps...)       # update potentials
+    ss.x[i] = newxi                      # update state
+    set_potentials!(ss, newps...)        # update potentials
     return nvs
 end
 
 # multivariate step: Gibbs update
 function step!(ss::SliceSampler, rng::AbstractRNG)
-    nvs = zero(ss.p)                 # number of V(x) evaluations
+    nvs = zero(ss.p)                     # number of V(x) evaluations
     for i in eachindex(ss.x)
         nvs += step!(ss, rng, i)
     end
-    return one(eltype(ss.curV)), nvs # return "acceptance probability" and number of V evals
+    return one(eltype(ss.curV)), nvs     # return "acceptance probability" and number of V evals
 end

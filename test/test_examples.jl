@@ -2,6 +2,27 @@
 # HierarchicalModel
 ###############################################################################
 
+using Distributions, DynamicPPL, Plots, StatsBase
+using SplittableRandoms
+using NRST
+
+@model function ToyModel()
+    y ~ Normal()
+end
+const tm  = NRST.TuringTemperedModel(ToyModel())
+const rng = SplittableRandom(1)
+const x   = rand(tm,rng)
+const ps  = NRST.potentials(tm,x)
+const ss  = NRST.SliceSampler(
+    tm, x, Ref(1.0), Ref(ps[1]), Ref(0.0), Ref(ps[1]), w=0.01
+);
+for _ in 1:10000
+    NRST.step!(ss,rng)
+end
+###############################################################################
+# HierarchicalModel
+###############################################################################
+
 using NRST
 using DelimitedFiles
 using Distributions
@@ -75,21 +96,25 @@ function NRST.V(tm::HierarchicalModel{TF}, x) where {TF}
     return acc
 end
 
-rng = SplittableRandom(6929)
+rng = SplittableRandom(7008)
 tm  = HierarchicalModel();
 ns, TE, Λ = NRSTSampler(
             tm,
             rng,
-            xpl_smooth_λ=1e-7,
-            maxcor=0.1
+            use_mean=true,
+            γ = 1.0,
+            xpl_smooth_λ=0.00001,
+            maxcor=0.7
 );
-
-nrpt = NRST.NRPTSampler(ns);
-NRST.tune_c_nexpls!(ns.np, nrpt, rng, 16384, 0.7, 1e-7)
 
 using Plots
 using Plots.PlotMeasures: px
 res   = parallel_run(ns,rng,NRST.NRSTTrace(ns),TE=TE,δ=0.5);
+using StatsBase
+
+map(std,res.xarray)[end]
+collect(collect(mad(c) for c in eachcol(collect(hcat(xs...)'))) for xs in res.xarray)
+mad
 plots = diagnostics(ns, res);
 hl    = ceil(Int, length(plots)/2)
 pdiags=plot(

@@ -54,7 +54,6 @@ function tune!(
     max_ar_ratio::Real = 0.10,      # limit on std(ar)/mean(ar), ar: average of Ru and Rd, the directional rejection rates
     max_ar1_dif::Real  = 0.50,      # |ar[1]/mean(ar[-1]) - 1| < max_ar1_dif -> ar at i=1 is usually the most problematic. this puts emphasis there
     max_dr_ratio::Real = 0.05,      # limit on mean(|Ru-Rd|)/mean(ar). Note: this only makes sense for use_mean=true
-    max_Δβs::Real      = 0.05,      # limit on max change in grid. Note: this is not a great indicator, so the limit is quite loose. Only helps with potential fake convergence at beginning
     max_relΔcone::Real = 0.005,     # limit on rel change in c(1)
     max_relΔΛ::Real    = 0.005,     # limit on rel change in Λ = Λ(1)
     nsteps_init::Int   = 2,         # steps used in the first round
@@ -125,8 +124,7 @@ function tune!(
         # check convergence
         conv = (rnd >= check_at_rnd) && !isnan(relΔcone) && 
             (relΔcone<max_relΔcone) && !isnan(relΔΛ) && (relΔΛ < max_relΔΛ) &&
-            (Δβs<max_Δβs) && (ar_ratio < max_ar_ratio) && 
-            (dr_ratio < max_dr_ratio)
+            (ar_ratio < max_ar_ratio) && (dr_ratio < max_dr_ratio)
     end
 
     # at this point, ns has a fresh new grid, so explorers params, c, and  
