@@ -7,8 +7,7 @@
         end
         p
     end
-    rng  = SplittableRandom()
-    tmbb = NRST.TuringTemperedModel(BetaBernoulli(bitrand(10)))
+    tmbb = NRST.TuringTemperedModel(BetaBernoulli(bitrand(rng, 10)))
     ns, TE, Λ = NRSTSampler(
         tmbb,
         rng,
@@ -16,6 +15,7 @@
         γ = 2.0,
         xpl_smooth_λ=1e-5,
         maxcor=0.9,
+        verbose=false
     );
     nrpt = NRST.NRPTSampler(ns);
     tr   = NRST.run!(nrpt,rng,100);

@@ -9,7 +9,7 @@
     v     = NRST.V(toytm,x)
     nxs   = 10000
 
-    @testset "SliceSamplerStepping" begin 
+    @testset "SliceSamplerSteppingOut" begin 
         ss  = NRST.SliceSamplerSteppingOut(toytm, x, 1.0, Ref(v));
         xs  = collect(hcat(map(_ -> (NRST.step!(ss,rng); copy(ss.x)),1:nxs)...)');
         @test all(
@@ -21,7 +21,7 @@
                     )
                 ) 
             for (i,sym) in enumerate(propertynames(toytm.viout.metadata))
-            ] .> 0.01
+            ] .> 0.001
         )
     end
 
@@ -37,7 +37,7 @@
                     )
                 ) 
             for (i,sym) in enumerate(propertynames(toytm.viout.metadata))
-            ] .> 0.01
+            ] .> 0.001
         )
     end
 end

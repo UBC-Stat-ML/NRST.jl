@@ -39,7 +39,7 @@ function tune!(
         ))
     )
     verbose && println("\nEstimating Tour Effectiveness (TE) using $ntours NRST tours.\n")
-    res = parallel_run(ns, rng; ntours = ntours)
+    res = parallel_run(ns, rng; ntours = ntours, verbose = verbose)
     TE  = last(res.toureff)
     @printf("\nTuning completed! Summary:\n\tTE = %.2f\n\tΛ  = %.2f\n",TE, Λ)
     return TE, Λ
