@@ -13,8 +13,8 @@ function NRPTSampler(oldns::NRSTSampler)
     betas = oldns.np.betas
     nss   = [copy(oldns) for _ in 1:(N+1)]
     for (n, ns) in enumerate(nss)
-        ns.ip[1] = n-1              # init sampler with identity permutation of levels 0:N
-        update_β!(ns.xpl, betas[n]) # set its explorer's beta to match (similar to replicate function)
+        ns.ip[1] = n-1                                      # init sampler with identity permutation of levels 0:N
+        update_β!(ns.xpl, betas[n])                         # set its explorer's beta to match (similar to replicate function)
     end
     NRPTSampler(nss)
 end
@@ -26,23 +26,25 @@ get_perm(nrpt::NRPTSampler) = [ns.ip[1] for ns in nrpt.nss]
 # return explorers. for compat with current code for tuning, sorts by level and excludes beta=0
 # note: since run does deo first and then expl, the params in xpls should match the ones in np.xplpars
 function get_xpls(nrpt::NRPTSampler)
-    per  = get_perm(nrpt)                  # per[i]  = level of the ith machine (per[i] ∈ 0:N). note that machines are indexed 1:(N+1)
-    sper = sortperm(per)                   # sper[i] = id of the machine that is in level i-1 (sper[i] ∈ 1:(N+1))
-    [nrpt.nss[i].xpl for i in sper[2:end]] # skip machine handling level 0
+    per  = get_perm(nrpt)                                   # per[i]  = level of the ith machine (per[i] ∈ 0:N). note that machines are indexed 1:(N+1)
+    sper = sortperm(per)                                    # sper[i] = id of the machine that is in level i-1 (sper[i] ∈ 1:(N+1))
+    [nrpt.nss[i].xpl for i in sper[2:end]]                  # skip machine handling level 0
 end
 
 # struct for storing minimal info about an nsteps run
 struct NRPTTrace{T, TF<:AbstractFloat, TI<:Int}
-    n::Base.RefValue{TI} # current step
-    xs::Matrix{T}        # matrix of size (N+1)×nsteps for collecting x samples
-    Vs::Matrix{TF}       # matrix of size (N+1)×nsteps for collecting V values
-    rpsum::Vector{TF}    # vector of length N, accumulates sum of rej prob of swaps started from i=0:N-1
+    n::Base.RefValue{TI}                                    # current step
+    perms::Matrix{TI}                                       # matrix of size (N+1)×nsteps for collecting permutations
+    xs::Matrix{T}                                           # matrix of size (N+1)×nsteps for collecting x samples
+    Vs::Matrix{TF}                                          # matrix of size (N+1)×nsteps for collecting V values
+    rpsum::Vector{TF}                                       # vector of length N, accumulates sum of rej prob of swaps started from i=0:N-1
 end
 function NRPTTrace(nrpt::NRPTSampler, nsteps::Int)
     N = get_N(nrpt)
     T = typeof(first(nrpt.nss).x)
     NRPTTrace(
-        Ref(zero(N)), Matrix{T}(undef, N+1, nsteps), 
+        Ref(zero(N)), Matrix{typeof(N)}(undef, N+1, nsteps),
+        Matrix{T}(undef, N+1, nsteps), 
         Matrix{Float64}(undef, N+1, nsteps), zeros(Float64, N)
     )
 end
@@ -61,8 +63,9 @@ function store_results!(nrpt::NRPTSampler, tr::NRPTTrace)
     # copy the i-th machine's data to the l(i)+1 position in storage, where l(i)
     # is the level the i-th machine is currently in charge of 
     for (i, l) in enumerate(get_perm(nrpt))
-        tr.xs[l+1, tr.n[]] = copy(nrpt.nss[i].x)
-        tr.Vs[l+1, tr.n[]] = nrpt.nss[i].curV[]
+        tr.perms[i, tr.n[]] = l
+        tr.xs[l+1, tr.n[]]  = copy(nrpt.nss[i].x)
+        tr.Vs[l+1, tr.n[]]  = nrpt.nss[i].curV[]
     end
 end
 
@@ -71,9 +74,9 @@ end
 # at level 0 will have the pre-comm_step (stale) beta>0 and param.
 function expl_step!(nrpt::NRPTSampler, rng::SplittableRandom)  
     N    = get_N(nrpt)
-    rngs = [split(rng) for _ in 1:(N+1)] # split rng into N+1 copies. must be done outside of loop because split changes rng state.
+    rngs = [split(rng) for _ in 1:(N+1)]                    # split rng into N+1 copies. must be done outside of loop because split changes rng state.
     Threads.@threads for n in 1:(N+1)
-        expl_step!(nrpt.nss[n], rngs[n]) # this step updates the xpl beta and params only for levels>0
+        expl_step!(nrpt.nss[n], rngs[n])                    # this step updates the xpl beta and params only for levels>0
     end
 end
 
@@ -127,3 +130,11 @@ function run!(nrpt::NRPTSampler, rng::AbstractRNG, nsteps::Int)
     run!(nrpt, rng, tr)
     return tr
 end
+
+# # note: to get the typical index process plot for NRPT, use
+# using Plots, ColorSchemes
+# nrpt = NRST.NRPTSampler(ns);
+# tr = NRST.run!(nrpt,rng,100);
+# N = NRST.get_N(nrpt)
+# M = hcat(collect(0:N),tr.perms)
+# plot(M', color_palette=palette(:thermal,N+1,rev=true), legend=false)

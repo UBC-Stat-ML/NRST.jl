@@ -400,7 +400,7 @@ function gen_lambda_fun(betas::Vector{K}, averej::Vector{K}, uselog::Bool) where
     # check fit
     fitΛs  = map(f_Λnorm, xs)
     idxnan = findfirst(isnan, fitΛs)
-    isnothing(idxnan) || error("gen_lambda_fun: interpolated f produces NaN at" *
+    isnothing(idxnan) || error("gen_lambda_fun: interpolated f produces NaN at " *
                                "(i,β)=($idxnan,$(betas[idxnan]))")
     err = mapreduce((f,y)-> abs(y-f), max, fitΛs, Λsnorm)
     err > 10eps(K) && @warn "gen_lambda_fun: high interpolation error = " err

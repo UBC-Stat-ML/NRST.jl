@@ -1,27 +1,4 @@
 ###############################################################################
-# ToyExample
-###############################################################################
-
-using Distributions, DynamicPPL, Plots, StatsBase
-using SplittableRandoms
-using NRST
-
-@model function ToyModel()
-    y ~ Normal()
-end
-const tm  = NRST.TuringTemperedModel(ToyModel())
-const rng = SplittableRandom(1)
-const x   = rand(tm,rng)
-const ps  = NRST.potentials(tm,x)
-ss = NRST.SliceSamplerDoubling(
-    tm, x, 1.0, Ref(ps[1])
-);
-NRST.step!(ss,rng)
-for _ in 1:10000
-    NRST.step!(ss,rng)
-end
-
-###############################################################################
 # HierarchicalModel
 ###############################################################################
 
@@ -104,11 +81,7 @@ ns, TE, Λ = NRSTSampler(
             tm,
             rng,
             use_mean=true,
-            γ = 1.0,
-            xpl_smooth_λ=0.00001,
-            maxcor=0.7,
-            w=18.0
+            γ = 2.0,
+            xpl_smooth_λ=1e-5,
+            maxcor=0.9,
 );
-
-
-
