@@ -7,14 +7,11 @@
     tm  = NRST.TuringTemperedModel(ToyModel())
     rng = SplittableRandom(1)
     x   = rand(tm,rng)
-    ps  = NRST.potentials(tm,x)
+    v   = NRST.V(tm,x)
     nxs = 10000
 
     @testset "SliceSamplerStepping" begin 
-        ss  = NRST.SliceSampler(
-            tm, x, Ref(1.0), Ref(ps[1]), Ref(0.0), Ref(ps[1]), 
-            SSS=NRST.SliceSamplerStepping
-        );
+        ss  = NRST.SliceSamplerSteppingOut(tm, x, 1.0, Ref(v));
         xs  = collect(hcat(map(_ -> (NRST.step!(ss,rng); copy(ss.x)),1:nxs)...)');
         @test all(
             [
@@ -30,9 +27,7 @@
     end
 
     @testset "SliceSamplerDoubling" begin 
-        ss  = NRST.SliceSampler(
-            tm, x, Ref(1.0), Ref(ps[1]), Ref(0.0), Ref(ps[1])
-        );
+        ss  = NRST.SliceSamplerDoubling(tm, x, 1.0, Ref(v));
         xs  = collect(hcat(map(_ -> (NRST.step!(ss,rng); copy(ss.x)),1:nxs)...)');
         @test all(
             [

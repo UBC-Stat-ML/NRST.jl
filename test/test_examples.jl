@@ -13,14 +13,14 @@ const tm  = NRST.TuringTemperedModel(ToyModel())
 const rng = SplittableRandom(1)
 const x   = rand(tm,rng)
 const ps  = NRST.potentials(tm,x)
-const ss  = NRST.SliceSampler(
-    tm, x, Ref(1.0), Ref(ps[1]), Ref(0.0), Ref(ps[1]), SSS=NRST.SliceSamplerStepping
+ss = NRST.SliceSamplerDoubling(
+    tm, x, 1.0, Ref(ps[1])
 );
-
 NRST.step!(ss,rng)
 for _ in 1:10000
     NRST.step!(ss,rng)
 end
+
 ###############################################################################
 # HierarchicalModel
 ###############################################################################
@@ -107,5 +107,8 @@ ns, TE, Λ = NRSTSampler(
             γ = 1.0,
             xpl_smooth_λ=0.00001,
             maxcor=0.7,
-            tune=false
+            w=18.0
 );
+
+
+

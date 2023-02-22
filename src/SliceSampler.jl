@@ -3,8 +3,8 @@
 ###############################################################################
 
 abstract type SliceSamplerStrategy end
-struct SliceSamplerDoubling <: SliceSamplerStrategy end
-struct SliceSamplerStepping <: SliceSamplerStrategy end
+struct Doubling <: SliceSamplerStrategy end
+struct SteppingOut <: SliceSamplerStrategy end
 
 struct SliceSampler{SSS<:SliceSamplerStrategy,TTM<:TemperedModel,TF<:AbstractFloat,TV<:AbstractVector{TF},TI<:Int} <: ExplorationKernel
     # fields common to every ExplorationKernel
@@ -16,34 +16,62 @@ struct SliceSampler{SSS<:SliceSamplerStrategy,TTM<:TemperedModel,TF<:AbstractFlo
     curVβ::Base.RefValue{TF}                   # current tempered potential
     # idiosyncratic fields
     w::Base.RefValue{TF}                       # initial slice width
-    p::TI                                      # max slice width = pw (this is m in Neal's notation)
+    p::TI                                      # max slice width is wp if using SteppingOut or w2^p if using doubling
 end
 
-# outer constructor
-function SliceSampler(tm, x, curβ, curVref, curV, curVβ; SSS=SliceSamplerDoubling, p=20, kwargs...)
-    !(:w in keys(kwargs)) && (w = default_w(SSS))
+#######################################
+# construction and initialization
+#######################################
+
+# outer constructor: mix common explorer fields with idiosyncratic
+function SliceSampler{SSS,TTM,TF,TV,TI}(
+    tm::TTM,
+    x::TV,
+    curβ::TRef,
+    curVref::TRef,
+    curV::TRef,
+    curVβ::TRef;
+    w = default_w(SSS),
+    p,
+    kwargs...
+    ) where {SSS,TTM,TF,TV,TI,TRef<:Base.RefValue{TF}}
+    SliceSampler{SSS,TTM,TF,TV,TI}(tm, x, curβ, curVref, curV, curVβ, Ref(TF(w)), TI(p))
+end
+
+# outer constructor: take idiosyncratic parameters from a reference SliceSampler
+function SliceSampler{SSS,TTM,TF,TV,TI}(oldss::SliceSampler, args...) where {SSS,TTM,TF,TV,TI}
+    SliceSampler{SSS,TTM,TF,TV,TI}(args..., Ref(oldss.w[]), TI(oldss.p))
+end
+
+# outer constructor: infer missing parametric values
+function SliceSampler{SSS}(
+    tm::TemperedModel,
+    x,
+    curβ::Base.RefValue{<:AbstractFloat}, 
+    args...;
+    p::Int = 20, 
+    kwargs...
+    ) where {SSS<:SliceSamplerStrategy}
     SliceSampler{SSS,typeof(tm),eltype(curβ),typeof(x),typeof(p)}(
-        tm, x, curβ, curVref, curV, curVβ, Ref(w), p
+        tm, x, curβ, args...; p=p, kwargs...
     )
 end
 
+# sugar
+const SliceSamplerDoubling    = SliceSampler{Doubling}
+const SliceSamplerSteppingOut = SliceSampler{SteppingOut}
+
 # default window size
-default_w(::Type{SliceSamplerDoubling}) = 14.0 # ~min-cost-optimal for N(0,1)
-default_w(::Type{SliceSamplerStepping}) = 4.0  # ~min-cost-optimal for N(0,1)
+default_w(::Type{Doubling})    = 14.0 # ~min-cost-optimal for N(0,1)
+default_w(::Type{SteppingOut}) = 4.0  # ~min-cost-optimal for N(0,1)
 
 #######################################
-# construction and copying
+# utils
 #######################################
 
 params(ss::SliceSampler) = (w=ss.w[],)                     # get params as namedtuple
 function set_params!(ss::SliceSampler, params::NamedTuple) # set sigma from a NamedTuple
     ss.w[] = params.w
-end
-
-# low level copy constructor
-# note: this is called only from the generic method for copying ExplorationKernels
-function Base.copy(ss::SliceSampler, args...)
-    SliceSampler(args..., Ref(ss.w[]), ss.p)
 end
 
 default_nexpl_steps(ss::SliceSampler) = one(ss.p)
@@ -83,7 +111,7 @@ function init_slice(ss::SliceSampler, rng::AbstractRNG, i::Int)
 end
 
 # grow slice using the stepping out approach (Alg. in Fig 3)
-function grow_slice(ss::SliceSampler{SliceSamplerStepping}, rng::AbstractRNG, i, L, R, Lps, Rps, newv)
+function grow_slice(ss::SliceSampler{SteppingOut}, rng::AbstractRNG, i, L, R, Lps, Rps, newv)
     w = ss.w[]
     p = ss.p
     J = floor(Int, p*rand(rng))          # max number of steps to the left
@@ -102,7 +130,7 @@ function grow_slice(ss::SliceSampler{SliceSamplerStepping}, rng::AbstractRNG, i,
 end
 
 # grow slice using the doubling approach (Alg. in Fig 4)
-function grow_slice(ss::SliceSampler{SliceSamplerDoubling}, rng::AbstractRNG, i, L, R, Lps, Rps, newv)
+function grow_slice(ss::SliceSampler{Doubling}, rng::AbstractRNG, i, L, R, Lps, Rps, newv)
     k = zero(ss.p)
     while (in_slice(newv, Lps) || in_slice(newv, Rps)) && k < ss.p
         grow_left = rand(rng, Bool)
@@ -149,10 +177,10 @@ function shrink_slice(ss::SliceSampler, rng::AbstractRNG, i, L, R, Lps, Rps, new
 end
 
 # all proposals are accepted when using stepping out
-is_acceptable(::SliceSampler{SliceSamplerStepping}, args...) = (true, 0)
+is_acceptable(::SliceSampler{SteppingOut}, args...) = (true, 0)
 
 # check acceptability of candidate point (Alg. in Fig 6)
-function is_acceptable(ss::SliceSampler{SliceSamplerDoubling}, i, newxi, L, R, Lps, Rps, newv)
+function is_acceptable(ss::SliceSampler{Doubling}, i, newxi, L, R, Lps, Rps, newv)
     xi   = ss.x[i]
     w    = ss.w[]
     hL   = L

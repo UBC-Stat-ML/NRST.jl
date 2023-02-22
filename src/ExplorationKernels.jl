@@ -5,18 +5,29 @@
 abstract type ExplorationKernel end
 
 # generic constructor that pre-computes common requirements
-function (::Type{TXpl})(tm, xinit, β, curV; kwargs...) where {TXpl <: ExplorationKernel}
-    vref = Vref(tm, xinit)
+function (::Type{TXpl})(
+    tm::TemperedModel,
+    x, 
+    β::AbstractFloat, 
+    curV::Base.RefValue{<:AbstractFloat};
+    kwargs...
+    ) where {TXpl <: ExplorationKernel}
+    vref = Vref(tm, x)
     vβ   = vref + β*curV[]
-    TXpl(tm, xinit, Ref(β), Ref(vref), curV, Ref(vβ); kwargs...)
+    TXpl(tm, x, Ref(β), Ref(vref), curV, Ref(vβ); kwargs...)
 end
 
-# copy constructor that pre-computes common requirements
+# copy constructor
+function Base.copy(xpl::TXpl, newtm::TemperedModel, newx, ncurV::Base.RefValue{<:AbstractFloat}) where {TXpl <: ExplorationKernel}
+    β    = xpl.curβ[]
+    vref = Vref(newtm, newx)
+    vβ   = vref + β*ncurV[]
+    TXpl(xpl, newtm, newx, Ref(β), Ref(vref), ncurV, Ref(vβ))
+end
+
+# copy constructor
 function Base.copy(xpl::ExplorationKernel)
-    copy(
-        xpl, copy(xpl.tm), copy(xpl.x), Ref(xpl.curβ[]), Ref(xpl.curVref[]),
-        Ref(xpl.curV[]), Ref(xpl.curVβ[])
-    )
+    copy(xpl, copy(xpl.tm), copy(xpl.x), Ref(xpl.curV[]))
 end
 
 # by default, tuning does nothing
