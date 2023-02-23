@@ -263,41 +263,11 @@ tune_betas!(np::NRSTProblem, res::RunResults) = tune_betas!(np, averej(res))
 # methods to estimate rejections
 #######################################
 
-# collect samples of V(x) at each of the levels, running explorers independently
-# also compute V aggregate
-# note: np.tm is modified here because it is used for sampling V from the reference
-function collectVs(
-    np::NRSTProblem, 
-    xpls::Vector{<:ExplorationKernel},
-    rng::AbstractRNG,
-    nsteps::Int,
-    sample_ref::Bool = true
-    )
-    N      = np.N
-    trVs   = [similar(np.c, nsteps) for _ in 0:N]
-    
-    # sample from reference
-    x = similar(first(xpls).x)             # temp
-    for i in 1:(nsteps*sample_ref)         # nsteps*false = 0 so no samples taken when sample_ref=false
-        trVs[1][i], _ = randrefmayreject!(np.tm, rng, x, np.reject_big_vs)
-    end
-
-    # sample with explorers
-    rngs = [split(rng) for _ in 1:N]
-    Threads.@threads for i in 1:N          # "Threads.@threads for" does not work with enumerate
-        xpl = xpls[i]
-        rng = rngs[i]
-        update_β!(xpl, np.betas[i+1])      # needed because most likely the grid was updated
-        run!(xpl, rng, trVs[i+1])          # run and collect Vs
-    end
-    store_params!(np, xpls)                # store params in case anything was re-tuned
-    return trVs
-end
-
-# method for NRPTSampler
+# collect V samples using NRPT
 # NOTE: this function assumes that the xpls in nrpt have up to date betas
 # and parameters! In the context of tuning, this is ensured by the fact that
 # this function is always called *after* tune explorers
+# TODO: fix the above and also get the full PT trace to tune other stuff 
 collectVs(::NRSTProblem, nrpt::NRPTSampler, args...) = rows2vov(run!(nrpt, args...).Vs)
 
 # for each sample V(x) at each level, estimate the conditional rejection
@@ -347,9 +317,10 @@ floorlog(x) = max(LOGSMALL, log(x))
 expfloor(x) = (x <= LOGSMALL ? zero(x) : exp(x))
 
 # optimize the grid using the equirejection approach
-# need to work in log space whenever
-#   (dΛ/dβ)(0) = E^{0}[V]
-# is infty
+# Note: need to work in log space whenever
+#   (dΛ/dβ)(0) = E^{0}[|V - dc/dβ|] = ∞
+# which happens when V is not integrable at the reference; i.e., when
+#   KL(ref|target) = ∞
 function optimize_grid!(betas::Vector{K}, averej::Vector{K}, uselog::Bool) where {K<:AbstractFloat}
     # estimate Λ at current betas using rejections rates, normalize, and interpolate
     f_Λnorm, Λsnorm, Λs = gen_lambda_fun(betas, averej, uselog) # note: this the only place where averej is used
@@ -412,6 +383,35 @@ end
 # tune nexpls by imposing a threshold on autocorrelation
 # warning: do not use with trVs generated from NRST, since those include refreshments!
 ##############################################################################
+
+# collect samples of V(x) at each of the levels, running explorers independently
+function collectVs(
+    np::NRSTProblem, 
+    xpls::Vector{<:ExplorationKernel},
+    rng::AbstractRNG,
+    nsteps::Int,
+    sample_ref::Bool = true
+    )
+    N      = np.N
+    trVs   = [similar(np.c, nsteps) for _ in 0:N]
+    
+    # sample from reference
+    x = similar(first(xpls).x)             # temp
+    for i in 1:(nsteps*sample_ref)         # nsteps*false = 0 so no samples taken when sample_ref=false
+        trVs[1][i], _ = randrefmayreject!(np.tm, rng, x, np.reject_big_vs)
+    end
+
+    # sample with explorers
+    rngs = [split(rng) for _ in 1:N]
+    Threads.@threads for i in 1:N          # "Threads.@threads for" does not work with enumerate
+        xpl = xpls[i]
+        rng = rngs[i]
+        update_β!(xpl, np.betas[i+1])      # needed because most likely the grid was updated
+        run!(xpl, rng, trVs[i+1])          # run and collect Vs
+    end
+    # store_params!(np, xpls)                # store params in case anything was re-tuned
+    return trVs
+end
 
 function tune_nexpls!(
     nexpls::Vector{TI},
