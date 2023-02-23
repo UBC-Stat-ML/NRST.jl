@@ -50,16 +50,16 @@ function tune!(
     np::NRSTProblem,
     ens,                            # ensemble of exploration kernels: either Vector{<:ExplorationKernel} (indep sampling) or NRPTSampler
     rng::AbstractRNG;
-    max_rounds::Int    = 14,
+    max_rounds::Int    = 12,
     max_ar_ratio::Real = 0.10,      # limit on std(ar)/mean(ar), ar: average of Ru and Rd, the directional rejection rates
-    max_ar1_dif::Real  = 0.50,      # |ar[1]/mean(ar[-1]) - 1| < max_ar1_dif -> ar at i=1 is usually the most problematic. this puts emphasis there
+    max_ar1_ratio::Real= 1.75,      # assume V non-integrable if ar[1]/mean(ar[-1]) > max_ar1_ratio
     max_dr_ratio::Real = 0.05,      # limit on mean(|Ru-Rd|)/mean(ar). Note: this only makes sense for use_mean=true
     max_relΔcone::Real = 0.005,     # limit on rel change in c(1)
     max_relΔΛ::Real    = 0.005,     # limit on rel change in Λ = Λ(1)
     nsteps_init::Int   = 2,         # steps used in the first round
     maxcor::Real       = 0.9,       # set nexpl in explorers s.t. correlation of V samples is lower than this
-    γ::Real            = 8.0,       # correction for the optimal_N formula
-    xpl_smooth_λ::Real = .1,        # smoothness knob for xpl params. λ==0 == no smoothing
+    γ::Real            = 2.0,       # correction for the optimal_N formula
+    xpl_smooth_λ::Real = 1e-7,      # smoothness knob for xpl params. λ==0 == no smoothing
     check_N::Bool      = true,
     check_at_rnd::Int  = 9,         # early round with enough accuracy to check V integrability and N 
     verbose::Bool      = true,
@@ -111,7 +111,7 @@ function tune!(
 
         # time to check if parameters are ok
         if rnd == check_at_rnd            
-            if !np.log_grid && ar1_ratio > 1. + max_ar1_dif               # check if we need to switch interpolating Λ(β) in log scale to handle Inf derivative at 0.
+            if !np.log_grid && ar1_ratio > max_ar1_ratio                  # check if we need to switch interpolating Λ(β) in log scale to handle Inf derivative at 0.
                 throw(NonIntegrableVException())
             end
             if check_N                                                    # check if N is too low / high
