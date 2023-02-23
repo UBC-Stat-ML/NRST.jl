@@ -31,6 +31,7 @@ function tune!(
     # This defaults to min_ntours under mean strategy (that's why its called min_tours)
     p_ratio = exp((first(lZs)+first(ns.np.c)) - (last(lZs)+last(ns.np.c)))          # == p0/pN. no need to normalize because this is a ratio of probs
     @debug "tune!: p_ratio=$p_ratio"
+    p_ratio < 0.001 && error("p0/pN<0.001 is too low ⟹ tuning failed! Increase γ or set 'use_mean=true' and try again.")
     ntours = min(DEFAULT_MAX_TOURS,
         ceil(Int, max(
             nsteps * oldsumnexpl / max(1, 2*sum(ns.np.nexpls)),
