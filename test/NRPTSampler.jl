@@ -21,7 +21,7 @@
     tr   = NRST.run!(nrpt,rng,100);
     @testset "Communication" begin
         # check that the perm/sper identity holds after the run
-        @test nrpt.perm[nrpt.sper] == collect(0:get_N(nrpt))
+        @test nrpt.perm[nrpt.sper] == collect(0:NRST.get_N(nrpt))
         # check that indices moved by at most one step at a time
         @test unique!(sort!(vec(mapslices(diff,tr.perms,dims=[2])))) == [-1,0,1]
     end
