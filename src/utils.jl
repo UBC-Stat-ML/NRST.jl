@@ -1,3 +1,6 @@
+# convert a matrix to a vector of (row)vectors
+rows2vov(M::AbstractMatrix) = [copy(r) for r in eachrow(M)]
+
 # find odd number closest to a given real number
 # used for determining window of running_median
 # for this reason, the result is truncated at 3

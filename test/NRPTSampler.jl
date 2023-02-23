@@ -2,7 +2,7 @@
     # TODO: when a test for NRSTSampler exists, use the sampler built there
     @model function BetaBernoulli(obs)
         p ~ Beta(2,2)
-        for i = 1:length(obs)
+        for i in eachindex(obs)
             obs[i] ~ Bernoulli(p)
         end
         p
@@ -20,7 +20,15 @@
     nrpt = NRST.NRPTSampler(ns);
     tr   = NRST.run!(nrpt,rng,100);
     @testset "Communication" begin
-        # check that indices move by at most one step at a time
+        # check that the perm/sper identity holds after the run
+        @test nrpt.perm[nrpt.sper] == collect(0:get_N(nrpt))
+        # check that indices moved by at most one step at a time
         @test unique!(sort!(vec(mapslices(diff,tr.perms,dims=[2])))) == [-1,0,1]
+    end
+    @testset "Exploration" begin
+        # check that taking one extra expl_step! aligns the explorers
+        NRST.expl_step!(nrpt,rng)
+        @test [ns.xpl.curβ[] for ns in nrpt.nss[nrpt.sper[2:end]]] == ns.np.betas[2:end]
+        @test [NRST.params(ns.xpl) for ns in nrpt.nss[nrpt.sper[2:end]]] == ns.np.xplpars
     end
 end

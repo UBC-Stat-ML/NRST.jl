@@ -86,7 +86,7 @@ function explore!(
         acc += ap
         nvs += nv
     end
-    return acc/nsteps, nvs       # return average acceptance probability and number of V(x) evaluations
+    return acc/nsteps, nvs                    # return average acceptance probability and number of V(x) evaluations
 end
 function update_β!(ex::ExplorationKernel, β::AbstractFloat)
     ex.curβ[]    = β

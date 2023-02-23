@@ -49,7 +49,7 @@ end
 # stage I tuning: bootstrap ensembles of explorers
 function tune!(
     np::NRSTProblem,
-    ens,                            # ensemble of exploration kernels: either Vector{<:ExplorationKernel} (indep sampling) or NRPTSampler
+    ens::NRPTSampler,
     rng::AbstractRNG;
     max_rounds::Int    = 12,
     max_ar_ratio::Real = 0.10,      # limit on std(ar)/mean(ar), ar: average of Ru and Rd, the directional rejection rates
@@ -70,10 +70,7 @@ function tune!(
     if verbose
         println(
             "Tuning started ($(Threads.nthreads()) threads).\n\n" *
-            "Bootstrapping NRST using " *
-            (isa(ens, NRPTSampler) ? 
-            "NRPT.\n" : 
-            "independent runs from the explorers.\n")
+            "Bootstrapping NRST using NRPT.\n"
         )
         show(plot_grid(np.betas, title="Histogram of βs: initial grid"))
         println("\n")
@@ -85,13 +82,11 @@ function tune!(
     while !conv && (rnd < max_rounds)
         rnd    += 1
         nsteps *= 2        
-        verbose && print("Round $rnd:\n\tTuning explorers...")
-        tune_explorers!(np, ens, rng,smooth_λ=xpl_smooth_λ) # note: this function forces an update to betas in ens, since grid changed in last round
-        verbose && println("done!")
+        verbose && println("Round $rnd:")
         
         # tune c and betas
-        verbose && print("\tTuning c and grid using $nsteps steps...")
-        res        = @timed tune_c_betas!(np, ens, rng, nsteps)
+        verbose && print("\tTuning explorers, c, and grid using $nsteps steps...")
+        res        = @timed tune_inner!(np, ens, rng, nsteps)
         Δβs,Λ,ar,R = res.value # note: rejections are before grid adjustment, so they are technically stale, but are still useful to assess convergence. compute std dev of average of up and down rejs
         mar        = mean(ar)
         ar_ratio   = std(ar)/mar
@@ -128,84 +123,60 @@ function tune!(
             (ar_ratio < max_ar_ratio) && (dr_ratio < max_dr_ratio)
     end
 
-    # at this point, ns has a fresh new grid, so explorers params, c, and  
-    # nexpls are stale => we need to tune them
-    verbose && print(
-        (conv ? "Grid converged!" :
-                "max_rounds=$max_rounds reached.") *
-        "\n\nAdjusting settings to new grid...\n" *
-        "\tTuning explorers..."
-    )
-    tune_explorers!(np, ens, rng, smooth_λ=xpl_smooth_λ)
-    verbose && print("done!\n\tTuning c and nexpls using $nsteps steps...")
-    res = @timed tune_c_nexpls!(np, ens, rng, nsteps, maxcor, xpl_smooth_λ)
+    # at this point, ns has a fresh new grid, so explorers and c are stale
+    # are stale => we need to tune them.
+    if verbose 
+        println(conv ? "Grid converged!" : "max_rounds=$max_rounds reached.")
+        println("\nAdjusting settings to new grid:")
+        print("\tTuning explorers, c, and nexpls using $nsteps steps...")      
+    end
+    res = @timed tune_last!(np, ens, rng, nsteps, maxcor, xpl_smooth_λ)
     Λ, lZs = res.value
-    verbose && @printf("done!\n\t\tElapsed: %.1fs\n\n", res.time)
-    verbose && show(lineplot_term(
-        np.betas[2:end], np.nexpls, xlabel = "β",
-        title="Exploration steps needed to get correlation ≤ $maxcor"
-    )); println("\n")
+    if verbose
+        @printf("done!\n\ttElapsed: %.1fs\n\n", res.time)
+        show(lineplot_term(
+            np.betas[2:end], np.nexpls, xlabel = "β",
+            title="Exploration steps needed to get correlation ≤ $maxcor"
+        )); println("\n")
+    end
 
     # after these steps, NRST is coherently tuned and can be used to sample
     return nsteps, Λ, lZs
 end
 
+# tune explorers, c, and betas
+# note the order: first tune c, then grid. This because c is used for 
+# estimating NRST rejections, which are then used to estimate Lambda
+tune_inner!(np::NRSTProblem, args...) = tune_betas!(np, tune_xpls_and_c!(np, args...))
+
+# last round of tuning after last adjustment to the grid
+# tune explorers, c, and number of exploration steps
+function tune_last!(
+    np::NRSTProblem,
+    nrpt::NRPTSampler,
+    rng::AbstractRNG,
+    nsteps::Int,
+    args...
+    )
+    ptVs = tune_xpls_and_c!(np, nrpt, rng, nsteps)
+    Λ    = last(get_lambdas(averej(est_rej_probs(ptVs, np.betas, np.c)))) # final estimate of Λ using the most recent grid and c values
+    lZs  = log_partition(np, ptVs)                                        # estimate log(Z_i/Z_0)
+    tune_nexpls!(np.nexpls, collectVsSerial!(nrpt, rng, nsteps), args...) # tune nexpls by taking a serial sample of Vs across levels
+    return Λ, lZs
+end
+
+# tune explorers (TODO!) and c using samples from NRPT
+function tune_xpls_and_c!(np::NRSTProblem, nrpt::NRPTSampler, args...)
+    tr   = run!(nrpt, args...)
+    # TODO: use tr.xs to help tune explorers
+    trVs = rows2vov(tr.Vs)
+    tune_c!(np, trVs)
+    return trVs
+end
 
 ##############################################################################
 # under the hood
 ##############################################################################
-
-##############################################################################
-# tune explorers' parameters
-##############################################################################
-
-# method for ensemble of independent explorers
-function tune_explorers!(
-    np::NRSTProblem,
-    xpls::Vector{<:ExplorationKernel},
-    rng::AbstractRNG;
-    smooth_λ::Real,
-    kwargs...
-    )
-    N    = length(xpls)
-    rngs = [split(rng) for _ in 1:N]
-    Threads.@threads for i in 1:N
-        update_β!(xpls[i], np.betas[i+1]) # needed because most likely the grid was updated 
-        tune!(xpls[i], rngs[i];kwargs...)
-    end
-    smooth_λ > 0. && smooth_params!(xpls, smooth_λ)
-    store_params!(np, xpls)               # need to store tuned params in np for later use with ns.xpl
-end
-
-# method for NRPTSampler
-# note: at every expl step in NRPT, the explorers get the params corresponding
-# to the level of their ns. And since NRPT step = first DEO, then expl, after
-# any number of full NRPT steps, the params in the xpls must agree with the 
-# ones in np.xplpars
-function tune_explorers!(np::NRSTProblem, nrpt::NRPTSampler, args...;kwargs...)
-    xpls = get_xpls(nrpt)
-    @assert params.(xpls) == np.xplpars
-    tune_explorers!(np, xpls, args...;kwargs...)
-    @assert params.(xpls) == np.xplpars
-end
-
-# transfer params from xpls to np for later use
-# note: it assumes that xpls are sorted according to levels
-function store_params!(np::NRSTProblem, xpls::Vector{<:ExplorationKernel})
-    for (i,xpl) in enumerate(xpls)
-        np.xplpars[i] = params(xpl)
-    end
-end
-
-##############################################################################
-# utilities for jointly tuning c and grid, exploiting computational savings
-##############################################################################
-
-# Tune c and betas using an ensemble of explorers (independent or NRPT)
-# note: explorers should be tuned before running this
-# note the order: first tune c, then grid. This because c is used for 
-# estimating NRST rejections
-tune_c_betas!(np::NRSTProblem, ens, args...) = tune_betas!(np, tune_c!(np, ens, args...))
 
 ##############################################################################
 # tune c
@@ -213,28 +184,14 @@ tune_c_betas!(np::NRSTProblem, ens, args...) = tune_betas!(np, tune_c!(np, ens, 
 
 # tune the c vector using samples of the potential function
 function tune_c!(np::NRSTProblem{T,K}, trVs::Vector{Vector{K}}) where {T,K}
-    if np.use_mean                             # use mean strategy => can use thermo. ident. to use stepping stone, which is simulation consistent
-        stepping_stone!(np.c, np.betas, trVs)  # compute log(Z(b)/Z0) and store it in c
-        np.c .*= (-one(K))                     # c(b) = -log(Z(b)/Z0)
+    if np.use_mean                                    # use mean strategy => can use thermo. ident. to use stepping stone, which is simulation consistent
+        stepping_stone!(np.c, np.betas, trVs)         # compute log(Z(b)/Z0) and store it in c
+        np.c .*= (-one(K))                            # c(b) = -log(Z(b)/Z0)
     else
-        trapez!(np.c, np.betas, median.(trVs)) # use trapezoidal approx of int_0^beta med(b)db
+        trapez!(np.c, np.betas, median.(trVs))        # use trapezoidal approx of int_0^beta med(b)db
     end
     return
 end
-
-# method for collecting samples using ensembles of explorers (indep or NRPT)
-function tune_c!(
-    np::NRSTProblem, 
-    ens::Union{NRPTSampler, Vector{<:ExplorationKernel}},
-    args...
-    )
-    trVs = collectVs(np, ens, args...)
-    tune_c!(np, trVs)
-    return trVs
-end
-
-# method for proper runs of NRST, which contain samples of V
-tune_c!(np::NRSTProblem, res::RunResults) = tune_c!(np, res.trVs)
 
 ##############################################################################
 # tune betas
@@ -250,25 +207,15 @@ end
 
 # method for the raw traces of V along the levels
 function tune_betas!(np::NRSTProblem{T,K}, trVs::Vector{Vector{K}}) where {T,K}
-    R   = est_rej_probs(trVs, np.betas, np.c) # compute average directional NRST rejection probabilities
-    ar  = averej(R)                           # average up and down directions
+    R   = est_rej_probs(trVs, np.betas, np.c)         # compute average directional NRST rejection probabilities
+    ar  = averej(R)                                   # average up and down directions
     out = tune_betas!(np, ar)
     (out..., ar, R)
 end
 
-# method for the output of NRST
-tune_betas!(np::NRSTProblem, res::RunResults) = tune_betas!(np, averej(res))
-
 #######################################
 # methods to estimate rejections
 #######################################
-
-# collect V samples using NRPT
-# NOTE: this function assumes that the xpls in nrpt have up to date betas
-# and parameters! In the context of tuning, this is ensured by the fact that
-# this function is always called *after* tune explorers
-# TODO: fix the above and also get the full PT trace to tune other stuff 
-collectVs(::NRSTProblem, nrpt::NRPTSampler, args...) = rows2vov(run!(nrpt, args...).Vs)
 
 # for each sample V(x) at each level, estimate the conditional rejection
 # probabilities in both directions. Recall that
@@ -350,19 +297,8 @@ function optimize_grid!(betas::Vector{K}, averej::Vector{K}, uselog::Bool) where
     copyto!(betas, newbetas)
     return (f_Λnorm, Λsnorm, Λs)
 end
-function optimize_grid_core(f_Λnorm, targetΛ, b1, b2, uselog)
-    if uselog
-        lβ, _ = monoroot(lβ -> f_Λnorm(lβ)-targetΛ, floorlog(b1), floorlog(b2))
-        return expfloor(lβ)
-    else
-        return first(monoroot(β -> f_Λnorm(β)-targetΛ, b1, b2))
-    end
-end
 
 # estimate Λ, normalize, and interpolate
-# need to work in log space whenever
-#   (dΛ/dβ)(0) = E^{0}[V]
-# is infty
 function gen_lambda_fun(betas::Vector{K}, averej::Vector{K}, uselog::Bool) where {K<:AbstractFloat}
     Λs      = get_lambdas(averej)
     Λsnorm  = Λs/Λs[end]
@@ -379,44 +315,24 @@ function gen_lambda_fun(betas::Vector{K}, averej::Vector{K}, uselog::Bool) where
     return (f_Λnorm, Λsnorm, Λs)
 end
 
+# solve Λ(β) = targetΛ, possibly in log space
+function optimize_grid_core(f_Λnorm, targetΛ, b1, b2, uselog)
+    if uselog
+        lβ, _ = monoroot(lβ -> f_Λnorm(lβ)-targetΛ, floorlog(b1), floorlog(b2))
+        return expfloor(lβ)
+    else
+        return first(monoroot(β -> f_Λnorm(β)-targetΛ, b1, b2))
+    end
+end
+
 ##############################################################################
 # tune nexpls by imposing a threshold on autocorrelation
-# warning: do not use with trVs generated from NRST, since those include refreshments!
 ##############################################################################
-
-# collect samples of V(x) at each of the levels, running explorers independently
-function collectVs(
-    np::NRSTProblem, 
-    xpls::Vector{<:ExplorationKernel},
-    rng::AbstractRNG,
-    nsteps::Int,
-    sample_ref::Bool = true
-    )
-    N      = np.N
-    trVs   = [similar(np.c, nsteps) for _ in 0:N]
-    
-    # sample from reference
-    x = similar(first(xpls).x)             # temp
-    for i in 1:(nsteps*sample_ref)         # nsteps*false = 0 so no samples taken when sample_ref=false
-        trVs[1][i], _ = randrefmayreject!(np.tm, rng, x, np.reject_big_vs)
-    end
-
-    # sample with explorers
-    rngs = [split(rng) for _ in 1:N]
-    Threads.@threads for i in 1:N          # "Threads.@threads for" does not work with enumerate
-        xpl = xpls[i]
-        rng = rngs[i]
-        update_β!(xpl, np.betas[i+1])      # needed because most likely the grid was updated
-        run!(xpl, rng, trVs[i+1])          # run and collect Vs
-    end
-    # store_params!(np, xpls)                # store params in case anything was re-tuned
-    return trVs
-end
 
 function tune_nexpls!(
     nexpls::Vector{TI},
     trVs::Vector{Vector{TF}},
-    maxcor::TF,
+    maxcor::AbstractFloat,
     λ::AbstractFloat = 0.;
     maxTF::TF = inv(eps(TF))
     ) where {TI<:Int, TF<:AbstractFloat}
@@ -469,41 +385,6 @@ function tune_nexpls!(
         end
     end
     return
-end
-
-# jointly tune c and nexpls: makes sense because both need samples form V
-# method for ensemble of iid explorers
-function tune_c_nexpls!(
-    np::NRSTProblem,
-    xpls::Vector{<:ExplorationKernel},
-    rng::AbstractRNG,
-    nsteps::Int,
-    args...
-    )
-    trVs = tune_c!(np, xpls, rng, nsteps)
-    tune_nexpls!(np.nexpls, trVs, args...)
-    return log_partition(np, trVs)
-end
-
-# method for NRPT: use NRPT for tuning c (higher quality), and then extract
-# explorers and run the method above for tuning nexpls. This is needed because
-# NRPT traces are "contaminated" with swaps.
-function tune_c_nexpls!(
-    np::NRSTProblem,
-    nrpt::NRPTSampler,
-    rng::AbstractRNG,
-    nsteps::Int,
-    args...
-    )
-    ptVs = tune_c!(np, nrpt, rng, nsteps)
-    Λ    = last(get_lambdas(averej(est_rej_probs(ptVs, np.betas, np.c)))) # final estimate of Λ using the most recent grid and c values
-    lZs  = log_partition(np, ptVs)                                        # estimate log(Z_i/Z_0)
-    xpls = get_xpls(nrpt)
-    @assert [xpl.curβ[] for xpl in xpls] == np.betas[2:end]               # consistency check: since tune_explorers is called before this function, the explorers should have the current grid values 
-    @assert params.(xpls) == np.xplpars                                   # consistency check: params should match too for the same reason
-    trVs = collectVs(np, xpls, rng, np.nexpls[1]*nsteps, false)           # make equivalent effort to an NRPT step
-    tune_nexpls!(np.nexpls, trVs, args...)
-    return Λ, lZs
 end
 
 ##############################################################################
