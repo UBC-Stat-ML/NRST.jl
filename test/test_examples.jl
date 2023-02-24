@@ -75,15 +75,16 @@ function NRST.V(tm::HierarchicalModel{TF}, x) where {TF}
     return acc
 end
 
-rng = SplittableRandom(7008)
+rng = SplittableRandom(708)
 tm  = HierarchicalModel();
 ns, TE, Λ = NRSTSampler(
             tm,
             rng,
-            use_mean=true,
-            γ = 2.0,
-            xpl_smooth_λ=1e-5,
-            maxcor=0.9,
 );
 
-
+using Plots, ColorSchemes
+nrpt = NRST.NRPTSampler(ns);
+tr = NRST.run!(nrpt,rng,100);
+N = NRST.get_N(nrpt)
+M = hcat(collect(0:N),tr.perms)
+plot(M', color_palette=palette(:thermal,N+1,rev=true), legend=false)

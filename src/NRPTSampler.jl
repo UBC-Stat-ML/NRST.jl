@@ -91,7 +91,7 @@ function deo_step!(nrpt::NRPTSampler, rng::AbstractRNG, tr::NRPTTrace)
             sper[i+2] = im1                                     # level i+1 is now handled by machine im1
         end
     end
-    tr.n[] += 1           # increase step counter in trace
+    tr.n[] += 1                                                 # increase step counter in trace
 end
 
 # attempt swapping indices between (ns1,ns2)
@@ -139,14 +139,21 @@ end
 # M = hcat(collect(0:N),tr.perms)
 # plot(M', color_palette=palette(:thermal,N+1,rev=true), legend=false)
 
-# run NRPT without exploration steps and return V samples at each level
+# run NRPT without communication steps and return V samples at each level
 # used to estimate the autocorrelation function of an explorer
 function collectVsSerial!(nrpt::NRPTSampler, rng::AbstractRNG, nsteps::Int)
+    # need to set number of exploration steps to 1
+    np         = first(nrpt.nss).np
+    old_nexpls = copy(np.nexpls)
+    np.nexpls .= one(eltype(old_nexpls))
+
+    # run
     tr = NRPTTrace(nrpt, nsteps)
     for _ in 1:nsteps
-        tr.n[] += 1              # increase step counter in trace
+        tr.n[] += 1                      # increase step counter in trace
         expl_step!(nrpt, rng)
         store_results!(nrpt, tr)
     end
+    copyto!(np.nexpls, old_nexpls)       # undo change
     rows2vov(tr.Vs)
 end

@@ -142,7 +142,7 @@ function tune!(
     res = @timed tune_last!(np, ens, rng, nsteps, maxcor, xpl_smooth_λ)
     Λ, lZs = res.value
     if verbose
-        @printf("done!\n\ttElapsed: %.1fs\n\n", res.time)
+        @printf("done!\n\tElapsed: %.1fs\n\n", res.time)
         show(lineplot_term(
             np.betas[2:end], np.nexpls, xlabel = "β",
             title="Exploration steps needed to get correlation ≤ $maxcor"
