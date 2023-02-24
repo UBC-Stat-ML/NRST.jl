@@ -7,6 +7,7 @@ using DynamicPPL: DynamicPPL
 using FastRunningMedian: running_median
 using Interpolations: interpolate, FritschButlandMonotonicInterpolation, linear_interpolation, Line
 using LogExpFunctions: logsumexp, logistic
+using ParetoSmooth: ParetoSmooth
 using Plots
 using Printf
 using ProgressMeter: ProgressMeter

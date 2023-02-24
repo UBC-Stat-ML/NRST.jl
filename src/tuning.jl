@@ -53,14 +53,13 @@ function tune!(
     rng::AbstractRNG;
     max_rounds::Int    = 12,
     max_ar_ratio::Real = 0.10,      # limit on std(ar)/mean(ar), ar: average of Ru and Rd, the directional rejection rates
-    max_ar1_ratio::Real= 1.75,      # assume V non-integrable if ar[1]/mean(ar[-1]) > max_ar1_ratio
     max_dr_ratio::Real = 0.05,      # limit on mean(|Ru-Rd|)/mean(ar). Note: this only makes sense for use_mean=true
     max_relΔcone::Real = 0.005,     # limit on rel change in c(1)
-    max_relΔΛ::Real    = 0.005,     # limit on rel change in Λ = Λ(1)
+    max_relΔΛ::Real    = 0.0075,    # limit on rel change in Λ = Λ(1)
     nsteps_init::Int   = 2,         # steps used in the first round
-    maxcor::Real       = 0.9,       # set nexpl in explorers s.t. correlation of V samples is lower than this
-    γ::Real            = 2.0,       # correction for the optimal_N formula
-    xpl_smooth_λ::Real = 1e-7,      # smoothness knob for xpl params. λ==0 == no smoothing
+    maxcor::Real       = 0.85,      # set nexpl in explorers s.t. correlation of V samples is lower than this
+    γ::Real            = 1.5,       # correction for the optimal_N formula
+    xpl_smooth_λ::Real = 1e-5,      # smoothness knob for xpl params. λ==0 == no smoothing
     check_N::Bool      = true,
     check_at_rnd::Int  = 9,         # early round with enough accuracy to check V integrability and N 
     verbose::Bool      = true,
@@ -86,20 +85,30 @@ function tune!(
         
         # tune c and betas
         verbose && print("\tTuning explorers, c, and grid using $nsteps steps...")
-        res        = @timed tune_inner!(np, ens, rng, nsteps)
-        Δβs,Λ,ar,R = res.value # note: rejections are before grid adjustment, so they are technically stale, but are still useful to assess convergence. compute std dev of average of up and down rejs
-        mar        = mean(ar)
-        ar_ratio   = std(ar)/mar
-        ar1_ratio  = ar[1]/mean(ar[2:end])
-        dr_ratio   = mean(abs, R[1:(end-1),1] - R[2:end,2])/mar
-        relΔcone   = abs(np.c[end] - oldcone) / abs(oldcone)
-        oldcone    = np.c[end]
-        relΔΛ      = abs(Λ - oldΛ) / abs(oldΛ)
-        oldΛ       = Λ
+        res          = @timed tune_inner!(np, ens, rng, nsteps)
+        ξ,Δβs,Λ,ar,R = res.value # note: rejections are before grid adjustment, so they are technically stale, but are still useful to assess convergence. compute std dev of average of up and down rejs
+        mar          = mean(ar)
+        ar_ratio     = std(ar)/mar
+        ar1_ratio    = ar[1]/mean(ar[2:end])
+        dr_ratio     = mean(abs, R[1:(end-1),1] - R[2:end,2])/mar
+        relΔcone     = abs(np.c[end] - oldcone) / abs(oldcone)
+        oldcone      = np.c[end]
+        relΔΛ        = abs(Λ - oldΛ) / abs(oldΛ)
+        oldΛ         = Λ
         if verbose 
-            @printf( # the following line cannot be cut with concat ("*") because @printf only accepts string literals
-                "done!\n\t\tAR std/mean=%.3f\n\t\tAR[1]/mean(AR[-1])=%.3f\n\t\tmean|Ru-Rd|/mean=%.3f\n\t\tmax(Δbetas)=%.3f\n\t\tc(1)=%.2f (relΔ=%.2f%%)\n\t\tΛ=%.2f (relΔ=%.1f%%)\n\t\tElapsed: %.1fs\n\n", 
-                ar_ratio, ar1_ratio, dr_ratio, Δβs, np.c[end], 100*relΔcone, Λ, 100*relΔΛ, res.time
+            @printf(
+                """
+                done!
+                \t\tAR std/mean=%.3f
+                \t\tAR[1]/mean(AR[-1])=%.3f
+                \t\tξ(|V| @ i=0)=%.2f
+                \t\tmean|Ru-Rd|/mean=%.3f
+                \t\tmax(Δbetas)=%.3f
+                \t\tc(1)=%.2f (relΔ=%.2f%%)
+                \t\tΛ=%.2f (relΔ=%.1f%%)
+                \t\tElapsed: %.1fs\n\n", 
+                """, ar_ratio, ar1_ratio, ξ, dr_ratio, Δβs, np.c[end], 
+                100*relΔcone, Λ, 100*relΔΛ, res.time
             )
             show(plot_grid(np.betas, title="Histogram of βs: round $rnd"))
             println("\n")
@@ -107,7 +116,7 @@ function tune!(
 
         # time to check if parameters are ok
         if rnd == check_at_rnd            
-            if !np.log_grid && ar1_ratio > max_ar1_ratio                  # check if we need to switch interpolating Λ(β) in log scale to handle Inf derivative at 0.
+            if !np.log_grid && ξ >= 1                                     # if E_0[|V|]=∞, we need to switch interpolating Λ(β) in log scale to handle Inf derivative at 0.
                 throw(NonIntegrableVException())
             end
             if check_N                                                    # check if N is too low / high
@@ -144,10 +153,14 @@ function tune!(
     return nsteps, Λ, lZs
 end
 
-# tune explorers, c, and betas
+# tune explorers, c, and betas. also calculate tail index of |V| at level 0
 # note the order: first tune c, then grid. This because c is used for 
 # estimating NRST rejections, which are then used to estimate Lambda
-tune_inner!(np::NRSTProblem, args...) = tune_betas!(np, tune_xpls_and_c!(np, args...))
+function tune_inner!(np::NRSTProblem, args...)
+    trVs = tune_xpls_and_c!(np, args...)
+    ξ    = gpd_index(first(trVs))
+    (ξ, tune_betas!(np, trVs)...)
+end
 
 # last round of tuning after last adjustment to the grid
 # tune explorers, c, and number of exploration steps
@@ -177,6 +190,21 @@ end
 ##############################################################################
 # under the hood
 ##############################################################################
+
+##############################################################################
+# estimate tail index of |V| at level 0
+##############################################################################
+
+function gpd_index(V0s::Vector{<:AbstractFloat})
+    if length(V0s) > 30                                                          # only do this for sufficiently large sample
+        as   = abs.(V0s)
+        as .-= minimum(as)                                                       # center because gpd_fit assumes location=0
+        ξ    = first(ParetoSmooth.gpd_fit(as, 1.0, wip=false, sort_sample=true)) # 1.0 eff because this is iid sampling. No prior because it defaults to ~0.5 and that would be optimistic when testing <1
+    else
+        ξ    = eltype(V0s)(NaN)
+    end
+    return ξ
+end
 
 ##############################################################################
 # tune c

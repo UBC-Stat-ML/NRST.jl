@@ -85,11 +85,5 @@ ns, TE, Λ = NRSTSampler(
             xpl_smooth_λ=1e-5,
             maxcor=0.9,
 );
-nrpt = NRST.NRPTSampler(ns);
-tr = NRST.run!(nrpt,rng, 512);
 
 
-using ParetoSmooth
-
-v0s = sort!(tr.Vs[begin,:] .- minimum(tr.Vs[begin,:]))
-ParetoSmooth.gpd_fit(v0s, 1.0, wip=false)
