@@ -106,7 +106,7 @@ function init_slice(ss::SliceSampler, rng::AbstractRNG, i::Int)
     R   = L + ss.w[]
     Lps = potentials(ss, i, L) # note: (L|R)ps are tuples
     Rps = potentials(ss, i, R)
-    # @debug "init_slice: (L,R)=($L,$R)"
+    # @debug "init_slice: (L, R) = ($L, $R)"
     L, R, Lps, Rps
 end
 
@@ -133,7 +133,9 @@ end
 function grow_slice(ss::SliceSampler{Doubling}, rng::AbstractRNG, i, L, R, Lps, Rps, newv)
     k = zero(ss.p)
     while (in_slice(newv, Lps) || in_slice(newv, Rps)) && k < ss.p
+        # print("grow_slice: i=$i, k=$k, L=$L, R=$R, grow_left="); flush(stdout)
         grow_left = rand(rng, Bool)
+        # println(grow_left); flush(stdout)
         if grow_left
             L  -= (R-L)
             Lps = potentials(ss, i, L) 
@@ -142,7 +144,6 @@ function grow_slice(ss::SliceSampler{Doubling}, rng::AbstractRNG, i, L, R, Lps, 
             Rps = potentials(ss, i, R) 
         end
         k += 1
-        # @debug "grow_slice: (k=$k): (L,R)=($L,$R)"
     end
     L, R, Lps, Rps, k # k == number of V(x) evaluations
 end
@@ -155,22 +156,26 @@ function shrink_slice(ss::SliceSampler, rng::AbstractRNG, i, L, R, Lps, Rps, new
     bL    = L
     bR    = R
     nvs   = 0                            # counts number of V(x) evaluations
-    tol   = 10eps(typeof(xi))
+    tol   = 100eps(typeof(xi))
     while true
-        if bR-bL < tol                   # failsafe for degenerate distributions and potential rounding issues. See e.g. here: https://github.com/UBC-Stat-ML/blangSDK/blob/e9f57ad63476a18added1dd97e761d5f5b26adf0/src/main/java/blang/mcmc/RealSliceSampler.java#L109 
+        # print("\t\tshrink_slice: (bL, bR) = ($bL, $bR), "); flush(stdout)
+        if bR-bL < tol                   # failsafe for infinite loops due to degenerate distributions and potential rounding issues. Seen for Doubling with HierarchicalModel seed 6872 γ=1.5 median. See also e.g. here: https://github.com/UBC-Stat-ML/blangSDK/blob/e9f57ad63476a18added1dd97e761d5f5b26adf0/src/main/java/blang/mcmc/RealSliceSampler.java#L109 
             newxi = xi
             newps = potentials(ss)
             break
         end
         newxi = bL + (bR-bL)*rand(rng)   # select a point in (bL,bR) at random
+        # print("newxi = $newxi, "); flush(stdout)
         newps = potentials(ss, i, newxi) # compute the potentials at that point
         nvs  += 1
         if in_slice(newv, newps)
             acc,nv = is_acceptable(ss, i, newxi, L, R, Lps, Rps, newv)
-            # @debug "shrink_slice: (bL,bR)=($bL,$bR), newxi=$newxi => acc=$(acc)!"
+            # @debug "shrink_slice: (bL, bR) = ($bL, $bR), newxi=$newxi => acc=$(acc)!"
             nvs   += nv
+            # println("accepted!"); flush(stdout)
             acc && break
         end
+        # println("rejected!"); flush(stdout)
         newxi < xi ? (bL = newxi) : (bR = newxi)            
     end
     return newxi, newps, nvs
@@ -200,6 +205,7 @@ function is_acceptable(ss::SliceSampler{Doubling}, i, newxi, L, R, Lps, Rps, new
             hLps = potentials(ss, i, hL)
         end
         nvs += 1
+        # @debug "is_acceptable: k=$nvs: D=$D, (hL, newxi, hR) = ($hL, $newxi, $hR)"
         if D && !in_slice(newv, hLps) && !in_slice(newv, hRps)
             acc = false
             break
@@ -211,12 +217,19 @@ end
 # univariate step
 function step!(ss::SliceSampler, rng::AbstractRNG, i::Int)
     newv    = ss.curVβ[] + randexp(rng)  # draw a new slice. note: y = pibeta(x)*U(0,1) <=> -log(y) =: newv = Vβ(x) + Exp(1)
+    # print("\tbuilding slice..."); flush(stdout)
     L,R,Lps,Rps,nv = build_slice(ss, rng, i, newv)
+    # println("done! (L, R) = ($L, $R)"); flush(stdout)
     nvs     = nv + 2                     # number of V(x) evaluations = 2 (init_slice) + nv (grow_slice)
+    # print("\tshrinking slice..."); flush(stdout)
     newxi,newps,nv = shrink_slice(ss, rng, i, L, R, Lps, Rps, newv)
+    # println("done! newxi=$newxi"); flush(stdout)
     nvs    += nv
+    # print("\tsetting new state..."); flush(stdout)
     ss.x[i] = newxi                      # update state
+    # print("done!\n\tsetting new potentials..."); flush(stdout)
     set_potentials!(ss, newps...)        # update potentials
+    # println("done!\nFinished dimension i=$i."); flush(stdout)
     return nvs
 end
 
@@ -224,6 +237,7 @@ end
 function step!(ss::SliceSampler, rng::AbstractRNG)
     nvs = zero(ss.p)                     # number of V(x) evaluations
     for i in eachindex(ss.x)
+        # println("step!: sampling dimension i=$i"); flush(stdout)
         nvs += step!(ss, rng, i)
     end
     return one(eltype(ss.curV)), nvs     # return "acceptance probability" and number of V evals

@@ -75,11 +75,14 @@ function NRST.V(tm::HierarchicalModel{TF}, x) where {TF}
     return acc
 end
 
-rng = SplittableRandom(708)
+rng = SplittableRandom(6872)
 tm  = HierarchicalModel();
 ns, TE, Λ = NRSTSampler(
             tm,
             rng,
+            NRST.SliceSamplerDoubling,
+            γ=1.5,
+            use_mean=false
 );
 
 using Plots, ColorSchemes
