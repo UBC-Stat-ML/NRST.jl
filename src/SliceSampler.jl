@@ -159,12 +159,13 @@ function shrink_slice(
     bR    = R
     nvs   = 0                                                # counts number of V(x) evaluations
     atol  = 100eps(TF)
-    rtol  = 2eps(TF)
+    rtol  = sqrt(eps(TF))
     while true
         # print("\t\tshrink_slice: (bL, bR) = ($bL, $bR), "); flush(stdout)
         if bR-bL < atol || bL/bR > 1-rtol                    # failsafe for infinite loops due to degenerate distributions and potential rounding issues. atol problem seen for Doubling with HierarchicalModel seed 6872 γ=1.5 median. rtol problem seen for Doubling with HierarchicalModel seed 2986 γ=2.0 median. See also e.g. here: https://github.com/UBC-Stat-ML/blangSDK/blob/e9f57ad63476a18added1dd97e761d5f5b26adf0/src/main/java/blang/mcmc/RealSliceSampler.java#L109 
             newxi = xi
             newps = potentials(ss)
+            # println("=> too close together => output newxi=xi"); flush(stdout)
             break
         end
         newxi = bL + (bR-bL)*rand(rng)                       # select a point in (bL,bR) at random
@@ -175,7 +176,7 @@ function shrink_slice(
             # println("\t\tshrink_slice: newxi in slice! checking acceptability..."); flush(stdout)
             acc,nv = is_acceptable(ss, i, newxi, L, R, Lps, Rps, newv)
             nvs   += nv
-            # println("\t\tshrink_slice: newxi accepted!"); flush(stdout)
+            # println("\t\tshrink_slice: accepted!"); flush(stdout)
             acc && break
         end
         # println("\t\tshrink_slice: rejected!"); flush(stdout)
