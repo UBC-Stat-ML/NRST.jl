@@ -149,33 +149,36 @@ function grow_slice(ss::SliceSampler{Doubling}, rng::AbstractRNG, i, L, R, Lps, 
 end
 
 # select point by shrinking (Alg. in Fig 5)
-function shrink_slice(ss::SliceSampler, rng::AbstractRNG, i, L, R, Lps, Rps, newv)
+function shrink_slice(
+    ss::SliceSampler{SSS,TTM,TF}, rng::AbstractRNG, i, L, R, Lps, Rps, newv
+    ) where {SSS,TTM,TF}
     xi    = ss.x[i]
-    newxi = xi                           # init with the current point
-    newps = potentials(ss)               # init with the potentials at the current point
+    newxi = xi                                               # init with the current point
+    newps = potentials(ss)                                   # init with the potentials at the current point
     bL    = L
     bR    = R
-    nvs   = 0                            # counts number of V(x) evaluations
-    tol   = 100eps(typeof(xi))
+    nvs   = 0                                                # counts number of V(x) evaluations
+    atol  = 100eps(TF)
+    rtol  = 2eps(TF)
     while true
         # print("\t\tshrink_slice: (bL, bR) = ($bL, $bR), "); flush(stdout)
-        if bR-bL < tol                   # failsafe for infinite loops due to degenerate distributions and potential rounding issues. Seen for Doubling with HierarchicalModel seed 6872 γ=1.5 median. See also e.g. here: https://github.com/UBC-Stat-ML/blangSDK/blob/e9f57ad63476a18added1dd97e761d5f5b26adf0/src/main/java/blang/mcmc/RealSliceSampler.java#L109 
+        if bR-bL < atol || bL/bR > 1-rtol                    # failsafe for infinite loops due to degenerate distributions and potential rounding issues. atol problem seen for Doubling with HierarchicalModel seed 6872 γ=1.5 median. rtol problem seen for Doubling with HierarchicalModel seed 2986 γ=2.0 median. See also e.g. here: https://github.com/UBC-Stat-ML/blangSDK/blob/e9f57ad63476a18added1dd97e761d5f5b26adf0/src/main/java/blang/mcmc/RealSliceSampler.java#L109 
             newxi = xi
             newps = potentials(ss)
             break
         end
-        newxi = bL + (bR-bL)*rand(rng)   # select a point in (bL,bR) at random
-        # print("newxi = $newxi, "); flush(stdout)
-        newps = potentials(ss, i, newxi) # compute the potentials at that point
+        newxi = bL + (bR-bL)*rand(rng)                       # select a point in (bL,bR) at random
+        # println("newxi = $newxi."); flush(stdout)
+        newps = potentials(ss, i, newxi)                     # compute the potentials at that point
         nvs  += 1
         if in_slice(newv, newps)
+            # println("\t\tshrink_slice: newxi in slice! checking acceptability..."); flush(stdout)
             acc,nv = is_acceptable(ss, i, newxi, L, R, Lps, Rps, newv)
-            # @debug "shrink_slice: (bL, bR) = ($bL, $bR), newxi=$newxi => acc=$(acc)!"
             nvs   += nv
-            # println("accepted!"); flush(stdout)
+            # println("\t\tshrink_slice: newxi accepted!"); flush(stdout)
             acc && break
         end
-        # println("rejected!"); flush(stdout)
+        # println("\t\tshrink_slice: rejected!"); flush(stdout)
         newxi < xi ? (bL = newxi) : (bR = newxi)            
     end
     return newxi, newps, nvs
@@ -205,7 +208,7 @@ function is_acceptable(ss::SliceSampler{Doubling}, i, newxi, L, R, Lps, Rps, new
             hLps = potentials(ss, i, hL)
         end
         nvs += 1
-        # @debug "is_acceptable: k=$nvs: D=$D, (hL, newxi, hR) = ($hL, $newxi, $hR)"
+        # println("\t\t\tis_acceptable: k=$nvs: D=$D, (hL, newxi, hR) = ($hL, $newxi, $hR), (VβhL, newv, VβhR) = ($(Vβ(hLps)), $newv, $(Vβ(hRps)))")
         if D && !in_slice(newv, hLps) && !in_slice(newv, hRps)
             acc = false
             break
@@ -221,9 +224,9 @@ function step!(ss::SliceSampler, rng::AbstractRNG, i::Int)
     L,R,Lps,Rps,nv = build_slice(ss, rng, i, newv)
     # println("done! (L, R) = ($L, $R)"); flush(stdout)
     nvs     = nv + 2                     # number of V(x) evaluations = 2 (init_slice) + nv (grow_slice)
-    # print("\tshrinking slice..."); flush(stdout)
+    # println("\tshrinking slice..."); flush(stdout)
     newxi,newps,nv = shrink_slice(ss, rng, i, L, R, Lps, Rps, newv)
-    # println("done! newxi=$newxi"); flush(stdout)
+    # println("\tdone! newxi=$newxi"); flush(stdout)
     nvs    += nv
     # print("\tsetting new state..."); flush(stdout)
     ss.x[i] = newxi                      # update state
@@ -242,5 +245,3 @@ function step!(ss::SliceSampler, rng::AbstractRNG)
     end
     return one(eltype(ss.curV)), nvs     # return "acceptance probability" and number of V evals
 end
-
-
