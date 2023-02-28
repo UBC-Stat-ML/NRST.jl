@@ -162,7 +162,7 @@ function shrink_slice(
     rtol  = sqrt(eps(TF))
     while true
         # print("\t\tshrink_slice: (bL, bR) = ($bL, $bR), "); flush(stdout)
-        if bR-bL < atol || bL/bR > 1-rtol                    # failsafe for infinite loops due to degenerate distributions and potential rounding issues. atol problem seen for Doubling with HierarchicalModel seed 6872 γ=1.5 median. rtol problem seen for Doubling with HierarchicalModel seed 2986 γ=2.0 median. See also e.g. here: https://github.com/UBC-Stat-ML/blangSDK/blob/e9f57ad63476a18added1dd97e761d5f5b26adf0/src/main/java/blang/mcmc/RealSliceSampler.java#L109 
+        if bR-bL < atol || abs(bL/bR-1) < rtol               # failsafe for infinite loops due to degenerate distributions and potential rounding issues. atol problem seen for Doubling with HierarchicalModel seed 6872 γ=1.5 median. rtol problem seen for Doubling with HierarchicalModel seed 2986 γ=2.0 median. See also e.g. here: https://github.com/UBC-Stat-ML/blangSDK/blob/e9f57ad63476a18added1dd97e761d5f5b26adf0/src/main/java/blang/mcmc/RealSliceSampler.java#L109 
             newxi = xi
             newps = potentials(ss)
             # println("=> too close together => output newxi=xi"); flush(stdout)
