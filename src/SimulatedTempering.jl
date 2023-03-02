@@ -31,11 +31,12 @@ get_trace(st::AbstractSTSampler) = ConstCostTrace(st)
 # sampling methods
 ###############################################################################
 
-# NRST step = comm_step ∘ expl_step => (X,0,-1) is atom
-# default method. works for NRST, SH16, and others
+# Typical ST step = expl_step ∘ comm_step
+# implies (X,0) is atom for vanilla ST and (X,0,1) is atom for FBDR and SH16
+# note: NRST uses a different convention
 function step!(st::AbstractSTSampler, rng::AbstractRNG)
-    rp      = comm_step!(st, rng) # returns rejection probability
     xap,nvs = expl_step!(st, rng) # returns explorers' acceptance probability and number of V(x) evaluations
+    rp      = comm_step!(st, rng) # returns rejection probability
     return rp, xap, nvs
 end
 
@@ -65,89 +66,23 @@ end
 # note: does not account for Hastings ratio, which changes with the algo
 get_nlar(β₀,β₁,c₀,c₁,v) = (β₁-β₀)*v - (c₁-c₀)
 
-# convert nlar to rejection probability
-# note: the acceptance ratio is given by
-# A = [pi^{(i+eps)}(x)/pi^{(i)}(x)] [p_{i+eps}/p_i]
-# = [Z(i)/Z(i+eps)][exp{-b_{i+eps}V(x)}exp{b_{i}V(x)}][Z(i+eps)/Z(i)][exp{c_{i+eps}exp{-c_{i}}]
-# = exp{-[b_{i+eps} - b_{i}]V(x) + c_{i+eps} -c_{i}}
-# = exp{ -( [b_{i+eps} - b_{i}]V(x) - (c_{i+eps} -c_{i}) ) }
-# = exp(-nlaccr)
-# where nlaccr := -log(A) = [b_{i+eps} - b_{i}]V(x) - (c_{i+eps} -c_{i})
-# To get the rejection probability from nlaccr:
-# ap = min(1.,A) = min(1.,exp(-nlaccr)) = exp(min(0.,-nlaccr)) = exp(-max(0.,nlaccr))
-# => rp = 1-ap = 1-exp(-max(0.,nlaccr)) = -[exp(-max(0.,nlaccr))-1] = -expm1(-max(0.,nlaccr))
-nlar_2_rp(nlar) = -expm1(-max(zero(nlar), nlar))
+# get rejection and acceptance probability from negative log acc ratio 
+#     nlar := -log(A)
+# with
+#     A = [pi^{(i+eps)}(x)/pi^{(i)}(x)] [p_{i+eps}/p_i]
+# Then
+#     ap = min{1,A} = min{1, exp(-nlaccr)} = exp(min{0,-nlaccr)} = exp(-max{0,nlaccr)}
+#     rp = 1-ap = 1-exp(-max{0,nlaccr)} = -expm1(-max{0,nlaccr)}
 nlar_2_ap(nlar) = exp(-max(zero(nlar), nlar))
-
-#######################################
-# methods for storing results in traces
-#######################################
-
-function save_pre_step!(st::AbstractSTSampler, tr::NRSTTrace, n::Int; keep_xs::Bool=true)
-    @unpack trX, trIP, trV = tr
-    keep_xs && (trX[n] = copy(st.x)) # needs copy o.w. we get a ref to st.x
-    trIP[n] = copy(st.ip)            # same
-    trV[n]  = st.curV[]
-    return
-end
-function save_post_step!(
-    st::AbstractSTSampler,
-    tr::NRSTTrace,
-    n::Int,
-    rp::AbstractFloat, 
-    xplap::AbstractFloat
-    )
-    @unpack trRP, trXplAP = tr
-    trRP[n]   = rp                         # note: since trIP[n] was stored before step!, trRP[n] is rej prob of swap **initiated** from trIP[n]
-    l         = st.ip[1]
-    l >= 1 && push!(trXplAP[l], xplap)     # note: since comm preceeds expl, we're correctly storing the acc prob of the most recent state
-    return
-end
+nlar_2_rp(nlar) = -expm1(-max(zero(nlar), nlar))
 
 ##############################################################################
 # RegenerativeSampler interface
 ##############################################################################
 
-# check if state is in the atom
-# default method. works for NRST, SH16, and others
-function isinatom(st::AbstractSTSampler{T,I}) where {T,I}
-    first(st.ip)==zero(I) && last(st.ip)==-one(I)
-end
-
 #######################################
 # methods for storing results in traces
 #######################################
-
-# NRSTTrace
-function save_pre_step!(st::AbstractSTSampler, tr::NRSTTrace; keep_xs::Bool=true)
-    @unpack trX, trIP, trV = tr
-    keep_xs && push!(trX, copy(st.x)) # needs copy o.w. pushes a ref to st.x
-    push!(trIP, st.ip)                # no "copy" because implicit conversion from MVector to SVector does the copying
-    push!(trV, st.curV[])
-    return
-end
-function save_post_step!(
-    st::AbstractSTSampler,
-    tr::NRSTTrace,
-    rp::AbstractFloat, 
-    xplap::AbstractFloat,
-    args...
-    )
-    push!(tr.trRP, rp)
-    l = st.ip[1]
-    l >= 1 && push!(tr.trXplAP[l], xplap)
-    return
-end
-
-# IPRPTrace
-function save_pre_step!(st::AbstractSTSampler, tr::IPRPTrace)
-    push!(tr.trIP, st.ip) # no "copy" because implicit conversion from MVector to SVector does the copying
-    return
-end
-function save_post_step!(::AbstractSTSampler, tr::IPRPTrace, rp, args...)
-    push!(tr.trRP, rp)
-    return
-end
 
 # ConstCostTrace
 function save_pre_step!(::AbstractSTSampler, ::ConstCostTrace) end

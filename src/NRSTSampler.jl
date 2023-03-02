@@ -128,9 +128,22 @@ function comm_step!(ns::NRSTSampler{T,I,K}, rng::AbstractRNG) where {T,I,K}
     return nlar_2_rp(nlar)
 end
 
+# NRST step = comm_step ∘ expl_step => (X,0,-1) is atom
+# note: different from standard ST
+function step!(ns::NRSTSampler, rng::AbstractRNG)
+    rp      = comm_step!(ns, rng) # returns rejection probability
+    xap,nvs = expl_step!(ns, rng) # returns explorers' acceptance probability and number of V(x) evaluations
+    return rp, xap, nvs
+end
+
 #######################################
 # RegenerativeSampler interface
 #######################################
+
+# check if state is in the atom
+function isinatom(ns::NRSTSampler{T,I}) where {T,I}
+    first(ns.ip)==zero(I) && last(ns.ip)==-one(I)
+end
 
 # reset state by sampling from the renewal measure
 # we know that iprop=-1 is rejected always, so we can anticipate that.
@@ -138,6 +151,27 @@ function renew!(ns::NRSTSampler{T,I}, rng::AbstractRNG) where {T,I}
     ns.ip[1] = zero(I)
     ns.ip[2] = one(I)
     refreshx!(ns, rng)
+end
+
+# NRSTTrace
+function save_pre_step!(ns::NRSTSampler, tr::NRSTTrace; keep_xs::Bool=true)
+    @unpack trX, trIP, trV = tr
+    keep_xs && push!(trX, copy(ns.x)) # needs copy o.w. pushes a ref to ns.x
+    push!(trIP, ns.ip)                # no "copy" because implicit conversion from MVector to SVector does the copying
+    push!(trV, ns.curV[])
+    return
+end
+function save_post_step!(
+    ns::NRSTSampler,
+    tr::NRSTTrace,
+    rp::AbstractFloat, 
+    xplap::AbstractFloat,
+    args...
+    )
+    push!(tr.trRP, rp)
+    l = ns.ip[1]
+    l >= 1 && push!(tr.trXplAP[l], xplap)
+    return
 end
 
 # handling last tour step
