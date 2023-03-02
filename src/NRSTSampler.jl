@@ -145,8 +145,15 @@ function isinatom(ns::NRSTSampler{T,I}) where {T,I}
     first(ns.ip)==zero(I) && last(ns.ip)==-one(I)
 end
 
+# move state to the atom
+function toatom!(ns::NRSTSampler{T,I}) where {T,I}
+    ns.ip[1] = zero(I)
+    ns.ip[2] = -one(I)
+end
+
 # reset state by sampling from the renewal measure
-# we know that iprop=-1 is rejected always, so we can anticipate that.
+# overrides default ST method because we know that iprop=-1 is rejected
+# always, so we can anticipate that.
 function renew!(ns::NRSTSampler{T,I}, rng::AbstractRNG) where {T,I}
     ns.ip[1] = zero(I)
     ns.ip[2] = one(I)

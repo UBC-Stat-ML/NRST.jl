@@ -1,6 +1,6 @@
 module NRST
 
-using ColorSchemes: seaborn_colorblind, okabe_ito
+# using ColorSchemes: seaborn_colorblind, okabe_ito
 using DataFrames: DataFrame
 using Distributions: Uniform
 using DynamicPPL: DynamicPPL
@@ -8,11 +8,11 @@ using FastRunningMedian: running_median
 using Interpolations: interpolate, FritschButlandMonotonicInterpolation, linear_interpolation, Line
 using LogExpFunctions: logsumexp, logistic
 using ParetoSmooth: ParetoSmooth
-using Plots
+# using Plots
 using Printf
 using ProgressMeter: ProgressMeter
 using Random: Random, randexp, AbstractRNG, rand!
-using SmoothingSplines: SmoothingSpline, fit, predict
+# using SmoothingSplines: SmoothingSpline, fit, predict
 using SplittableRandoms: SplittableRandom, split
 using StaticArrays: MVector, SVector
 using Statistics

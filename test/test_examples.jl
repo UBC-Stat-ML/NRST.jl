@@ -80,10 +80,9 @@ rng = SplittableRandom(2986)
 ns, TE, Λ = NRSTSampler(
     tm,
     rng,
-    # NRST.SliceSamplerDoubling,
-    use_mean=false,
-    γ=2.0,
-    maxcor=0.9,
+    use_mean=true,
+    γ=2.5,
+    maxcor=0.95,
 );
 
 using Plots, ColorSchemes

@@ -128,23 +128,23 @@ end
 # LOO for SmoothingSplines
 ###############################################################################
 
-# remove single element from vector using only 1 allocation
-# https://discourse.julialang.org/t/remove-an-element-from-an-array-without-changing-the-original/63103/3
-@views deleteelem(a::AbstractVector, i) = vcat(a[begin:i-1], a[i+1:end])
+# # remove single element from vector using only 1 allocation
+# # https://discourse.julialang.org/t/remove-an-element-from-an-array-without-changing-the-original/63103/3
+# @views deleteelem(a::AbstractVector, i) = vcat(a[begin:i-1], a[i+1:end])
 
-function LOO(xs::AbstractVector, ys::AbstractVector; λs = 2. .^ ((-8):2:16))
-    L    = length(λs)
-    errs = zeros(L)
-    for (n, λ) in enumerate(λs)
-        for (i, xout) in enumerate(xs)
-            xsub     = deleteelem(xs,i)
-            ysub     = deleteelem(ys,i)
-            spl      = fit(SmoothingSpline, xsub, ysub, λ)
-            errs[n] += abs(predict(spl, xout)-ys[i])       # compute error at left-out point
-        end
-    end
-    iopt = argmin(errs)
-    λopt = λs[iopt]
-    (iopt == 1 || iopt == L) && @warn "λopt=$λopt is a boundary solution."
-    return λopt
-end
+# function LOO(xs::AbstractVector, ys::AbstractVector; λs = 2. .^ ((-8):2:16))
+#     L    = length(λs)
+#     errs = zeros(L)
+#     for (n, λ) in enumerate(λs)
+#         for (i, xout) in enumerate(xs)
+#             xsub     = deleteelem(xs,i)
+#             ysub     = deleteelem(ys,i)
+#             spl      = fit(SmoothingSpline, xsub, ysub, λ)
+#             errs[n] += abs(predict(spl, xout)-ys[i])       # compute error at left-out point
+#         end
+#     end
+#     iopt = argmin(errs)
+#     λopt = λs[iopt]
+#     (iopt == 1 || iopt == L) && @warn "λopt=$λopt is a boundary solution."
+#     return λopt
+# end

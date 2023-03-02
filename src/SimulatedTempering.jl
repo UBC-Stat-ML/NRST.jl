@@ -80,6 +80,12 @@ nlar_2_rp(nlar) = -expm1(-max(zero(nlar), nlar))
 # RegenerativeSampler interface
 ##############################################################################
 
+# reset state by sampling from the renewal measure == move to atom and step!
+function renew!(st::AbstractSTSampler, rng::AbstractRNG)
+    toatom!(st)
+    step!(st, rng)
+end
+
 #######################################
 # methods for storing results in traces
 #######################################
