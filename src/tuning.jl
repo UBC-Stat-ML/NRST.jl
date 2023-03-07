@@ -157,6 +157,8 @@ function tune!(
                 )
             ); println("\n")
         end
+    else
+        println()
     end
 
     # after these steps, NRST is coherently tuned and can be used to sample

@@ -111,7 +111,7 @@ function init_slice(ss::SliceSampler, rng::AbstractRNG, i::Int)
 end
 
 # grow slice using the stepping out approach (Alg. in Fig 3)
-function grow_slice(ss::SliceSampler{SteppingOut}, rng::AbstractRNG, i, L, R, Lps, Rps, newv)
+function grow_slice(ss::SliceSamplerSteppingOut, rng::AbstractRNG, i, L, R, Lps, Rps, newv)
     w = ss.w[]
     p = ss.p
     J = floor(Int, p*rand(rng))          # max number of steps to the left
@@ -130,7 +130,7 @@ function grow_slice(ss::SliceSampler{SteppingOut}, rng::AbstractRNG, i, L, R, Lp
 end
 
 # grow slice using the doubling approach (Alg. in Fig 4)
-function grow_slice(ss::SliceSampler{Doubling}, rng::AbstractRNG, i, L, R, Lps, Rps, newv)
+function grow_slice(ss::SliceSamplerDoubling, rng::AbstractRNG, i, L, R, Lps, Rps, newv)
     k = zero(ss.p)
     while (in_slice(newv, Lps) || in_slice(newv, Rps)) && k < ss.p
         # print("grow_slice: i=$i, k=$k, L=$L, R=$R, grow_left="); flush(stdout)
@@ -186,10 +186,10 @@ function shrink_slice(
 end
 
 # all proposals are accepted when using stepping out
-is_acceptable(::SliceSampler{SteppingOut}, args...) = (true, 0)
+is_acceptable(::SliceSamplerSteppingOut, args...) = (true, 0)
 
 # check acceptability of candidate point (Alg. in Fig 6)
-function is_acceptable(ss::SliceSampler{Doubling}, i, newxi, L, R, Lps, Rps, newv)
+function is_acceptable(ss::SliceSamplerDoubling, i, newxi, L, R, Lps, Rps, newv)
     xi   = ss.x[i]
     w    = ss.w[]
     hL   = L

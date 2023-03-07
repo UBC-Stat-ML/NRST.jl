@@ -28,28 +28,30 @@ function NRSTSampler(
     N::Int              = 30,
     log_grid::Bool      = false,
     tune::Bool          = true,
-    adapt_N_rounds::Int = 3,
+    adapt_N_rounds::Int = 2,
+    nexpl::Int          = -1,
     kwargs...
     ) where {TXpl <: ExplorationKernel}
-    ns      = init_sampler(tm, rng, TXpl; N=N, log_grid=log_grid, kwargs...)
-    stats   = ()
-    adapt_N = 0
+    ns           = init_sampler(tm, rng, TXpl; N=N, nexpl=nexpl, log_grid=log_grid, kwargs...)
+    stats        = ()
+    adapt_N      = 0
+    adapt_nexpls = (nexpl<0)
     while tune
         try
-            stats = tune!(ns, rng; check_N=(adapt_N<adapt_N_rounds), kwargs...)
+            stats = tune!(ns, rng; check_N=(adapt_N<adapt_N_rounds), adapt_nexpls=adapt_nexpls, kwargs...)
             tune  = false
         catch e
             if e isa BadNException
                 @warn "N=$(e.Ncur) too " * (e.Nopt > e.Ncur ? "low" : "high") * 
                       ". Setting N=$(e.Nopt) and restarting."
                 N = e.Nopt
-                ns = init_sampler(tm, rng, TXpl; N=N, log_grid=log_grid, kwargs...)
+                ns = init_sampler(tm, rng, TXpl; N=N, nexpl=nexpl, log_grid=log_grid, kwargs...)
                 adapt_N += 1
             elseif e isa NonIntegrableVException
                 @warn "V might not be integrable under the reference. " *
                       "Adjusting the adaptation to this fact and restarting."
                 log_grid = true
-                ns = init_sampler(tm, rng, TXpl; N=N, log_grid=log_grid, kwargs...)
+                ns = init_sampler(tm, rng, TXpl; N=N, nexpl=nexpl, log_grid=log_grid, kwargs...)
             else
                 rethrow(e)
             end
@@ -70,6 +72,7 @@ function init_sampler(
     rng::AbstractRNG,
     ::Type{TXpl};
     N::Int,
+    nexpl::Int,
     log_grid::Bool,
     use_mean::Bool      = true,
     reject_big_vs::Bool = true,
@@ -79,7 +82,7 @@ function init_sampler(
     x     = initx(rand(tm, rng), rng)                            # draw an initial point
     curV  = Ref(V(tm, x))
     xpl   = TXpl(tm, x, one(eltype(curV)), curV; kwargs...)
-    nexpl = default_nexpl_steps(xpl)
+    (nexpl < 0) && (nexpl = default_nexpl_steps(xpl))
     np    = NRSTProblem(                                         # instantiate an NRSTProblem
         tm, N, betas, similar(betas), use_mean, reject_big_vs, 
         log_grid, fill(nexpl, N), fill(params(xpl), N)
