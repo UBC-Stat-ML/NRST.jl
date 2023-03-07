@@ -80,9 +80,7 @@ rng = SplittableRandom(2986)
 ns, TE, Λ = NRSTSampler(
     tm,
     rng,
-    use_mean=true,
-    γ=2.5,
-    maxcor=0.95,
+    adapt_nexpls=false
 );
 
 using Plots, ColorSchemes

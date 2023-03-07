@@ -57,11 +57,12 @@ function tune!(
     max_relΔcone::Real = 0.005,     # limit on rel change in c(1)
     max_relΔΛ::Real    = 0.01,      # limit on rel change in Λ = Λ(1)
     nsteps_init::Int   = 2,         # steps used in the first round
-    maxcor::Real       = 0.85,      # set nexpl in explorers s.t. correlation of V samples is lower than this
-    γ::Real            = 1.5,       # correction for the optimal_N formula
+    maxcor::Real       = 0.95,      # set nexpl in explorers s.t. correlation of V samples is lower than this
+    γ::Real            = 2.5,       # correction for the optimal_N formula
     xpl_smooth_λ::Real = 1e-5,      # smoothness knob for xpl params. λ==0 == no smoothing
     check_N::Bool      = true,
     check_at_rnd::Int  = 9,         # early round with enough accuracy to check V integrability and N 
+    adapt_nexpls::Bool = true,      # should we adapt number of exploration steps after the last round?
     verbose::Bool      = true,
     kwargs...
     )
@@ -106,7 +107,7 @@ function tune!(
                 \t\tmax(Δbetas)=%.3f
                 \t\tc(1)=%.2f (relΔ=%.2f%%)
                 \t\tΛ=%.2f (relΔ=%.1f%%)
-                \t\tElapsed: %.1fs\n\n", 
+                \t\tElapsed: %.1fs\n\n 
                 """, ar_ratio, ar1_ratio, ξ, dr_ratio, Δβs, np.c[end], 
                 100*relΔcone, Λ, 100*relΔΛ, res.time
             )
@@ -133,20 +134,29 @@ function tune!(
     end
 
     # at this point, ns has a fresh new grid, so explorers and c are stale
-    # are stale => we need to tune them.
+    # => we need to tune them.
     if verbose 
         println(conv ? "Grid converged!" : "max_rounds=$max_rounds reached.")
         println("\nAdjusting settings to new grid:")
-        print("\tTuning explorers, c, and nexpls using $nsteps steps...")      
+        print("\tTuning explorers and c using $nsteps steps...")      
     end
-    res = @timed tune_last!(np, ens, rng, nsteps, maxcor, xpl_smooth_λ)
+    res = @timed tune_last!(np, ens, rng, nsteps)
     Λ, lZs = res.value
-    if verbose
-        @printf("done!\n\tElapsed: %.1fs\n\n", res.time)
-        show(lineplot_term(
-            np.betas[2:end], np.nexpls, xlabel = "β",
-            title="Exploration steps needed to get correlation ≤ $maxcor"
-        )); println("\n")
+    verbose && @printf("done!\n\t\tElapsed: %.1fs\n", res.time)
+
+    # if requested, adapt the number of exploration steps
+    if adapt_nexpls
+        verbose && print("\tTuning nexpls using $nsteps steps...")      
+        res = @timed tune_nexpls!(np, ens, rng, nsteps, maxcor, xpl_smooth_λ)
+        if verbose
+            @printf("done!\n\t\tElapsed: %.1fs\n\n", res.time)
+            show(
+                lineplot_term(
+                    np.betas[2:end], np.nexpls, xlabel = "β",
+                    title="Exploration steps needed to get correlation ≤ $maxcor"
+                )
+            ); println("\n")
+        end
     end
 
     # after these steps, NRST is coherently tuned and can be used to sample
@@ -168,20 +178,18 @@ function tune_last!(
     np::NRSTProblem,
     nrpt::NRPTSampler,
     rng::AbstractRNG,
-    nsteps::Int,
-    args...
+    nsteps::Int
     )
     ptVs = tune_xpls_and_c!(np, nrpt, rng, nsteps)
-    Λ    = last(get_lambdas(averej(est_rej_probs(ptVs, np.betas, np.c)))) # final estimate of Λ using the most recent grid and c values
-    lZs  = log_partition(np, ptVs)                                        # estimate log(Z_i/Z_0)
-    tune_nexpls!(np.nexpls, collectVsSerial!(nrpt, rng, nsteps), args...) # tune nexpls by taking a serial sample of Vs across levels
+    Λ    = last(get_lambdas(averej(est_rej_probs(ptVs, np.betas, np.c))))     # final estimate of Λ using the most recent grid and c values
+    lZs  = log_partition(np, ptVs)                                            # estimate log(Z_i/Z_0)
     return Λ, lZs
 end
 
 # tune explorers (TODO!) and c using samples from NRPT
 function tune_xpls_and_c!(np::NRSTProblem, nrpt::NRPTSampler, args...)
     tr   = run!(nrpt, args...)
-    # TODO: use tr.xs to help tune explorers
+    # TODO: pass tr.xs to explorers' tuning method
     trVs = rows2vov(tr.Vs)
     tune_c!(np, trVs)
     return trVs
@@ -357,6 +365,12 @@ end
 # tune nexpls by imposing a threshold on autocorrelation
 ##############################################################################
 
+# take serial sample with NRPT by skipping communication, then pass it to core method
+function tune_nexpls!(np::NRSTProblem, nrpt::NRPTSampler, rng, nsteps, args...)
+    tune_nexpls!(np.nexpls, collectVsSerial!(nrpt, rng, nsteps), args...)
+end
+
+# core method
 function tune_nexpls!(
     nexpls::Vector{TI},
     trVs::Vector{Vector{TF}},
