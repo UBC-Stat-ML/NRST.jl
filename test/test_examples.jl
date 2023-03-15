@@ -81,10 +81,3 @@ ns, TE, Λ = NRSTSampler(
     tm,
     rng,
 );
-
-using Plots, ColorSchemes
-nrpt = NRST.NRPTSampler(ns);
-tr = NRST.run!(nrpt,rng,100);
-N = NRST.get_N(nrpt)
-M = hcat(collect(0:N),tr.perms)
-plot(M', color_palette=palette(:thermal,N+1,rev=true), legend=false)

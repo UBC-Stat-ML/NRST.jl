@@ -74,7 +74,7 @@ function set_params!(ss::SliceSampler, params::NamedTuple) # set sigma from a Na
     ss.w[] = params.w
 end
 
-default_nexpl_steps(ss::SliceSampler) = one(ss.p)
+default_nexpl_steps(ss::SliceSampler) = typeof(ss.p)(3)    # same as in Pigeons
 
 #######################################
 # sampling methods
