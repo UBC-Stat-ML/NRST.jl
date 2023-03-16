@@ -29,29 +29,27 @@ function NRSTSampler(
     log_grid::Bool      = false,
     tune::Bool          = true,
     adapt_N_rounds::Int = 2,
-    nexpl::Int          = -1,
     kwargs...
     ) where {TXpl <: ExplorationKernel}
-    ns           = init_sampler(tm, rng, TXpl; N=N, nexpl=nexpl, log_grid=log_grid, kwargs...)
+    ns           = init_sampler(tm, rng, TXpl; N=N, log_grid=log_grid, kwargs...)
     stats        = ()
     adapt_N      = 0
-    adapt_nexpls = (nexpl<0)
     while tune
         try
-            stats = tune!(ns, rng; check_N=(adapt_N<adapt_N_rounds), adapt_nexpls=adapt_nexpls, kwargs...)
+            stats = tune!(ns, rng; check_N=(adapt_N<adapt_N_rounds), kwargs...)
             tune  = false
         catch e
             if e isa BadNException
                 @warn "N=$(e.Ncur) too " * (e.Nopt > e.Ncur ? "low" : "high") * 
                       ". Setting N=$(e.Nopt) and restarting."
                 N = e.Nopt
-                ns = init_sampler(tm, rng, TXpl; N=N, nexpl=nexpl, log_grid=log_grid, kwargs...)
+                ns = init_sampler(tm, rng, TXpl; N=N, log_grid=log_grid, kwargs...)
                 adapt_N += 1
             elseif e isa NonIntegrableVException
                 @warn "V might not be integrable under the reference. " *
                       "Adjusting the adaptation to this fact and restarting."
                 log_grid = true
-                ns = init_sampler(tm, rng, TXpl; N=N, nexpl=nexpl, log_grid=log_grid, kwargs...)
+                ns = init_sampler(tm, rng, TXpl; N=N, log_grid=log_grid, kwargs...)
             else
                 rethrow(e)
             end
@@ -72,8 +70,8 @@ function init_sampler(
     rng::AbstractRNG,
     ::Type{TXpl};
     N::Int,
-    nexpl::Int,
     log_grid::Bool,
+    nexpl::Int          = -1,
     use_mean::Bool      = true,
     reject_big_vs::Bool = true,
     kwargs...

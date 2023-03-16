@@ -62,7 +62,7 @@ function tune!(
     xpl_smooth_λ::Real = 1e-5,      # smoothness knob for xpl params. λ==0 == no smoothing
     check_N::Bool      = true,
     check_at_rnd::Int  = 9,         # early round with enough accuracy to check V integrability and N 
-    adapt_nexpls::Bool = true,      # should we adapt number of exploration steps after the last round?
+    adapt_nexpls::Bool = false,     # should we adapt number of exploration steps after the last round?
     verbose::Bool      = true,
     kwargs...
     )
