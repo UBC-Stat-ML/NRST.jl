@@ -75,8 +75,8 @@ function NRST.V(tm::HierarchicalModel{TF}, x) where {TF}
     return acc
 end
 
-tm  = HierarchicalModel();
-rng = SplittableRandom(2986)
+const tm  = HierarchicalModel();
+const rng = SplittableRandom(3509)
 ns, TE, Λ = NRSTSampler(
     tm,
     rng,

@@ -10,13 +10,16 @@ optimal_N(Λ, γ) = ceil(Int, γ*Λ*(1+sqrt(1 + inv(1+2Λ))))
 function tune!(
     ns::NRSTSampler,
     rng::AbstractRNG;
-    min_ntours::Int = 2_048,
-    verbose::Bool   = true,
+    min_ntours::Int    = 2_048,
+    verbose::Bool      = true,
+    adapt_nexpls::Bool = false,
     kwargs...
     )
-    ens          = NRPTSampler(ns)                                  # PT sampler, whose state is fully independent of ns
-    oldsumnexpl  = sum(ns.np.nexpls)
-    nsteps,Λ,lZs = tune!(ns.np, ens, rng;verbose=verbose,kwargs...)
+    ens            = NRPTSampler(ns)                                # PT sampler, whose state is fully independent of ns
+    ns.np.nexpls .*= 2                                              # dobule exploration steps to impove the grid tuning convergence
+    oldsumnexpl    = sum(ns.np.nexpls)                              # store exploration cost of a full sweep of the states during tuning
+    nsteps, Λ, lZs = tune!(ns.np, ens, rng;verbose=verbose,adapt_nexpls=adapt_nexpls,kwargs...)
+    adapt_nexpls || (ns.np.nexpls .÷= 2)                            # undo the doubling if no adaptation of nexpls was done
 
     # estimate TE with preliminary NRST run: needed because we cannot estimate TE
     # with ensembles, since this is inherently a regenerative property.
@@ -62,8 +65,8 @@ function tune!(
     xpl_smooth_λ::Real = 1e-5,      # smoothness knob for xpl params. λ==0 == no smoothing
     check_N::Bool      = true,
     check_at_rnd::Int  = 9,         # early round with enough accuracy to check V integrability and N 
-    adapt_nexpls::Bool = false,     # should we adapt number of exploration steps after the last round?
-    verbose::Bool      = true,
+    adapt_nexpls::Bool,             # should we adapt number of exploration steps after the last round?
+    verbose::Bool,
     kwargs...
     )
     !np.use_mean && (max_dr_ratio = Inf)      # equality of directional rejections only holds for the mean strategy
@@ -108,7 +111,7 @@ function tune!(
                 \t\tc(1)=%.2f (relΔ=%.2f%%)
                 \t\tΛ=%.2f (relΔ=%.1f%%)
                 \t\tElapsed: %.1fs\n\n 
-                """, ar_ratio, ar1_ratio, ξ, dr_ratio, Δβs, np.c[end], 
+                """, ar_ratio, ar1_ratio, ξ, dr_ratio, Δβs, last(np.c), 
                 100*relΔcone, Λ, 100*relΔΛ, res.time
             )
             show(plot_grid(np.betas, title="Histogram of βs: round $rnd"))
