@@ -51,12 +51,13 @@ end
 function expl_step!(st::TS, rng::AbstractRNG) where {T,I,K,TS<:AbstractSTSampler{T,I,K}}
     @unpack np,xpl,ip = st
     xap = one(K)
-    if ip[1] == zero(I)
+    i   = first(ip)
+    if i == zero(I)
         nvs    = refreshx!(st, rng)                   # sample from ref, return number of V evals (>1 if rejections occured) 
     else
-        β      = np.betas[ip[1]+1]                    # get the β for the level
-        nexpl  = np.nexpls[ip[1]]                     # get number of exploration steps needed at this level
-        params = np.xplpars[ip[1]]                    # get explorer params for this level 
+        β      = np.betas[i+1]                        # get the β for the level
+        nexpl  = np.nexpls[i]                         # get number of exploration steps needed at this level
+        params = np.xplpars[i]                        # get explorer params for this level 
         xap,nvs= explore!(xpl, rng, β, params, nexpl) # explore for nexpl steps. note: st.x and st.curV are shared with xpl
     end
     return xap,nvs
@@ -97,6 +98,27 @@ function save_post_step!(st::AbstractSTSampler, tr::ConstCostTrace, _, _, nvs)
     i = first(st.ip)
     i == st.np.N && (tr.n_vis_top[] += 1)
     tr.n_v_evals[] += nvs
+    return
+end
+
+# NRSTTrace
+function save_pre_step!(st::AbstractSTSampler, tr::NRSTTrace; keep_xs::Bool=true)
+    @unpack trX, trIP, trV = tr
+    keep_xs && push!(trX, copy(st.x))     # needs copy o.w. pushes a ref to ns.x
+    push!(trIP, st.ip)                    # no "copy" because implicit conversion from MVector to SVector does the copying
+    push!(trV, st.curV[])
+    return
+end
+function save_post_step!(
+    ::AbstractSTSampler,
+    tr::NRSTTrace,
+    rp::AbstractFloat, 
+    xplap::AbstractFloat,
+    args...
+    )
+    push!(tr.trRP, rp)                    # since ip was stored before step!, rp represents the rejection probability of a move **inititated** at the level that was stored
+    l = first(last(tr.trIP))              # need to use the level before the comm step, since expl happened first 
+    l >= 1 && push!(tr.trXplAP[l], xplap)
     return
 end
 

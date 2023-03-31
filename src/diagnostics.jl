@@ -199,28 +199,3 @@
 #     return tlmin:(width÷bestdiv):tlmax
 # end
 
-# # function to create a plot of the trace of the (1st comp) of the index process
-# function plot_trace_iproc(res::TouringRunResults{T,TI,TF}) where {T,TI,TF}
-#     ntours = get_ntours(res)
-#     N   = get_N(res)
-#     K   = min(floor(Int, 800/(2*N+2)), ntours) # choose K so that we see around a given num of steps
-#     len = sum(nsteps.(res.trvec[1:K]))
-#     is  = Vector{TI}(undef, len)
-#     l   = 1
-#     for tr in res.trvec[1:K]
-#         for ip in tr.trIP
-#             is[l] = ip[1]
-#             l += 1
-#         end
-#     end
-#     itop = findall(isequal(N), is)[1:2:end]
-#     ibot = findall(isequal(zero(N)), is)[2:2:end]
-#     piproc = plot(
-#         is, grid = false, palette = DEF_PAL, ylims = (0,1.04N),
-#         xlabel = "Step", ylabel = "Index", label = "",
-#         left_margin = 15px, bottom_margin = 15px, size = (675, 225)
-#     )
-#     scatter!(piproc, itop .+ 0.5, [1.025N], markershape = :dtriangle, label="")
-#     vline!(piproc, ibot .+ 0.5, linestyle = :dot, label="", linewidth=2)
-#     return piproc
-# end

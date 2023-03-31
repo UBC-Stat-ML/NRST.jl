@@ -81,3 +81,4 @@ ns, TE, Λ = NRSTSampler(
     tm,
     rng,
 );
+res=parallel_run(ns, rng, NRST.NRSTTrace(ns), TE=TE);

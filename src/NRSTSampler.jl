@@ -161,14 +161,13 @@ function renew!(ns::NRSTSampler{T,I}, rng::AbstractRNG) where {T,I}
     refreshx!(ns, rng)
 end
 
+#######################################
+# methods for storing results in traces
+#######################################
+
 # NRSTTrace
-function save_pre_step!(ns::NRSTSampler, tr::NRSTTrace; keep_xs::Bool=true)
-    @unpack trX, trIP, trV = tr
-    keep_xs && push!(trX, copy(ns.x)) # needs copy o.w. pushes a ref to ns.x
-    push!(trIP, ns.ip)                # no "copy" because implicit conversion from MVector to SVector does the copying
-    push!(trV, ns.curV[])
-    return
-end
+# note: need to overwrite the generic methods for ST samplers due to NRST using
+# a flipped step! (first comm, then expl)
 function save_post_step!(
     ns::NRSTSampler,
     tr::NRSTTrace,
@@ -177,7 +176,7 @@ function save_post_step!(
     args...
     )
     push!(tr.trRP, rp)
-    l = ns.ip[1]
+    l = first(ns.ip)
     l >= 1 && push!(tr.trXplAP[l], xplap)
     return
 end

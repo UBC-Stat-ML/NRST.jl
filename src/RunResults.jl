@@ -1,5 +1,7 @@
 ##############################################################################
 # various trace objects for SimulatedTempering samplers
+# TODO: implement the "Recorders" approach, as in Pigeons. This gives much more
+# flexibility to produce custom traces without needing to re-write code
 ##############################################################################
 
 abstract type AbstractTrace{T,TI<:Int,TF<:AbstractFloat} end
