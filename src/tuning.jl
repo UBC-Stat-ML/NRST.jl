@@ -16,10 +16,8 @@ function tune!(
     kwargs...
     )
     ens            = NRPTSampler(ns)                                # PT sampler, whose state is fully independent of ns
-    ns.np.nexpls .*= 2                                              # dobule exploration steps to impove the grid tuning convergence
     oldsumnexpl    = sum(ns.np.nexpls)                              # store exploration cost of a full sweep of the states during tuning
     nsteps, Λ, lZs = tune!(ns.np, ens, rng;verbose=verbose,adapt_nexpls=adapt_nexpls,kwargs...)
-    adapt_nexpls || (ns.np.nexpls .÷= 2)                            # undo the doubling if no adaptation of nexpls was done
 
     # estimate TE with preliminary NRST run: needed because we cannot estimate TE
     # with ensembles, since this is inherently a regenerative property.
@@ -27,19 +25,16 @@ function tune!(
     # First: equal effort approach. Use same effort as last PT run:
     #   1 PT step = oldsumnexpl steps in the exploration kernels
     #   1 Tour    = 2sum(nexpl) steps in the exploration kernels
-    # replace sum(nexpls) -> ns.np.N*median(nexpls) to be robust to cases 
-    # where only 1 level has all the exploration steps 
     # Second: match expected visits to top level under mean strategy. Require
     #   E[visits to N] = 2(p_N/p_0)ntours == 2min_ntours => ntours == min_ntours(p0/pN)
     # This defaults to min_ntours under mean strategy (that's why its called min_tours)
-    p_ratio = exp((first(lZs)+first(ns.np.c)) - (last(lZs)+last(ns.np.c)))          # == p0/pN. no need to normalize because this is a ratio of probs
+    p_ratio = exp((first(lZs)+first(ns.np.c)) - (last(lZs)+last(ns.np.c)))      # == p0/pN. no need to normalize because this is a ratio of probs
     @debug "tune!: p_ratio=$p_ratio"
     p_ratio < 0.001 && error("p0/pN<0.001 is too low ⟹ tuning failed! Increase γ or set 'use_mean=true' and try again.")
     ntours = min(DEFAULT_MAX_TOURS,
         ceil(Int, max(
             nsteps * oldsumnexpl / max(1, 2*sum(ns.np.nexpls)),
-            # ceil(Int, nsteps * oldsumnexpl / max(1, 2*ns.np.N*median(ns.np.nexpls)) )
-            min_ntours*(p_ratio^1.3) # exponent is a safety factor
+            min_ntours*(p_ratio^1.3)                                # exponent is a safety factor
         ))
     )
     verbose && println("\nEstimating Tour Effectiveness (TE) using $ntours NRST tours.\n")
