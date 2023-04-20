@@ -1,4 +1,55 @@
 ###############################################################################
+# Neal's Funnel
+###############################################################################
+
+using NRST
+using SplittableRandoms
+using Distributions
+using Random
+
+# Define a `TemperedModel` type and implement `NRST.V`, `NRST.Vref`, and `Base.rand` 
+struct Funnel{TF<:AbstractFloat,TI<:Int} <: NRST.TemperedModel
+    β_dist::Normal{TF}
+    lenx::TI
+end
+Funnel(;σ=3., d=20) = Funnel(Normal(zero(σ), σ), d)
+
+# methods for the reference
+NRST.Vref(tm::Funnel, x) = -sum(xi -> logpdf(tm.β_dist, xi), x)
+function Random.rand!(tm::Funnel{TF}, rng, x) where {TF}
+    for i in eachindex(x)
+        @inbounds x[i] = rand(rng, tm.β_dist)
+    end
+    return x
+end
+function Base.rand(tm::Funnel{TF}, rng) where {TF}
+    rand!(tm, rng, Vector{TF}(undef, tm.lenx))
+end
+
+# method for the potential
+function NRST.V(tm::Funnel{TF}, x) where {TF}
+    α_dist = Normal(zero(TF), exp(first(x)))
+    acc    = zero(TF)
+    @inbounds for i in 2:tm.lenx
+        isinf(acc += logpdf(tm.β_dist, x[i]) - logpdf(α_dist, x[i])) && break
+    end
+    return acc
+end
+
+const tm  = Funnel();
+const rng = SplittableRandom(1529)
+ns, TE, Λ = NRSTSampler(
+    tm,
+    rng,
+);
+res=parallel_run(ns, rng, NRST.NRSTTrace(ns), TE=TE);
+
+using Plots
+X = collect(hcat(res.xarray[end]...)');
+scatter(X[:,1], X[:,5])
+savefig("funnel.png")
+
+###############################################################################
 # HierarchicalModel
 ###############################################################################
 

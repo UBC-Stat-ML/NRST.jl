@@ -167,9 +167,14 @@ end
 # note the order: first tune c, then grid. This because c is used for 
 # estimating NRST rejections, which are then used to estimate Lambda
 function tune_inner!(np::NRSTProblem, args...)
+    # print("tuning xpls and c...")
     trVs = tune_xpls_and_c!(np, args...)
+    # print("done!\nFitting GPD to V tail...")
     ξ    = gpd_index(first(trVs))
-    (ξ, tune_betas!(np, trVs)...)
+    # print("done!\nOptimizing grid...")
+    res  = tune_betas!(np, trVs)
+    # println("done!")
+    (ξ, res...)
 end
 
 # last round of tuning after last adjustment to the grid
