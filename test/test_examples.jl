@@ -37,11 +37,12 @@ function NRST.V(tm::Funnel{TF}, x) where {TF}
 end
 
 const tm  = Funnel();
-const rng = SplittableRandom(7634)
+const rng = SplittableRandom(1164)
 ns, TE, Λ = NRSTSampler(
     tm,
     rng,
-    γ=1.,
+    use_mean=false,
+    γ=1.5,
     maxcor=0.9
 );
 res=parallel_run(ns, rng, NRST.NRSTTrace(ns), TE=TE);

@@ -10,7 +10,7 @@ rows2vov(M::AbstractMatrix) = [copy(r) for r in eachrow(M)]
 closest_odd(x) = max(3, 2round(Int, (x+1)/2)-1)
 
 # find root for monotonic univariate functions
-function monoroot(f, l::F, u::F; tol = 50eps(F), maxit = typemax(Int)) where {F<:AbstractFloat}
+function monoroot(f, l::F, u::F; tol = 500eps(F), maxit = typemax(Int)) where {F<:AbstractFloat}
     @assert l <= u
     fl = f(l)
     fu = f(u)
