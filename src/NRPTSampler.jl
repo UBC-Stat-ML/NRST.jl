@@ -8,7 +8,7 @@
 struct NRPTSampler{TS<:NRSTSampler,TI<:Int}
     nss::Vector{TS}  # vector of N+1 NRSTSamplers
     perm::Vector{TI} # permutation vector
-    sper::Vector{TI} # sorted permutation vector; i.e., inverse of perm; i.e., perm[sper] == 1:(N+1)
+    sper::Vector{TI} # sorted permutation vector; i.e., inverse of perm; i.e., perm[sper] == 0:N
 end
 function NRPTSampler(oldns::NRSTSampler)
     N   = oldns.np.N
@@ -20,25 +20,24 @@ function NRPTSampler(oldns::NRSTSampler)
 end
 
 # utilities
-get_N(nrpt::NRPTSampler) = nrpt.nss[1].np.N
+get_N(nrpt::NRPTSampler)    = nrpt.nss[begin].np.N
 get_perm(nrpt::NRPTSampler) = nrpt.perm
 get_sper(nrpt::NRPTSampler) = nrpt.sper
 
 # struct for storing minimal info about an nsteps run
-struct NRPTTrace{T, TF<:AbstractFloat, TI<:Int}
+# TODO: instead of keeping track of samples, add a vector of 
+# OnlineStatsBase.OnlineStat to keep track of stuff in constant mem
+struct NRPTTrace{TF<:AbstractFloat, TI<:Int}
     n::Base.RefValue{TI}                                    # current step
     perms::Matrix{TI}                                       # matrix of size (N+1)×nsteps for collecting permutations
-    xs::Matrix{T}                                           # matrix of size (N+1)×nsteps for collecting x samples
     Vs::Matrix{TF}                                          # matrix of size (N+1)×nsteps for collecting V values
     rpsum::Vector{TF}                                       # vector of length N, accumulates sum of rej prob of swaps started from i=0:N-1
 end
 function NRPTTrace(nrpt::NRPTSampler, nsteps::Int)
     N  = get_N(nrpt)
     TF = eltype(first(nrpt.nss).curV)
-    TX = typeof(first(nrpt.nss).x)
     NRPTTrace(
         Ref(zero(N)), Matrix{typeof(N)}(undef, N+1, nsteps),
-        Matrix{TX}(undef, N+1, nsteps), 
         Matrix{TF}(undef, N+1, nsteps), zeros(TF, N)
     )
 end
@@ -57,7 +56,6 @@ function store_results!(nrpt::NRPTSampler, tr::NRPTTrace)
     # is the level the i-th machine is currently in charge of 
     for (i, l) in enumerate(get_perm(nrpt))
         tr.perms[i, tr.n[]] = l
-        tr.xs[l+1, tr.n[]]  = copy(nrpt.nss[i].x)
         tr.Vs[l+1, tr.n[]]  = nrpt.nss[i].curV[]
     end
 end

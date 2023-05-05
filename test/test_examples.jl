@@ -10,15 +10,21 @@ using Random
 # Define a `TemperedModel` type and implement `NRST.V`, `NRST.Vref`, and `Base.rand` 
 struct Funnel{TF<:AbstractFloat,TI<:Int} <: NRST.TemperedModel
     β_dist::Normal{TF}
+    α_ref::Normal{TF}
     lenx::TI
 end
-Funnel(;σ=3., d=20) = Funnel(Normal(zero(σ), σ), d)
+function Funnel(;σ=3., σ₂=3., d=20)
+    Funnel(Normal(zero(σ), σ), Normal(zero(σ), σ₂), d)
+end
 
 # methods for the reference
-NRST.Vref(tm::Funnel, x) = -sum(xi -> logpdf(tm.β_dist, xi), x)
+function NRST.Vref(tm::Funnel, x)
+    @inbounds -(logpdf(tm.β_dist, x[1]) + sum(xi -> logpdf(tm.α_ref, xi), x[2:end]))
+end
 function Random.rand!(tm::Funnel{TF}, rng, x) where {TF}
-    for i in eachindex(x)
-        @inbounds x[i] = rand(rng, tm.β_dist)
+    x[begin] = rand(rng, tm.β_dist)
+    for i in 2:tm.lenx
+        @inbounds x[i] = rand(rng, tm.α_ref)
     end
     return x
 end
@@ -31,19 +37,19 @@ function NRST.V(tm::Funnel{TF}, x) where {TF}
     α_dist = Normal(zero(TF), exp(first(x)))
     acc    = zero(TF)
     @inbounds for i in 2:tm.lenx
-        isinf(acc += logpdf(tm.β_dist, x[i]) - logpdf(α_dist, x[i])) && break
+        isinf(acc += logpdf(tm.α_ref, x[i]) - logpdf(α_dist, x[i])) && break
     end
     return acc
 end
 
-const tm  = Funnel();
-const rng = SplittableRandom(1164)
+tm  = Funnel();
+rng = SplittableRandom(40378)
 ns, TE, Λ = NRSTSampler(
     tm,
     rng,
-    use_mean=false,
-    γ=1.5,
-    maxcor=0.9
+    # use_mean=false,
+    γ=2.,
+    maxcor=0.95
 );
 res=parallel_run(ns, rng, NRST.NRSTTrace(ns), TE=TE);
 
