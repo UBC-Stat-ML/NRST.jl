@@ -12,12 +12,11 @@ function tune!(
     rng::AbstractRNG;
     min_ntours::Int    = 2_048,
     verbose::Bool      = true,
-    adapt_nexpls::Bool = false,
     kwargs...
     )
     ens            = NRPTSampler(ns)                                # PT sampler, whose state is fully independent of ns
     oldsumnexpl    = sum(ns.np.nexpls)                              # store exploration cost of a full sweep of the states during tuning
-    nsteps, Λ, lZs = tune!(ns.np, ens, rng;verbose=verbose,adapt_nexpls=adapt_nexpls,kwargs...)
+    nsteps, Λ, lZs = tune!(ns.np, ens, rng;verbose=verbose,kwargs...)
 
     # estimate TE with preliminary NRST run: needed because we cannot estimate TE
     # with ensembles, since this is inherently a regenerative property.
@@ -56,11 +55,11 @@ function tune!(
     max_relΔΛ::Real    = 0.01,      # limit on rel change in Λ = Λ(1)
     nsteps_init::Int   = 2,         # steps used in the first round
     maxcor::Real       = 0.95,      # set nexpl in explorers s.t. correlation of V samples is lower than this
-    γ::Real            = 2.5,       # correction for the optimal_N formula
+    γ::Real            = 2.0,       # correction for the optimal_N formula
     xpl_smooth_λ::Real = 1e-5,      # smoothness knob for xpl params. λ==0 == no smoothing
     check_N::Bool      = true,
     check_at_rnd::Int  = 9,         # early round with enough accuracy to check V integrability and N 
-    adapt_nexpls::Bool,             # should we adapt number of exploration steps after the last round?
+    adapt_nexpls::Bool = true,      # should we adapt number of exploration steps after the last round?
     verbose::Bool,
     kwargs...
     )

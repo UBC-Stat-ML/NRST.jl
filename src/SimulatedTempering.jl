@@ -109,6 +109,7 @@ function save_pre_step!(st::AbstractSTSampler, tr::NRSTTrace; keep_xs::Bool=true
     push!(trV, st.curV[])
     return
 end
+# note: directional rp's are wrong for GT95 since eps is effectively updated during step! 
 function save_post_step!(
     ::AbstractSTSampler,
     tr::NRSTTrace,

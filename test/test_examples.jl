@@ -47,9 +47,6 @@ rng = SplittableRandom(40378)
 ns, TE, Λ = NRSTSampler(
     tm,
     rng,
-    # use_mean=false,
-    γ=2.,
-    maxcor=0.95
 );
 res=parallel_run(ns, rng, NRST.NRSTTrace(ns), TE=TE);
 

@@ -154,7 +154,7 @@ function shrink_slice(
     ) where {SSS,TTM,TF}
     xi    = ss.x[i]
     newxi = xi                                               # init with the current point
-    newps = potentials(ss)                                   # init with the potentials at the current point
+    newps = potentials(ss)                                   # init with the potentials at the current point (only reads cache, does not do extra computation)
     bL    = L
     bR    = R
     nvs   = 0                                                # counts number of V(x) evaluations
