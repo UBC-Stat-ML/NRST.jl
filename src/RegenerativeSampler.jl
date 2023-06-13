@@ -59,7 +59,8 @@ function parallel_run(
     rngs = [split(rng) for _ in 1:ntours]                                     # split rng into ntours copies. must be done outside of loop because split changes rng state.
     p    = ProgressMeter.Progress(ntours; desc="Sampling: ", enabled=verbose) # prints a progress bar
     Threads.@threads for t in 1:ntours
-        tour!(copy(rs), rngs[t], res[t]; kwargs...)                           # run a tour with tasks' own sampler, rng, and trace, avoiding race conditions. note: writing to separate locations in a common vector is fine. see: https://discourse.julialang.org/t/safe-loop-with-push-multi-threading/41892/6, and e.g. https://stackoverflow.com/a/8978397/5443023
+        e = @elapsed tour!(copy(rs), rngs[t], res[t]; kwargs...)              # run a tour with tasks' own sampler, rng, and trace, avoiding race conditions. note: writing to separate locations in a common vector is fine. see: https://discourse.julialang.org/t/safe-loop-with-push-multi-threading/41892/6, and e.g. https://stackoverflow.com/a/8978397/5443023
+        record_time(res[t], e)                                                # save elapsed time time
         ProgressMeter.next!(p)
 
         # # if on PBS, check every 'check_every' tours if mem usage is high. If so, gc.

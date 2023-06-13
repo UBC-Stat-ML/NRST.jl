@@ -10,6 +10,8 @@ function Base.similar(tr::TTrace) where {T,TI,TF,TTrace <: AbstractTrace{T,TI,TF
     TTrace.name.wrapper(T, get_N(tr), TF) # hack: https://discourse.julialang.org/t/get-generic-constructor-of-parametric-type/57189/2
 end
 
+function record_time(::AbstractTrace, _) end # don't do anything 
+
 #######################################
 # ConstCostTrace: O(1) cost wrt tour length
 #######################################
@@ -19,15 +21,19 @@ struct ConstCostTrace{T,TI<:Int,TF<:AbstractFloat} <: AbstractTrace{T,TI,TF}
     n_steps::Base.RefValue{TI}
     n_vis_top::Base.RefValue{TI}
     n_v_evals::Base.RefValue{TI}
+    time::Base.RefValue{TF}
 end
 get_N(tr::ConstCostTrace) = tr.N
 get_nsteps(tr::ConstCostTrace) = tr.n_steps[]
 get_nvtop(tr::ConstCostTrace) = tr.n_vis_top[]
 get_nvevals(tr::ConstCostTrace) = tr.n_v_evals[]
+get_time(tr::ConstCostTrace) = tr.time[]
 
 function ConstCostTrace(::Type{T}, N::TI, ::Type{TF}, args...) where {T,TI<:Int,TF<:AbstractFloat}
-    ConstCostTrace{T,TI,TF}(N, Ref(zero(TI)), Ref(zero(TI)), Ref(zero(TI)))
+    ConstCostTrace{T,TI,TF}(N, Ref(zero(TI)), Ref(zero(TI)), Ref(zero(TI)), Ref(zero(TF)))
 end
+
+record_time(tr::ConstCostTrace, time::Real) = (tr.time[] = time)
 
 # trace postprocessing
 function post_process(tr::ConstCostTrace, visacc::Matrix, args...)
