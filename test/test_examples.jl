@@ -49,12 +49,7 @@ ns, TE, Λ = NRSTSampler(
     rng,
 );
 res=parallel_run(ns, rng, NRST.NRSTTrace(ns), TE=TE);
-
-using Plots
-X = collect(hcat(res.xarray[end]...)');
-scatter(X[:,1], X[:,5])
-savefig("funnel.png")
-
+last(parallel_run(ns, rng, ntours=NRST.min_ntours_TE(NRST.TE_inf(Λ)/5)).toureff)
 ###############################################################################
 # HierarchicalModel
 ###############################################################################
