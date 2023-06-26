@@ -32,7 +32,7 @@ function tune!(
     p_ratio = exp((first(lZs)+first(ns.np.c)) - (last(lZs)+last(ns.np.c)))      # == p0/pN. no need to normalize because this is a ratio of probs
     @debug "tune!: p_ratio=$p_ratio"
     p_ratio < 0.001 && error("p0/pN<0.001 is too low ⟹ tuning failed! Increase γ or set 'use_mean=true' and try again.")
-    ntours = min(DEFAULT_MAX_TOURS, use_TE_inf ? min_ntours_TE(TE_inf(Λ)/5) : # experimentally, TE ~ 20% TE_inf
+    ntours = min(DEFAULT_MAX_TOURS, use_TE_inf ? min_ntours_TE(TE_inf(Λ)/10) : # experimentally, TE ~ 20% TE_inf -> then add safety factor
         ceil(Int, max(
             nsteps * oldsumnexpl / max(1, 2*sum(ns.np.nexpls)),
             min_ntours*(p_ratio^1.3)                                # exponent is a safety factor
