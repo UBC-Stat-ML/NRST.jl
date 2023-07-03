@@ -54,7 +54,7 @@ end
 function store_results!(nrpt::NRPTSampler, tr::NRPTTrace)
     # copy the i-th machine's data to the l(i)+1 position in storage, where l(i)
     # is the level the i-th machine is currently in charge of 
-    for (i, l) in enumerate(get_perm(nrpt))
+    @inbounds for (i, l) in enumerate(get_perm(nrpt))
         tr.perms[i, tr.n[]] = l
         tr.Vs[l+1, tr.n[]]  = nrpt.nss[i].curV[]
     end

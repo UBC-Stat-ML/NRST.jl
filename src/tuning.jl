@@ -188,7 +188,7 @@ function tune_last!(
     )
     ptVs = tune_xpls_and_c!(np, nrpt, rng, nsteps)
     Λ    = last(get_lambdas(averej(est_rej_probs(ptVs, np.betas, np.c))))     # final estimate of Λ using the most recent grid and c values
-    lZs  = log_partition(np, ptVs)                                            # estimate log(Z_i/Z_0)
+    lZs  = log_partition(np, ptVs)                                            # estimate log(Z_i)
     return Λ, lZs
 end
 
