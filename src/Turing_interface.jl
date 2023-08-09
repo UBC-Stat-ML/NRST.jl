@@ -48,23 +48,24 @@ Random.rand!(tm::TuringTemperedModel, rng, x) = copyto!(x, rand(tm, rng)) # fall
 
 # evaluate reference potential + logabsdetjac of the bijection
 function Vref(tm::TuringTemperedModel, x)
+    tm.viout[tm.spl] = x
     -DPPL.getlogp(last(
-        DPPL.evaluate_threadunsafe!!(                             # we copy vi when doing stuff in parallel so it's ok
-            tm.model, DPPL.VarInfo(tm.viout, tm.spl, x), DPPL.PriorContext()
+        DPPL.evaluate_threadunsafe!!(                                     # we copy vi when doing stuff in parallel so it's ok
+            tm.model, tm.viout, DPPL.PriorContext()
         )
     ))
 end
 
 # evaluate target potential
 function V(tm::TuringTemperedModel, x)
-    vi  = DPPL.VarInfo(tm.viout, tm.spl, x)
-    DPPL.invlink!!(vi, tm.spl, tm.model)           # this is to avoid getting the logabsdetjac, which is already in the Vref
+    tm.viout[tm.spl] = x
+    DPPL.invlink!!(tm.viout, tm.spl, tm.model)                            # this is to avoid getting the logabsdetjac, which is already in the Vref
     pot = -DPPL.getlogp(last(
-        DPPL.evaluate_threadunsafe!!(              # we copy vi when doing stuff in parallel so it's ok
-            tm.model, vi, DPPL.LikelihoodContext()
+        DPPL.evaluate_threadunsafe!!(                                     # we copy vi when doing stuff in parallel so it's ok
+            tm.model, tm.viout, DPPL.LikelihoodContext()
         )
     ))
-    DPPL.link!!(vi, tm.spl, tm.model)              # need to re-link because apparently vi and viout share the same metadata field: https://github.com/TuringLang/DynamicPPL.jl/blob/715526ffa70292436e479e18d762e7ebf31c9181/src/varinfo.jl#L113
+    DPPL.link!!(tm.viout, tm.spl, tm.model)                               # need to re-link
     return pot
 end
 
