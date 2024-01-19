@@ -18,7 +18,7 @@ using StaticArrays: MVector, SVector
 using Statistics
 using StatsBase: autocor, winsor
 using StatsFuns: norminvcdf
-using StatsPlots: density
+# using StatsPlots: density
 using UnicodePlots: UnicodePlots
 using UnPack: @unpack
 
